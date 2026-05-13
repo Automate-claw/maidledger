@@ -159,12 +159,14 @@ CREATE TABLE sync_queue (
 
 ## ⚠️ 待確認 / 進行中
 
-1. ✅ Flutter project 未初始化 (需要 Joe 安裝 Flutter SDK)
-2. 🟡 receipt-scanner — ML Kit integration 需實際測試
-3. 🟡 ai-booking-agent — Gemini API key 需要提供
-4. 🟡 price-scraper — 需要真實網站測試 XPath/CSS selectors
-5. ⬜ employer_app — 未開始
-6. ⬜ price-alert-engine — 需要 Supabase project 準備好
+1. ✅ Flutter SDK at /home/joe-s-openclaw/flutter
+2. ✅ receipt-scanner — ML Kit integration scaffolded
+3. ✅ ai-booking-agent — Gemini keyword engine scaffolded
+4. 🟡 price-scraper — Python crawler ready for testing
+5. 🟡 helper_app — Scaffolded (main.dart + navigation)
+6. ⬜ employer_app — Not started
+7. ⬜ price-alert-engine — Needs Supabase project
+8. ⬜ Offline sync — Needs integration testing
 
 ---
 
