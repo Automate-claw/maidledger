@@ -1,4 +1,5 @@
 import 'dart:io';
+import 'dart:math';
 import 'dart:ui';
 import 'package:google_mlkit_text_recognition/google_mlkit_text_recognition.dart';
 import 'package:camera/camera.dart';
@@ -19,10 +20,10 @@ class ReceiptScannerService {
 
     return ReceiptScanResult(
       textBlocks: recognized.blocks
-          .map((b) => TextBlock(
+          .map((b) => TextBlock.fromMlKit(
                 text: b.text,
                 boundingBox: b.boundingBox,
-                corners: b.cornerPoints,
+                cornerPoints: b.cornerPoints,
               ))
           .toList(),
       rawText: recognized.text,
@@ -37,10 +38,10 @@ class ReceiptScannerService {
 
     return ReceiptScanResult(
       textBlocks: recognized.blocks
-          .map((b) => TextBlock(
+          .map((b) => TextBlock.fromMlKit(
                 text: b.text,
                 boundingBox: b.boundingBox,
-                corners: b.cornerPoints,
+                cornerPoints: b.cornerPoints,
               ))
           .toList(),
       rawText: recognized.text,
@@ -80,6 +81,12 @@ class ReceiptScanResult {
     required this.rawText,
     required this.timestamp,
   });
+
+  factory ReceiptScanResult.empty() => ReceiptScanResult(
+        textBlocks: [],
+        rawText: '',
+        timestamp: DateTime.now(),
+      );
 }
 
 class TextBlock {
@@ -92,4 +99,17 @@ class TextBlock {
     required this.boundingBox,
     required this.corners,
   });
+
+  /// Convert from ML Kit Point<int> to Offset
+  factory TextBlock.fromMlKit({
+    required String text,
+    required Rect boundingBox,
+    required List<Point<int>> cornerPoints,
+  }) =>
+      TextBlock(
+        text: text,
+        boundingBox: boundingBox,
+        corners:
+            cornerPoints.map((p) => Offset(p.x.toDouble(), p.y.toDouble())).toList(),
+      );
 }
