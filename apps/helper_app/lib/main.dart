@@ -1,21 +1,26 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'features/auth/auth_provider.dart';
+import 'features/auth/login_screen.dart';
+import 'features/scan/scan_screen.dart';
+import 'features/chat/chat_screen.dart';
+import 'features/history/history_screen.dart';
 
 void main() {
   runApp(
     const ProviderScope(
-      child: MaidLedgerHelperApp(),
+      child: MaidLedgerApp(),
     ),
   );
 }
 
-class MaidLedgerHelperApp extends StatelessWidget {
-  const MaidLedgerHelperApp({super.key});
+class MaidLedgerApp extends StatelessWidget {
+  const MaidLedgerApp({super.key});
 
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
-      title: 'MaidLedger Helper',
+      title: 'MaidLedger',
       debugShowCheckedModeBanner: false,
       theme: ThemeData(
         colorScheme: ColorScheme.fromSeed(
@@ -24,8 +29,26 @@ class MaidLedgerHelperApp extends StatelessWidget {
         ),
         useMaterial3: true,
       ),
-      home: const MainNavigationScreen(),
+      home: const AuthGate(),
     );
+  }
+}
+
+/// Routes based on auth state
+class AuthGate extends ConsumerWidget {
+  const AuthGate({super.key});
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final authState = ref.watch(authStateProvider);
+
+    return switch (authState) {
+      AuthAuthenticated() => const MainNavigationScreen(),
+      AuthLoading() => const Scaffold(
+          body: Center(child: CircularProgressIndicator()),
+        ),
+      _ => const LoginScreen(),
+    };
   }
 }
 
@@ -74,72 +97,6 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
             label: 'History',
           ),
         ],
-      ),
-    );
-  }
-}
-
-// Placeholder screens - to be implemented
-class ScanScreen extends StatelessWidget {
-  const ScanScreen({super.key});
-
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(
-        title: const Text('Scan Receipt'),
-        centerTitle: true,
-      ),
-      body: const Center(
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Icon(Icons.camera_alt, size: 80, color: Colors.grey),
-            SizedBox(height: 16),
-            Text('Tap to scan receipt'),
-          ],
-        ),
-      ),
-      floatingActionButton: FloatingActionButton.extended(
-        onPressed: () {
-          // TODO: Open camera
-        },
-        icon: const Icon(Icons.camera_alt),
-        label: const Text('Scan'),
-      ),
-    );
-  }
-}
-
-class ChatScreen extends StatelessWidget {
-  const ChatScreen({super.key});
-
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(
-        title: const Text('AI Assistant'),
-        centerTitle: true,
-      ),
-      body: const Center(
-        child: Text('Chat with AI Assistant'),
-      ),
-    );
-  }
-}
-
-class HistoryScreen extends StatelessWidget {
-  const HistoryScreen({super.key});
-
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(
-        title: const Text('History'),
-        centerTitle: true,
-      ),
-      body: const Center(
-        child: Text('Expense History'),
       ),
     );
   }
