@@ -1,4 +1,5 @@
 import 'dart:io';
+import 'dart:ui';
 import 'package:google_mlkit_text_recognition/google_mlkit_text_recognition.dart';
 import 'package:camera/camera.dart';
 
@@ -9,8 +10,11 @@ class ReceiptScannerService {
 
   /// Capture and recognize text from camera image
   /// Returns extracted text blocks for UI highlight
-  Future<ReceiptScanResult> scanFromCamera(CameraImage image) async {
-    final inputImage = _convertCameraImage(image);
+  Future<ReceiptScanResult> scanFromCameraImage(
+    CameraImage image, {
+    required InputImageRotation rotation,
+  }) async {
+    final inputImage = _convertCameraImage(image, rotation);
     final recognized = await _textRecognizer.processImage(inputImage);
 
     return ReceiptScanResult(
@@ -44,10 +48,21 @@ class ReceiptScannerService {
     );
   }
 
-  CameraImage _convertCameraImage(camera.CameraImage image) {
-    // ML Kit accepts camera image via InputImage
-    // This is handled by the platform-specific implementation
-    throw UnimplementedError('Use scanFromFile for CameraImage');
+  InputImage _convertCameraImage(
+    CameraImage image,
+    InputImageRotation rotation,
+  ) {
+    // Convert CameraImage to ML Kit's InputImage format
+    final plane = image.planes.first;
+    return InputImage.fromBytes(
+      bytes: plane.bytes,
+      metadata: InputImageMetadata(
+        size: Size(image.width.toDouble(), image.height.toDouble()),
+        rotation: rotation,
+        bytesPerRow: plane.bytesPerRow,
+        format: InputImageFormat.yuv420,
+      ),
+    );
   }
 
   void dispose() {
@@ -70,23 +85,11 @@ class ReceiptScanResult {
 class TextBlock {
   final String text;
   final Rect boundingBox;
-  final List<Point<int>> corners;
+  final List<Offset> corners;
 
   TextBlock({
     required this.text,
     required this.boundingBox,
     required this.corners,
   });
-}
-
-class Rect {
-  final double left, top, right, bottom;
-  Rect({required this.left, required this.top, required this.right, required this.bottom});
-  double get width => right - left;
-  double get height => bottom - top;
-}
-
-class Point<T extends num> {
-  final T x, y;
-  Point(this.x, this.y);
 }

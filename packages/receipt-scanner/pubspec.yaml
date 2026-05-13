@@ -1,0 +1,23 @@
+name: receipt_scanner
+description: Receipt scanner with ML Kit OCR for MaidLedger
+version: 1.0.0
+
+environment:
+  sdk: '>=3.0.0 <4.0.0'
+
+dependencies:
+  flutter:
+    sdk: flutter
+  google_mlkit_text_recognition: ^0.13.0
+  camera: ^0.11.0+1
+  permission_handler: ^11.3.0
+  sqflite: ^2.3.2
+  supabase: ^2.3.2
+  connectivity_plus: ^6.0.3
+  uuid: ^4.3.3
+  path: ^1.9.0
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^3.0.1

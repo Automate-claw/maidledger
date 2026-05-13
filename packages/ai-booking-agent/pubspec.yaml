@@ -1,0 +1,14 @@
+name: ai_booking_agent
+description: Multi-language AI booking agent for MaidLedger
+version: 1.0.0
+
+environment:
+  sdk: '>=3.0.0 <4.0.0'
+
+dependencies:
+  http: ^1.2.0
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^3.0.1
