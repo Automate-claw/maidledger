@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import '../auth/auth_provider.dart';
 import '../../core/services/supabase_client_provider.dart';
 
 /// History screen for viewing past receipts
@@ -29,7 +28,7 @@ class _HistoryScreenState extends ConsumerState<HistoryScreen> {
     });
 
     try {
-      final client = SupabaseClientProvider.instance;
+      final client = await SupabaseClientProvider.instance;
       final response = await client
           .from('receipts')
           .select()
@@ -50,7 +49,7 @@ class _HistoryScreenState extends ConsumerState<HistoryScreen> {
 
   Future<void> _deleteReceipt(String id) async {
     try {
-      final client = SupabaseClientProvider.instance;
+      final client = await SupabaseClientProvider.instance;
       await client.from('receipts').delete().eq('id', id);
 
       setState(() {
@@ -66,12 +65,14 @@ class _HistoryScreenState extends ConsumerState<HistoryScreen> {
         );
       }
     } catch (e) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('❌ Delete failed: $e'),
-          backgroundColor: Colors.red,
-        ),
-      );
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('❌ Delete failed: $e'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
     }
   }
 
@@ -146,7 +147,6 @@ class _HistoryScreenState extends ConsumerState<HistoryScreen> {
   }
 }
 
-/// Receipt card widget
 class ReceiptCard extends StatelessWidget {
   final Map<String, dynamic> receipt;
   final VoidCallback onDelete;
@@ -163,7 +163,6 @@ class ReceiptCard extends StatelessWidget {
     final category = receipt['category'] as String? ?? 'other';
     final syncStatus = receipt['sync_status'] as String? ?? 'pending';
     final createdAt = DateTime.tryParse(receipt['created_at'] as String? ?? '');
-    final parsedData = receipt['parsed_data'];
 
     return Card(
       margin: const EdgeInsets.only(bottom: 12),
@@ -175,10 +174,8 @@ class ReceiptCard extends StatelessWidget {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              // Header row
               Row(
                 children: [
-                  // Category icon
                   Container(
                     padding: const EdgeInsets.all(8),
                     decoration: BoxDecoration(
@@ -192,8 +189,6 @@ class ReceiptCard extends StatelessWidget {
                     ),
                   ),
                   const SizedBox(width: 12),
-
-                  // Amount and category
                   Expanded(
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
@@ -207,22 +202,15 @@ class ReceiptCard extends StatelessWidget {
                         ),
                         Text(
                           _getCategoryName(category),
-                          style: TextStyle(
-                            color: Colors.grey[600],
-                          ),
+                          style: TextStyle(color: Colors.grey[600]),
                         ),
                       ],
                     ),
-
-                    // Sync status
                   ),
                   _buildSyncStatusChip(syncStatus),
                 ],
               ),
-
               const SizedBox(height: 12),
-
-              // Raw text preview
               Container(
                 padding: const EdgeInsets.all(8),
                 decoration: BoxDecoration(
@@ -233,16 +221,10 @@ class ReceiptCard extends StatelessWidget {
                   receipt['raw_text'] as String? ?? '',
                   maxLines: 2,
                   overflow: TextOverflow.ellipsis,
-                  style: const TextStyle(
-                    fontFamily: 'monospace',
-                    fontSize: 12,
-                  ),
+                  style: const TextStyle(fontFamily: 'monospace', fontSize: 12),
                 ),
               ),
-
               const SizedBox(height: 12),
-
-              // Footer row
               Row(
                 children: [
                   if (createdAt != null) ...[
@@ -250,10 +232,7 @@ class ReceiptCard extends StatelessWidget {
                     const SizedBox(width: 4),
                     Text(
                       _formatDate(createdAt),
-                      style: TextStyle(
-                        fontSize: 12,
-                        color: Colors.grey[500],
-                      ),
+                      style: TextStyle(fontSize: 12, color: Colors.grey[500]),
                     ),
                   ],
                   const Spacer(),
@@ -311,11 +290,7 @@ class ReceiptCard extends StatelessWidget {
           const SizedBox(width: 4),
           Text(
             label,
-            style: TextStyle(
-              fontSize: 12,
-              color: color,
-              fontWeight: FontWeight.w500,
-            ),
+            style: TextStyle(fontSize: 12, color: color, fontWeight: FontWeight.w500),
           ),
         ],
       ),
@@ -361,7 +336,6 @@ class ReceiptCard extends StatelessWidget {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              // Handle
               Center(
                 child: Container(
                   width: 40,
@@ -373,21 +347,12 @@ class ReceiptCard extends StatelessWidget {
                   ),
                 ),
               ),
-
               const Text(
                 '📋 Receipt Details',
-                style: TextStyle(
-                  fontSize: 20,
-                  fontWeight: FontWeight.bold,
-                ),
+                style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
               ),
               const SizedBox(height: 24),
-
-              // Raw text
-              const Text(
-                'Raw Text:',
-                style: TextStyle(fontWeight: FontWeight.w600),
-              ),
+              const Text('Raw Text:', style: TextStyle(fontWeight: FontWeight.w600)),
               const SizedBox(height: 8),
               Container(
                 width: double.infinity,
@@ -402,13 +367,8 @@ class ReceiptCard extends StatelessWidget {
                 ),
               ),
               const SizedBox(height: 16),
-
-              // Parsed data
               if (receipt['parsed_data'] != null) ...[
-                const Text(
-                  'Parsed Data:',
-                  style: TextStyle(fontWeight: FontWeight.w600),
-                ),
+                const Text('Parsed Data:', style: TextStyle(fontWeight: FontWeight.w600)),
                 const SizedBox(height: 8),
                 Container(
                   width: double.infinity,
@@ -419,10 +379,7 @@ class ReceiptCard extends StatelessWidget {
                   ),
                   child: Text(
                     receipt['parsed_data'].toString(),
-                    style: TextStyle(
-                      fontFamily: 'monospace',
-                      color: Colors.green[800],
-                    ),
+                    style: TextStyle(fontFamily: 'monospace', color: Colors.green[800]),
                   ),
                 ),
               ],

@@ -43,7 +43,7 @@ class AuthGate extends ConsumerWidget {
     final authState = ref.watch(authStateProvider);
 
     return switch (authState) {
-      AuthAuthenticated() => const MainNavigationScreen(),
+      AuthAuthenticated(userId: final id, email: final email) => const MainNavigationScreen(),
       AuthLoading() => const Scaffold(
           body: Center(child: CircularProgressIndicator()),
         ),

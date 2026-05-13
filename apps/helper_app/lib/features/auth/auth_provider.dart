@@ -37,17 +37,19 @@ class AuthError extends AuthState {
 
 /// Auth notifier using Riverpod 2.x Notifier
 class AuthNotifier extends Notifier<AuthState> {
+  SupabaseClient? _client;
+
   @override
   AuthState build() {
     _init();
-    return const AuthUnauthenticated();
+    return const AuthLoading();
   }
 
-  SupabaseClient get _client => SupabaseClientProvider.instance;
-
   Future<void> _init() async {
+    _client = await SupabaseClientProvider.instance;
+    
     // Listen to auth state changes
-    _client.auth.onAuthStateChange.listen((data) {
+    _client!.auth.onAuthStateChange.listen((data) {
       final event = data.event;
       final session = data.session;
 
@@ -62,20 +64,27 @@ class AuthNotifier extends Notifier<AuthState> {
     });
 
     // Check current session
-    final currentSession = _client.auth.currentSession;
+    final currentSession = _client!.auth.currentSession;
     if (currentSession != null) {
       state = AuthAuthenticated(
         userId: currentSession.user.id,
         email: currentSession.user.email ?? '',
       );
+    } else {
+      state = const AuthUnauthenticated();
     }
   }
 
   Future<void> signIn(String email, String password) async {
+    if (_client == null) {
+      state = const AuthError('Client not initialized');
+      return;
+    }
+    
     state = const AuthLoading();
 
     try {
-      final response = await _client.auth.signInWithPassword(
+      final response = await _client!.auth.signInWithPassword(
         email: email,
         password: password,
       );
@@ -96,10 +105,15 @@ class AuthNotifier extends Notifier<AuthState> {
   }
 
   Future<void> signUp(String email, String password, String name, String role) async {
+    if (_client == null) {
+      state = const AuthError('Client not initialized');
+      return;
+    }
+    
     state = const AuthLoading();
 
     try {
-      final response = await _client.auth.signUp(
+      final response = await _client!.auth.signUp(
         email: email,
         password: password,
         data: {'name': name, 'role': role},
@@ -107,7 +121,7 @@ class AuthNotifier extends Notifier<AuthState> {
 
       if (response.user != null) {
         // Create user profile
-        await _client.from('user_profiles').insert({
+        await _client!.from('user_profiles').insert({
           'id': response.user!.id,
           'name': name,
           'role': role,
@@ -128,7 +142,8 @@ class AuthNotifier extends Notifier<AuthState> {
   }
 
   Future<void> signOut() async {
-    await _client.auth.signOut();
+    if (_client == null) return;
+    await _client!.auth.signOut();
     state = const AuthUnauthenticated();
   }
 }

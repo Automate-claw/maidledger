@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import '../auth/auth_provider.dart';
 import '../../core/services/supabase_client_provider.dart';
 import '../../core/services/ai_booking_agent_service.dart';
 
@@ -28,12 +27,11 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
       translateApiKey: '',
     );
 
-    // Welcome message
     _messages.add(const ChatMessage(
       text: '👋 你好！用任何語言告訴我你想記帳的內容。\n\n'
           '例如：\n'
           '• "買咗菜 45 蚊"\n'
-          '• "超市 \$50"\n'
+          '• "超市 50"\n'
           '• "街市買魚 80"',
       isUser: false,
     ));
@@ -67,7 +65,6 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
 
       _scrollToBottom();
 
-      // If confidence is high, ask to save
       if (intent.confidence > 0.7 && intent.amount != null) {
         _showSaveDialog(intent);
       }
@@ -116,7 +113,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
 
   Future<void> _saveExpense(ExpenseIntent intent) async {
     try {
-      final client = SupabaseClientProvider.instance;
+      final client = await SupabaseClientProvider.instance;
       final now = DateTime.now().millisecondsSinceEpoch;
 
       await client.from('receipts').insert({
@@ -143,12 +140,14 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
         );
       }
     } catch (e) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('❌ 保存失敗：$e'),
-          backgroundColor: Colors.red,
-        ),
-      );
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('❌ 保存失敗：$e'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
     }
   }
 
@@ -194,7 +193,6 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
       ),
       body: Column(
         children: [
-          // Messages list
           Expanded(
             child: ListView.builder(
               controller: _scrollController,
@@ -206,8 +204,6 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
               },
             ),
           ),
-
-          // Typing indicator
           if (_isTyping)
             const Padding(
               padding: EdgeInsets.all(8),
@@ -225,8 +221,6 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
                 ],
               ),
             ),
-
-          // Input field
           Container(
             padding: const EdgeInsets.all(16),
             decoration: BoxDecoration(
@@ -274,7 +268,6 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
   }
 }
 
-/// Chat message model
 class ChatMessage {
   final String text;
   final bool isUser;
@@ -287,7 +280,6 @@ class ChatMessage {
   });
 }
 
-/// Chat bubble widget
 class ChatBubble extends StatelessWidget {
   final ChatMessage message;
 

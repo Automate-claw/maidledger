@@ -3,7 +3,6 @@ import 'package:flutter/material.dart';
 import 'package:camera/camera.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:uuid/uuid.dart';
-import '../auth/auth_provider.dart';
 import '../../core/services/supabase_client_provider.dart';
 import '../../core/services/receipt_scanner_service.dart';
 
@@ -113,7 +112,6 @@ class _ScanScreenState extends ConsumerState<ScanScreen> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              // Handle
               Center(
                 child: Container(
                   width: 40,
@@ -125,8 +123,6 @@ class _ScanScreenState extends ConsumerState<ScanScreen> {
                   ),
                 ),
               ),
-
-              // Title
               const Text(
                 '📸 Scanned Text',
                 style: TextStyle(
@@ -135,8 +131,6 @@ class _ScanScreenState extends ConsumerState<ScanScreen> {
                 ),
               ),
               const SizedBox(height: 16),
-
-              // Raw text
               Container(
                 padding: const EdgeInsets.all(12),
                 decoration: BoxDecoration(
@@ -149,15 +143,11 @@ class _ScanScreenState extends ConsumerState<ScanScreen> {
                 ),
               ),
               const SizedBox(height: 16),
-
-              // Confidence indicator
               Text(
                 'Detected ${result.textBlocks.length} text blocks',
                 style: TextStyle(color: Colors.grey[600]),
               ),
               const SizedBox(height: 24),
-
-              // Actions
               Row(
                 children: [
                   Expanded(
@@ -192,7 +182,7 @@ class _ScanScreenState extends ConsumerState<ScanScreen> {
 
   Future<void> _saveReceipt(String rawText) async {
     try {
-      final client = SupabaseClientProvider.instance;
+      final client = await SupabaseClientProvider.instance;
       final now = DateTime.now().millisecondsSinceEpoch;
 
       await client.from('receipts').insert({
@@ -232,21 +222,16 @@ class _ScanScreenState extends ConsumerState<ScanScreen> {
           if (_lastScannedText != null)
             IconButton(
               icon: const Icon(Icons.history),
-              onPressed: () {
-                // TODO: Show scan history
-              },
+              onPressed: () {},
             ),
         ],
       ),
       body: _isInitialized
           ? Stack(
               children: [
-                // Camera preview
                 SizedBox.expand(
                   child: CameraPreview(_cameraController!),
                 ),
-
-                // Overlay guide
                 Positioned.fill(
                   child: IgnorePointer(
                     child: Container(
@@ -276,8 +261,6 @@ class _ScanScreenState extends ConsumerState<ScanScreen> {
                     ),
                   ),
                 ),
-
-                // Processing indicator
                 if (_isProcessing)
                   Container(
                     color: Colors.black54,
@@ -309,8 +292,6 @@ class _ScanScreenState extends ConsumerState<ScanScreen> {
                 ],
               ),
             ),
-
-      // Capture button
       floatingActionButton: _isInitialized && !_isProcessing
           ? FloatingActionButton.large(
               onPressed: _captureAndScan,
