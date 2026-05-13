@@ -1,5 +1,7 @@
+import 'dart:async';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
+import '../../core/services/supabase_client_provider.dart';
 
 /// Auth state using sealed class pattern for exhaustive switching
 sealed class AuthState {
@@ -36,19 +38,41 @@ class AuthError extends AuthState {
 
 /// Auth notifier using Riverpod 2.x Notifier
 class AuthNotifier extends Notifier<AuthState> {
+  StreamSubscription? _authSubscription;
+  Timer? _authTimeout;
+
   @override
   AuthState build() {
-    _init();
+    // Clean up any existing subscription when build is called
+    _authSubscription?.cancel();
+    
+    _initAuthListener();
     return const AuthLoading();
   }
 
-  SupabaseClient get _client => Supabase.instance.client;
+  void _initAuthListener() {
+    // Get current session
+    try {
+      final currentSession = supabase.auth.currentSession;
+      if (currentSession != null) {
+        state = AuthAuthenticated(
+          userId: currentSession.user.id,
+          email: currentSession.user.email ?? '',
+        );
+      } else {
+        state = const AuthUnauthenticated();
+      }
+    } catch (e) {
+      state = const AuthUnauthenticated();
+    }
 
-  void _init() {
     // Listen to auth state changes
-    _client.auth.onAuthStateChange.listen((data) {
+    _authSubscription = supabase.auth.onAuthStateChange.listen((data) {
       final event = data.event;
       final session = data.session;
+
+      // Cancel any pending timeout
+      _authTimeout?.cancel();
 
       if (event == AuthChangeEvent.signedIn && session != null) {
         state = AuthAuthenticated(
@@ -57,26 +81,24 @@ class AuthNotifier extends Notifier<AuthState> {
         );
       } else if (event == AuthChangeEvent.signedOut) {
         state = const AuthUnauthenticated();
+      } else if (event == AuthChangeEvent.tokenRefreshed && session != null) {
+        // Token refreshed - stay in current state
+        state = AuthAuthenticated(
+          userId: session.user.id,
+          email: session.user.email ?? '',
+        );
       }
-    });
-
-    // Check current session
-    final currentSession = _client.auth.currentSession;
-    if (currentSession != null) {
-      state = AuthAuthenticated(
-        userId: currentSession.user.id,
-        email: currentSession.user.email ?? '',
-      );
-    } else {
+    }, onError: (error) {
+      // Handle stream errors gracefully
       state = const AuthUnauthenticated();
-    }
+    });
   }
 
   Future<void> signIn(String email, String password) async {
     state = const AuthLoading();
 
     try {
-      final response = await _client.auth.signInWithPassword(
+      final response = await supabase.auth.signInWithPassword(
         email: email,
         password: password,
       );
@@ -87,12 +109,12 @@ class AuthNotifier extends Notifier<AuthState> {
           email: response.user!.email ?? '',
         );
       } else {
-        state = const AuthError('Sign in failed');
+        state = const AuthError('Sign in failed - no user returned');
       }
     } on AuthException catch (e) {
       state = AuthError(e.message);
     } catch (e) {
-      state = AuthError(e.toString());
+      state = AuthError('Sign in failed: $e');
     }
   }
 
@@ -100,7 +122,7 @@ class AuthNotifier extends Notifier<AuthState> {
     state = const AuthLoading();
 
     try {
-      final response = await _client.auth.signUp(
+      final response = await supabase.auth.signUp(
         email: email,
         password: password,
         data: {'name': name, 'role': role},
@@ -108,7 +130,7 @@ class AuthNotifier extends Notifier<AuthState> {
 
       if (response.user != null) {
         // Sign in immediately after sign up to establish session
-        await _client.auth.signInWithPassword(
+        await supabase.auth.signInWithPassword(
           email: email,
           password: password,
         );
@@ -118,47 +140,70 @@ class AuthNotifier extends Notifier<AuthState> {
           email: response.user!.email ?? '',
         );
       } else {
-        state = const AuthError('Sign up failed');
+        state = const AuthError('Sign up failed - no user returned');
       }
     } on AuthException catch (e) {
       state = AuthError(e.message);
     } catch (e) {
-      state = AuthError(e.toString());
+      state = AuthError('Sign up failed: $e');
     }
   }
 
   Future<void> signInWithGoogle() async {
     state = const AuthLoading();
 
+    // Set a timeout to handle OAuth redirect issues
+    _authTimeout = Timer(const Duration(seconds: 30), () {
+      if (state is AuthLoading) {
+        state = const AuthError('Google sign in timed out. Please try again.');
+      }
+    });
+
     try {
-      await _client.auth.signInWithOAuth(
+      await supabase.auth.signInWithOAuth(
         OAuthProvider.google,
         redirectTo: 'com.example.maidledger://login-callback',
       );
+      // Note: OAuth flow is asynchronous - the callback will update state
     } on AuthException catch (e) {
+      _authTimeout?.cancel();
       state = AuthError(e.message);
     } catch (e) {
-      state = AuthError(e.toString());
+      _authTimeout?.cancel();
+      state = AuthError('Google sign in failed: $e');
     }
   }
 
   Future<void> signInWithApple() async {
     state = const AuthLoading();
 
+    // Set a timeout to handle OAuth redirect issues
+    _authTimeout = Timer(const Duration(seconds: 30), () {
+      if (state is AuthLoading) {
+        state = const AuthError('Apple sign in timed out. Please try again.');
+      }
+    });
+
     try {
-      await _client.auth.signInWithOAuth(
+      await supabase.auth.signInWithOAuth(
         OAuthProvider.apple,
         redirectTo: 'com.example.maidledger://login-callback',
       );
     } on AuthException catch (e) {
+      _authTimeout?.cancel();
       state = AuthError(e.message);
     } catch (e) {
-      state = AuthError(e.toString());
+      _authTimeout?.cancel();
+      state = AuthError('Apple sign in failed: $e');
     }
   }
 
   Future<void> signOut() async {
-    await _client.auth.signOut();
+    try {
+      await supabase.auth.signOut();
+    } catch (_) {
+      // Ignore sign out errors
+    }
     state = const AuthUnauthenticated();
   }
 }
