@@ -1,0 +1,18 @@
+name: maidledger
+description: MaidLedger MVP - Smart FDW expense management
+version: 1.0.0
+
+publish_to: 'none'
+
+workspaces:
+  - 'apps/*'
+  - 'packages/*'
+
+dependencies:
+  flutter:
+    sdk: flutter
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^3.0.1

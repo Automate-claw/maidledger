@@ -1,0 +1,54 @@
+name: maidledger
+description: MaidLedger - Smart FDW expense management
+
+publish_to: 'none'
+
+version: 1.0.0+1
+
+environment:
+  sdk: '>=3.0.0 <4.0.0'
+
+dependencies:
+  flutter:
+    sdk: flutter
+
+  # State Management
+  flutter_riverpod: ^2.4.9
+  riverpod_annotation: ^2.3.3
+
+  # Local Database (Offline-first)
+  sqflite: ^2.3.2
+  path: ^1.9.0
+
+  # Supabase
+  supabase: ^2.3.2
+
+  # OCR
+  google_mlkit_text_recognition: ^0.13.0
+  camera: ^0.11.0+1
+  permission_handler: ^11.3.0
+
+  # Image handling
+  image: ^4.1.7
+
+  # Multi-language support
+  intl: ^0.19.0
+
+  # UI
+  cupertino_icons: ^1.0.6
+  google_fonts: ^6.1.0
+
+  # Utilities
+  uuid: ^4.3.3
+  connectivity_plus: ^6.0.3
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^3.0.1
+  build_runner: ^2.4.8
+  riverpod_generator: ^2.3.9
+  mockito: ^5.4.4
+
+flutter:
+  uses-material-design: true
