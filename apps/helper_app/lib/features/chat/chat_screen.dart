@@ -113,7 +113,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
 
   Future<void> _saveExpense(ExpenseIntent intent) async {
     try {
-      final client = await SupabaseClientProvider.instance;
+      final client = supabase;
       final now = DateTime.now().millisecondsSinceEpoch;
 
       await client.from('receipts').insert({

@@ -20,8 +20,12 @@ dependencies:
   sqflite: ^2.3.2
   path: ^1.9.0
 
-  # Supabase
-  supabase: ^2.3.2
+  # Supabase (Flutter)
+  supabase_flutter: ^2.10.0
+
+  # OAuth
+  google_sign_in: ^7.2.0
+  sign_in_with_apple: ^8.0.0
 
   # OCR
   google_mlkit_text_recognition: ^0.15.1

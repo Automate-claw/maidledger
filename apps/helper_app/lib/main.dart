@@ -1,12 +1,16 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'core/services/supabase_client_provider.dart';
 import 'features/auth/auth_provider.dart';
 import 'features/auth/login_screen.dart';
 import 'features/scan/scan_screen.dart';
 import 'features/chat/chat_screen.dart';
 import 'features/history/history_screen.dart';
 
-void main() {
+void main() async {
+  WidgetsFlutterBinding.ensureInitialized();
+  await initSupabase();
+  
   runApp(
     const ProviderScope(
       child: MaidLedgerApp(),
@@ -43,7 +47,7 @@ class AuthGate extends ConsumerWidget {
     final authState = ref.watch(authStateProvider);
 
     return switch (authState) {
-      AuthAuthenticated(userId: final id, email: final email) => const MainNavigationScreen(),
+      AuthAuthenticated() => const MainNavigationScreen(),
       AuthLoading() => const Scaffold(
           body: Center(child: CircularProgressIndicator()),
         ),

@@ -32,6 +32,14 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
     }
   }
 
+  void _handleGoogleSignIn() {
+    ref.read(authStateProvider.notifier).signInWithGoogle();
+  }
+
+  void _handleAppleSignIn() {
+    ref.read(authStateProvider.notifier).signInWithApple();
+  }
+
   @override
   Widget build(BuildContext context) {
     final authState = ref.watch(authStateProvider);
@@ -101,6 +109,46 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                     const Center(child: CircularProgressIndicator()),
                     const SizedBox(height: 16),
                   ],
+
+                  // Google Sign In
+                  OutlinedButton.icon(
+                    onPressed: authState is AuthLoading ? null : _handleGoogleSignIn,
+                    icon: const Icon(Icons.g_mobiledata, size: 24),
+                    label: const Text('Continue with Google'),
+                    style: OutlinedButton.styleFrom(
+                      padding: const EdgeInsets.symmetric(vertical: 14),
+                      side: BorderSide(color: Colors.grey[300]!),
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+
+                  // Apple Sign In
+                  OutlinedButton.icon(
+                    onPressed: authState is AuthLoading ? null : _handleAppleSignIn,
+                    icon: const Icon(Icons.apple, size: 24),
+                    label: const Text('Continue with Apple'),
+                    style: OutlinedButton.styleFrom(
+                      padding: const EdgeInsets.symmetric(vertical: 14),
+                      side: BorderSide(color: Colors.grey[300]!),
+                    ),
+                  ),
+                  const SizedBox(height: 24),
+
+                  // Divider
+                  Row(
+                    children: [
+                      Expanded(child: Divider(color: Colors.grey[300])),
+                      Padding(
+                        padding: const EdgeInsets.symmetric(horizontal: 16),
+                        child: Text(
+                          'or',
+                          style: TextStyle(color: Colors.grey[600]),
+                        ),
+                      ),
+                      Expanded(child: Divider(color: Colors.grey[300])),
+                    ],
+                  ),
+                  const SizedBox(height: 24),
 
                   // Email field
                   TextFormField(

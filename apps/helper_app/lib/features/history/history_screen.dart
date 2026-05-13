@@ -28,8 +28,7 @@ class _HistoryScreenState extends ConsumerState<HistoryScreen> {
     });
 
     try {
-      final client = await SupabaseClientProvider.instance;
-      final response = await client
+      final response = await supabase
           .from('receipts')
           .select()
           .order('created_at', ascending: false)
@@ -49,8 +48,7 @@ class _HistoryScreenState extends ConsumerState<HistoryScreen> {
 
   Future<void> _deleteReceipt(String id) async {
     try {
-      final client = await SupabaseClientProvider.instance;
-      await client.from('receipts').delete().eq('id', id);
+      await supabase.from('receipts').delete().eq('id', id);
 
       setState(() {
         _receipts.removeWhere((r) => r['id'] == id);

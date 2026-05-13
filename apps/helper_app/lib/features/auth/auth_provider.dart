@@ -1,6 +1,5 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:supabase/supabase.dart';
-import '../../core/services/supabase_client_provider.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 
 /// Auth state using sealed class pattern for exhaustive switching
 sealed class AuthState {
@@ -37,19 +36,17 @@ class AuthError extends AuthState {
 
 /// Auth notifier using Riverpod 2.x Notifier
 class AuthNotifier extends Notifier<AuthState> {
-  SupabaseClient? _client;
-
   @override
   AuthState build() {
     _init();
     return const AuthLoading();
   }
 
-  Future<void> _init() async {
-    _client = await SupabaseClientProvider.instance;
-    
+  SupabaseClient get _client => Supabase.instance.client;
+
+  void _init() {
     // Listen to auth state changes
-    _client!.auth.onAuthStateChange.listen((data) {
+    _client.auth.onAuthStateChange.listen((data) {
       final event = data.event;
       final session = data.session;
 
@@ -64,7 +61,7 @@ class AuthNotifier extends Notifier<AuthState> {
     });
 
     // Check current session
-    final currentSession = _client!.auth.currentSession;
+    final currentSession = _client.auth.currentSession;
     if (currentSession != null) {
       state = AuthAuthenticated(
         userId: currentSession.user.id,
@@ -76,15 +73,10 @@ class AuthNotifier extends Notifier<AuthState> {
   }
 
   Future<void> signIn(String email, String password) async {
-    if (_client == null) {
-      state = const AuthError('Client not initialized');
-      return;
-    }
-    
     state = const AuthLoading();
 
     try {
-      final response = await _client!.auth.signInWithPassword(
+      final response = await _client.auth.signInWithPassword(
         email: email,
         password: password,
       );
@@ -105,15 +97,10 @@ class AuthNotifier extends Notifier<AuthState> {
   }
 
   Future<void> signUp(String email, String password, String name, String role) async {
-    if (_client == null) {
-      state = const AuthError('Client not initialized');
-      return;
-    }
-    
     state = const AuthLoading();
 
     try {
-      final response = await _client!.auth.signUp(
+      final response = await _client.auth.signUp(
         email: email,
         password: password,
         data: {'name': name, 'role': role},
@@ -121,7 +108,7 @@ class AuthNotifier extends Notifier<AuthState> {
 
       if (response.user != null) {
         // Sign in immediately after sign up to establish session
-        await _client!.auth.signInWithPassword(
+        await _client.auth.signInWithPassword(
           email: email,
           password: password,
         );
@@ -140,9 +127,38 @@ class AuthNotifier extends Notifier<AuthState> {
     }
   }
 
+  Future<void> signInWithGoogle() async {
+    state = const AuthLoading();
+
+    try {
+      await _client.auth.signInWithOAuth(
+        OAuthProvider.google,
+        redirectTo: 'com.example.maidledger://login-callback',
+      );
+    } on AuthException catch (e) {
+      state = AuthError(e.message);
+    } catch (e) {
+      state = AuthError(e.toString());
+    }
+  }
+
+  Future<void> signInWithApple() async {
+    state = const AuthLoading();
+
+    try {
+      await _client.auth.signInWithOAuth(
+        OAuthProvider.apple,
+        redirectTo: 'com.example.maidledger://login-callback',
+      );
+    } on AuthException catch (e) {
+      state = AuthError(e.message);
+    } catch (e) {
+      state = AuthError(e.toString());
+    }
+  }
+
   Future<void> signOut() async {
-    if (_client == null) return;
-    await _client!.auth.signOut();
+    await _client.auth.signOut();
     state = const AuthUnauthenticated();
   }
 }

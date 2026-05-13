@@ -182,10 +182,9 @@ class _ScanScreenState extends ConsumerState<ScanScreen> {
 
   Future<void> _saveReceipt(String rawText) async {
     try {
-      final client = await SupabaseClientProvider.instance;
       final now = DateTime.now().millisecondsSinceEpoch;
 
-      await client.from('receipts').insert({
+      await supabase.from('receipts').insert({
         'id': const Uuid().v4(),
         'raw_text': rawText,
         'sync_status': 'pending',
