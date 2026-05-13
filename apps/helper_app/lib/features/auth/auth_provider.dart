@@ -120,12 +120,11 @@ class AuthNotifier extends Notifier<AuthState> {
       );
 
       if (response.user != null) {
-        // Create user profile
-        await _client!.from('user_profiles').insert({
-          'id': response.user!.id,
-          'name': name,
-          'role': role,
-        });
+        // Sign in immediately after sign up to establish session
+        await _client!.auth.signInWithPassword(
+          email: email,
+          password: password,
+        );
 
         state = AuthAuthenticated(
           userId: response.user!.id,
