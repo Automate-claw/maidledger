@@ -1,4 +1,4 @@
-package com.example.maidledger
+package com.wandvault.maidledger
 
 import io.flutter.embedding.android.FlutterActivity
 

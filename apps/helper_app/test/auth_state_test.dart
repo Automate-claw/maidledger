@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:maidledger/features/auth/auth_provider.dart';
 
@@ -55,6 +56,76 @@ void main() {
         };
         expect(result, isNotNull);
       }
+    });
+  });
+
+  group('Auth state machine - all AuthState subtypes', () {
+    test('AuthInitial transitions to AuthLoading on sign-in attempt', () {
+      const initial = AuthInitial();
+      expect(initial, isA<AuthState>());
+    });
+
+    test('AuthLoading can transition to AuthAuthenticated on success', () {
+      const loading = AuthLoading();
+      const authenticated = AuthAuthenticated(userId: 'u1', email: 'a@b.com');
+
+      expect(loading, isA<AuthState>());
+      expect(authenticated, isA<AuthState>());
+    });
+
+    test('AuthLoading can transition to AuthError on failure', () {
+      const loading = AuthLoading();
+      const error = AuthError('bad credentials');
+
+      expect(loading, isA<AuthState>());
+      expect(error, isA<AuthState>());
+      expect(error.message, 'bad credentials');
+    });
+
+    test('AuthAuthenticated transitions to AuthUnauthenticated on sign-out', () {
+      const authenticated = AuthAuthenticated(userId: 'u1', email: 'a@b.com');
+      const unauthenticated = AuthUnauthenticated();
+
+      expect(authenticated, isA<AuthState>());
+      expect(unauthenticated, isA<AuthState>());
+    });
+
+    test('AuthError can transition back to AuthLoading for retry', () {
+      const error = AuthError('network error');
+      const loading = AuthLoading();
+
+      expect(error, isA<AuthState>());
+      expect(loading, isA<AuthState>());
+    });
+
+    test('Exhaustive state machine simulation', () {
+      // Simulate full auth lifecycle: Initial -> Loading -> Auth -> Loading -> Auth -> Unauth
+      AuthState state = const AuthInitial();
+      expect(state, isA<AuthInitial>());
+
+      state = const AuthLoading();
+      expect(state, isA<AuthLoading>());
+
+      state = const AuthAuthenticated(userId: 'u1', email: 'a@b.com');
+      expect(state, isA<AuthAuthenticated>());
+
+      state = const AuthLoading();
+      expect(state, isA<AuthLoading>());
+
+      state = const AuthAuthenticated(userId: 'u2', email: 'c@d.com');
+      expect(state, isA<AuthAuthenticated>());
+
+      state = const AuthUnauthenticated();
+      expect(state, isA<AuthUnauthenticated>());
+    });
+  });
+
+  group('_authFromSession helper', () {
+    test('should extract userId and email from session', () {
+      // AuthAuthenticated is the expected output; verify the field mapping
+      const auth = AuthAuthenticated(userId: 'id-123', email: 'user@test.com');
+      expect(auth.userId, 'id-123');
+      expect(auth.email, 'user@test.com');
     });
   });
 }

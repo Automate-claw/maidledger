@@ -24,7 +24,6 @@ dependencies:
   supabase_flutter: ^2.10.0
 
   # OAuth
-  google_sign_in: ^7.2.0
   sign_in_with_apple: ^8.0.0
 
   # OCR
@@ -34,12 +33,19 @@ dependencies:
 
   # Image handling
   image: ^4.1.7
+  flutter_image_compress: ^2.3.0
+  exif: ^3.3.0
+  image_picker: ^1.0.7
 
   # Multi-language support
   intl: ^0.20.2
 
   # HTTP for AI agent
   http: ^1.2.0
+
+  # Receipt parsing (local package)
+  receipt_parser:
+    path: ../../packages/receipt-parser
 
   # UI
   cupertino_icons: ^1.0.6
@@ -49,6 +55,7 @@ dependencies:
   uuid: ^4.3.3
   connectivity_plus: ^7.1.1
   shared_preferences: ^2.2.2
+  flutter_dotenv: ^5.1.0
 
 dev_dependencies:
   flutter_test:
@@ -60,3 +67,5 @@ dev_dependencies:
 
 flutter:
   uses-material-design: true
+  assets:
+    - .env

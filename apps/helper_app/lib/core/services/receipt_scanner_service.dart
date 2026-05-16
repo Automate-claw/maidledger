@@ -2,48 +2,136 @@ import 'dart:io';
 import 'dart:ui';
 import 'package:google_mlkit_text_recognition/google_mlkit_text_recognition.dart';
 
-/// Receipt Scanner Service
-/// Wraps ML Kit for on-device OCR with offline support
+/// Receipt Scanner Service provider for managed lifecycle.
+///
+/// Usage:
+///   ref.watch(receiptScannerProvider)    // access the service
+///   ref.watch(receiptScannerProvider.notifier).dispose()  // cleanup if needed
+///
+/// The service is disposed automatically when the provider is invalidated.
 class ReceiptScannerService {
-  final TextRecognizer _textRecognizer = TextRecognizer();
+  final TextRecognizer _textRecognizer = TextRecognizer(script: TextRecognitionScript.chinese);
 
   /// Scan from file (for gallery import or camera capture)
   Future<ReceiptScanResult> scanFromFile(File file) async {
     final inputImage = InputImage.fromFile(file);
     final recognized = await _textRecognizer.processImage(inputImage);
 
+    final blocks = recognized.blocks.map((b) => TextBlock(
+      text: b.text,
+      boundingBox: Rect.fromLTRB(
+        b.boundingBox.left.toDouble(),
+        b.boundingBox.top.toDouble(),
+        b.boundingBox.right.toDouble(),
+        b.boundingBox.bottom.toDouble(),
+      ),
+    )).toList();
+
+    // Group blocks by row using Y-coordinate clustering
+    final groupedRows = _groupByRow(blocks);
+
     return ReceiptScanResult(
-      textBlocks: recognized.blocks
-          .map((b) => TextBlock(
-                text: b.text,
-                boundingBox: Rect.fromLTRB(
-                  b.boundingBox.left.toDouble(),
-                  b.boundingBox.top.toDouble(),
-                  b.boundingBox.right.toDouble(),
-                  b.boundingBox.bottom.toDouble(),
-                ),
-              ))
-          .toList(),
+      textBlocks: blocks,
+      groupedRows: groupedRows,
       rawText: recognized.text,
       timestamp: DateTime.now(),
     );
   }
 
+  /// Group text blocks into rows based on Y-coordinate proximity.
+  /// Text blocks on the same row (e.g., "Item Name" and "$45.00") are grouped together.
+  List<TextRow> _groupByRow(List<TextBlock> blocks) {
+    if (blocks.isEmpty) return [];
+
+    // Sort blocks by top Y, then left X
+    final sorted = List<TextBlock>.from(blocks)
+      ..sort((a, b) {
+        final dy = a.boundingBox.top - b.boundingBox.top;
+        if (dy.abs() > 2) return dy.round();
+        return a.boundingBox.left.compareTo(b.boundingBox.left);
+      });
+
+    final rows = <TextRow>[];
+    TextRow? currentRow;
+
+    for (final block in sorted) {
+      if (currentRow == null) {
+        currentRow = TextRow(blocks: [block], topY: block.boundingBox.top);
+      } else {
+        // Check if this block is on the same row (Y within tolerance)
+        final dy = (block.boundingBox.top - currentRow.topY).abs();
+        final dh = ((block.boundingBox.top + block.boundingBox.height / 2) -
+                   (currentRow.blocks.last.boundingBox.top + currentRow.blocks.last.boundingBox.height / 2)).abs();
+
+        if (dy < 8 || dh < 10) {
+          // Same row — add to current row (keep left-to-right order)
+          final leftX = block.boundingBox.left;
+          final insertAt = currentRow.blocks.indexWhere((b) => b.boundingBox.left > leftX);
+          if (insertAt < 0) {
+            currentRow.blocks.add(block);
+          } else {
+            currentRow.blocks.insert(insertAt, block);
+          }
+        } else {
+          // New row — save current and start new
+          rows.add(currentRow);
+          currentRow = TextRow(blocks: [block], topY: block.boundingBox.top);
+        }
+      }
+    }
+
+    if (currentRow != null) {
+      rows.add(currentRow);
+    }
+
+    return rows;
+  }
+
+  /// Release ML Kit resources. Safe to call multiple times.
   void dispose() {
     _textRecognizer.close();
   }
 }
 
+/// Result of a receipt scan including grouped rows.
 class ReceiptScanResult {
   final List<TextBlock> textBlocks;
+  final List<TextRow> groupedRows;
   final String rawText;
   final DateTime timestamp;
 
   ReceiptScanResult({
     required this.textBlocks,
+    required this.groupedRows,
     required this.rawText,
     required this.timestamp,
   });
+
+  /// Build a "reconstructed" text that groups items + prices on the same row.
+  /// Each row is joined with " | " separator.
+  String get reconstructedText {
+    return groupedRows.map((row) {
+      return row.blocks.map((b) => b.text.trim()).join(' | ');
+    }).join('\n');
+  }
+}
+
+/// A row of text blocks that are on the same Y-coordinate line.
+class TextRow {
+  final List<TextBlock> blocks;
+  final double topY;
+
+  TextRow({required this.blocks, required this.topY});
+
+  /// Return the block with the rightmost X (typically the price).
+  TextBlock? get rightmost => blocks.isEmpty ? null : blocks.reduce(
+    (a, b) => a.boundingBox.left > b.boundingBox.left ? b : a,
+  );
+
+  /// Return the block with the leftmost X (typically the item name).
+  TextBlock? get leftmost => blocks.isEmpty ? null : blocks.reduce(
+    (a, b) => a.boundingBox.left < b.boundingBox.left ? b : a,
+  );
 }
 
 class TextBlock {

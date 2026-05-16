@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:convert';
 import 'package:sqflite/sqflite.dart';
 import 'package:path/path.dart';
 import 'package:supabase/supabase.dart';
@@ -64,7 +65,9 @@ class SyncService {
   /// Queue a receipt for sync (offline-first)
   Future<void> queueReceipt(Receipt receipt) async {
     await _localDb!.insert('receipts', receipt.toMap());
-    await _addToSyncQueue('receipts', receipt.id, 'upsert', receipt.toJson());
+    // Build server-safe payload: exclude sync_status (server determines true sync state)
+    final serverPayload = receipt.toJson()..remove('sync_status');
+    await _addToSyncQueue('receipts', receipt.id, 'upsert', serverPayload);
   }
 
   /// Get all local pending receipts
@@ -93,13 +96,22 @@ class SyncService {
 
     for (final item in pending) {
       try {
-        final payload = Map<String, dynamic>.from(
-          (item['payload'] as String).isEmpty
-              ? {}
-              : (item['payload'] as String).split(',').asMap().map(
-                    (k, v) => MapEntry('field_$k', v),
-                  ),
-        );
+        final payloadRaw = item['payload'] as String;
+        Map<String, dynamic> payload;
+
+        // Safely decode JSON payload
+        try {
+          payload = Map<String, dynamic>.from(jsonDecode(payloadRaw));
+        } catch (_) {
+          // Fallback for legacy comma-separated format (for backward compat only)
+          payload = (payloadRaw.isEmpty ? {} : payloadRaw.split(',').asMap().map(
+                (k, v) => MapEntry('field_$k', v),
+              )).cast<String, dynamic>();
+        }
+
+        // CRITICAL: Never trust client sync_status - server determines this
+        payload.remove('sync_status');
+
 
         if (item['table_name'] == 'receipts') {
           final response = await _supabase
@@ -138,7 +150,7 @@ class SyncService {
       'table_name': table,
       'record_id': recordId,
       'action': action,
-      'payload': payload.entries.map((e) => '${e.key}=${e.value}').join(','),
+      'payload': jsonEncode(payload),  // Use proper JSON encoding
       'local_timestamp': now,
       'created_at': now,
     });
@@ -180,7 +192,7 @@ class Receipt {
   Map<String, dynamic> toMap() => {
         'id': id,
         'raw_text': rawText,
-        'parsed_data': parsedData?.toString(),
+        'parsed_data': parsedData != null ? jsonEncode(parsedData) : null,
         'image_path': imagePath,
         'sync_status': syncStatus,
         'local_timestamp': localTimestamp,
@@ -191,8 +203,9 @@ class Receipt {
   Map<String, dynamic> toJson() => {
         'id': id,
         'raw_text': rawText,
-        'parsed_data': parsedData?.toString(),
+        'parsed_data': parsedData != null ? jsonEncode(parsedData) : null,
         'image_path': imagePath,
+        'sync_status': syncStatus,  // Included locally; stripped by server
         'local_timestamp': localTimestamp,
         'server_timestamp': serverTimestamp,
         'created_at': createdAt,
@@ -202,11 +215,7 @@ class Receipt {
         id: map['id'],
         rawText: map['raw_text'],
         parsedData: map['parsed_data'] != null
-            ? Map<String, dynamic>.from(
-                (map['parsed_data'] as String).split(',').asMap().map(
-                      (k, v) => MapEntry('field_$k', v),
-                    ),
-              )
+            ? Map<String, dynamic>.from(jsonDecode(map['parsed_data'] as String))
             : null,
         imagePath: map['image_path'],
         syncStatus: map['sync_status'] ?? 'pending',

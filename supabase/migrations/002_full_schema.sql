@@ -100,10 +100,19 @@ CREATE POLICY "Employers can view receipts"
     OR auth.uid() = helper_id
   );
 
--- Helpers can insert receipts
+-- Helpers can insert receipts (with relation verification)
 CREATE POLICY "Helpers can insert receipts"
   ON receipts FOR INSERT
-  WITH CHECK (auth.uid() = helper_id);
+  WITH CHECK (
+    auth.uid() = helper_id
+    AND EXISTS (
+      SELECT 1 FROM employer_helper_relations
+      WHERE employer_helper_relations.id = relation_id
+      AND employer_helper_relations.helper_id = auth.uid()
+      AND employer_helper_relations.employer_id = employer_id
+      AND employer_helper_relations.status = 'active'
+    )
+  );
 
 -- Helpers can update their pending receipts
 CREATE POLICY "Helpers can update own receipts"

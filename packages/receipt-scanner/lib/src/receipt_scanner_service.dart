@@ -7,7 +7,7 @@ import 'package:camera/camera.dart';
 /// Receipt Scanner Service
 /// Wraps ML Kit for on-device OCR with offline support
 class ReceiptScannerService {
-  final TextRecognizer _textRecognizer = TextRecognizer();
+  final TextRecognizer _textRecognizer = TextRecognizer(script: TextRecognitionScript.chinese);
 
   /// Capture and recognize text from camera image
   /// Returns extracted text blocks for UI highlight

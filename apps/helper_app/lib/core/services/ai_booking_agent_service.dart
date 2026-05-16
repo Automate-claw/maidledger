@@ -1,215 +1,145 @@
-import 'package:http/http.dart' as http;
 import 'dart:convert';
+import 'dart:io';
 
 /// AI Booking Agent
 /// Multi-language conversational expense entry
-/// Uses keyword engine + Gemini 1.5 Flash for intent detection
+/// Routes through Supabase Edge Function → OpenRouter (DeepSeek V4)
+/// Strict 2-stage classification: is_expense check + completeness assessment
 class AIBookingAgent {
-  final String _geminiApiKey;
-  final String _translateApiKey;
-
-  // Keyword triggers for common expense intents
-  static const _keywordIntents = {
-    'buy': ['買', '买', 'bought', 'bili', 'bought', 'bayar', 'bili', 'shopping'],
-    'food': ['食', '吃', 'eat', 'food', 'makan', 'kain', 'rice', 'dinner', 'lunch'],
-    'transport': ['車', '车', 'bus', 'taxi', 'MTR', '地鐵', '地铁', ' jeep '],
-    'market': ['街市', 'market', 'wet market', '菜市場', '菜市场', 'pasar'],
-    'supermarket': ['超市', 'supermarket', '惠康', '百佳', 'HKTV', '屈臣氏'],
-    'confirm': ['係', '是', 'yes', 'correct', 'right', 'ok', '好', 'okay'],
-    'cancel': ['唔好', '不要', 'no', 'cancel', 'wrong', '錯', '错'],
-  };
-
-  // Language codes
-  static const _langCodes = {
-    'zh': 'zh-Hant',
-    'en': 'en',
-    'tl': 'tl',  // Tagalog/Filipino
-    'id': 'id',  // Indonesian
-    'my': 'my',  // Burmese
-  };
-
-  AIBookingAgent({
-    required String geminiApiKey,
-    required String translateApiKey,
-  })  : _geminiApiKey = geminiApiKey,
-        _translateApiKey = translateApiKey;
-
-  /// Detect language from input text
-  Future<String> detectLanguage(String text) async {
-    // Simple heuristic-based detection
-    final hasChinese = RegExp(r'[\u4e00-\u9fff]').hasMatch(text);
-    final hasTagalog = RegExp(
-      r'(ang|ng|sa|ko|mo|ay|mga|siya|kami|kayo|sila)',
-      caseSensitive: false,
-    ).hasMatch(text);
-
-    if (hasChinese) return 'zh';
-    if (hasTagalog) return 'tl';
-    return 'en'; // Default to English
-  }
+  static const _edgeUrl =
+      'https://hnyazfrkzpxdjiyfzemm.supabase.co/functions/v1/chat-parser';
 
   /// Parse user input into structured expense
+  /// Returns rejection if input is not a valid expense or is insufficient
   Future<ExpenseIntent> parseExpense(String text) async {
-    // First try keyword-based detection (free, fast)
-    final keywordResult = _detectFromKeywords(text.toLowerCase());
-    if (keywordResult.confidence > 0.85) {
-      return keywordResult;
+    final response = await _callEdgeLLM(text);
+
+    if (response['error'] != null) {
+      throw Exception(response['error']);
     }
 
-    // Fall back to Gemini for complex queries
-    return await _parseWithGemini(text);
-  }
-
-  /// Keyword-based intent detection
-  ExpenseIntent _detectFromKeywords(String text) {
-    double maxConfidence = 0.0;
-    String? detectedIntent;
-    double? amount;
-    String? category;
-
-    // Check each intent category
-    for (final entry in _keywordIntents.entries) {
-      for (final keyword in entry.value) {
-        if (text.contains(keyword.toLowerCase())) {
-          if (entry.key == 'supermarket' || entry.key == 'market') {
-            category = 'food'; // Default to food for market visits
-          } else {
-            category = entry.key;
-          }
-          maxConfidence = 0.9;
-          detectedIntent = entry.key;
-          break;
-        }
-      }
-      if (maxConfidence > 0.85) break;
+    // Stage 1: Check if it's even an expense
+    final isExpense = response['is_expense'] as bool? ?? false;
+    if (!isExpense) {
+      final reason = response['reason'] as String? ?? '請輸入開支資料';
+      return _rejectionIntent(reason);
     }
 
-    // Extract amount if present
-    final amountMatch = RegExp(r'\$?\s*(\d+(?:\.\d{1,2})?)\s*(?:蚊|元|塊|块| dollars?|dollars?|pesos?|PHP|HKD)?', caseSensitive: false)
-        .firstMatch(text);
-    if (amountMatch != null) {
-      amount = double.tryParse(amountMatch.group(1)!);
+    // Stage 2: Check completeness
+    final completeness = response['completeness'] as String? ?? 'invalid';
+    if (completeness == 'insufficient' || completeness == 'invalid') {
+      final reason = response['reason'] as String? ?? '資料不足，請提供更多詳細';
+      return _rejectionIntent(reason);
     }
+
+    // Stage 3: Map successful parse to ExpenseIntent
+    final items = (response['items'] as List? ?? [])
+        .map((item) => item['item_name'] as String? ?? '')
+        .where((name) => name.isNotEmpty)
+        .toList();
 
     return ExpenseIntent(
       rawText: text,
-      intent: detectedIntent ?? 'unknown',
-      confidence: maxConfidence,
-      amount: amount,
-      category: category,
-      fallback: maxConfidence < 0.85,
+      intent: _mapCategoryToIntent(response['store_cate'] ?? 'other'),
+      category: response['store_cate'] as String? ?? 'other',
+      amount: (response['total_amount'] as num?)?.toDouble(),
+      confidence: (response['parse_confidence'] as num?)?.toDouble() ?? 0.5,
+      items: items,
+      note: response['reason'] as String?,
+      fallback: completeness == 'partial',
     );
   }
 
-  /// Use Gemini 1.5 Flash for complex parsing
-  Future<ExpenseIntent> _parseWithGemini(String text) async {
-    if (_geminiApiKey.isEmpty) {
-      return ExpenseIntent(
-        rawText: text,
-        intent: 'unknown',
-        confidence: 0.0,
-        fallback: true,
-      );
+  Future<Map<String, dynamic>> _callEdgeLLM(String text) async {
+    final uri = Uri.parse(_edgeUrl);
+    final req = await HttpClient().postUrl(uri);
+
+    req.headers.set('Content-Type', 'application/json');
+    req.headers.set(
+        'apikey',
+        'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJl'
+            'ZiI6ImhueWF6ZnJrenB4ZGppeWZ6ZW1tIiwicm9sZSI6ImFub24iLCJpYXQiOjE3'
+            'Nzg2NTUwMjcsImV4cCI6MjA5NDIzMTAyN30.lo2HAv0E9WK1CRHTtU3idlrq3'
+            'xNogdUAbWfpXvz90J0');
+
+    final body = jsonEncode({'text': text});
+    req.write(body);
+
+    final resp = await req.close();
+    final respStr = await resp.transform(utf8.decoder).join();
+
+    if (resp.statusCode != 200) {
+      throw Exception('Edge function error: $respStr');
     }
 
-    final lang = await detectLanguage(text);
+    return jsonDecode(respStr) as Map<String, dynamic>;
+  }
 
-    final prompt = '''
-Parse this expense input from a foreign domestic worker.
-Input: "$text"
-Language detected: $lang
-
-Respond in JSON format:
-{
-  "intent": "buy|food|transport|market|supermarket|unknown",
-  "category": "food|transport|household|other",
-  "amount": number or null,
-  "confidence": 0.0-1.0,
-  "items": ["item1", "item2"] or [],
-  "note": "any additional context"
-}
-
-Rules:
-- If amount is not mentioned, set amount to null
-- category should be one of: food, transport, household, other
-- intent "buy" is generic purchase, map to appropriate category
-''';
-
-    try {
-      final response = await http.post(
-        Uri.parse('https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=$_geminiApiKey'),
-        headers: {'Content-Type': 'application/json'},
-        body: jsonEncode({
-          'contents': [{'parts': [{'text': prompt}]}],
-          'generationConfig': {'temperature': 0.3, 'maxOutputTokens': 200},
-        }),
-      );
-
-      if (response.statusCode == 200) {
-        final data = jsonDecode(response.body);
-        final textResponse = data['candidates']?[0]?['content']?['parts']?[0]?['text'] ?? '';
-
-        // Extract JSON from response
-        final jsonMatch = RegExp(r'\{.*\}', dotAll: true).firstMatch(textResponse);
-        if (jsonMatch != null) {
-          final parsed = jsonDecode(jsonMatch.group(0)!);
-          return ExpenseIntent(
-            rawText: text,
-            intent: parsed['intent'] ?? 'unknown',
-            category: parsed['category'] ?? 'other',
-            amount: parsed['amount']?.toDouble(),
-            confidence: (parsed['confidence'] ?? 0.5).toDouble(),
-            items: List<String>.from(parsed['items'] ?? []),
-            note: parsed['note'],
-            fallback: false,
-          );
-        }
-      }
-    } catch (e) {
-      // Fall back to keyword engine
-    }
-
+  /// Create a rejection intent (is_expense=false or insufficient)
+  ExpenseIntent _rejectionIntent(String reason) {
     return ExpenseIntent(
-      rawText: text,
-      intent: 'unknown',
+      rawText: reason,
+      intent: 'rejected',
+      category: null,
+      amount: null,
       confidence: 0.0,
+      items: [],
+      note: reason,
       fallback: true,
+      isRejected: true,
+      rejectionReason: reason,
     );
+  }
+
+  String _mapCategoryToIntent(String storeCate) {
+    switch (storeCate) {
+      case 'wet_market':
+        return 'market';
+      case 'supermarket':
+        return 'supermarket';
+      case 'restaurant':
+      case 'cafe':
+      case 'takeaway':
+        return 'food';
+      default:
+        return 'buy';
+    }
   }
 
   /// Build conversation response
   String buildResponse(ExpenseIntent intent) {
+    // Handle rejection
+    if (intent.isRejected) {
+      return '📋 $rejectionReason\n\n'
+          '請輸入開支格式，例如：\n'
+          '• 魚 30蚊\n'
+          '• 紅衫魚 1斤 40元\n'
+          '• 超市 買餸 $120';
+    }
+
+    // Handle partial (low confidence but saveable)
     if (intent.fallback) {
-      return '🤖 我不太確定你想記帳什麼。你可以試試：\n'
-          '• "買咗菜 45 蚊" \n'
-          '• "超市 \$50" \n'
-          '• "街市買魚 80"';
+      final amountStr =
+          intent.amount != null ? '\$${intent.amount!.toStringAsFixed(0)}' : '';
+      return '📝 已記帳（請確認）：\n'
+          '項目：${intent.items.join('、')}\n'
+          '金額：$amountStr\n'
+          '信心度：${(intent.confidence * 100).toInt()}%（較低，請確認）\n\n'
+          '確認儲存？ ✅ / ❌';
     }
 
-    final amountStr = intent.amount != null ? '\$${intent.amount!.toStringAsFixed(0)}' : '';
-    final categoryEmoji = _getCategoryEmoji(intent.category ?? 'other');
+    // Full success
+    final amountStr =
+        intent.amount != null ? '\$${intent.amount!.toStringAsFixed(0)}' : '';
+    final itemsStr =
+        intent.items.isNotEmpty ? intent.items.join('、') : '其他';
 
-    return '$categoryEmoji 已記帳：$amountStr\n'
-        '類別：${_getCategoryName(intent.category ?? "other")}\n'
-        '確認？ ✅ / ❌';
-  }
-
-  String _getCategoryEmoji(String category) {
-    switch (category) {
-      case 'food': return '🥬';
-      case 'transport': return '🚌';
-      case 'household': return '🏠';
-      default: return '📝';
-    }
-  }
-
-  String _getCategoryName(String category) {
-    switch (category) {
-      case 'food': return '食物';
-      case 'transport': return '交通';
-      case 'household': return '家居';
-      default: return '其他';
-    }
+    return '📋 已分析：\n'
+        '項目：$itemsStr\n'
+        '金額：$amountStr\n'
+        '類別：${intent.category ?? "other"}\n'
+        '信心度：${(intent.confidence * 100).toInt()}%\n\n'
+        '確認儲存？ ✅ / ❌';
   }
 }
 
@@ -222,6 +152,8 @@ class ExpenseIntent {
   final List<String> items;
   final String? note;
   final bool fallback;
+  final bool isRejected;
+  final String? rejectionReason;
 
   ExpenseIntent({
     required this.rawText,
@@ -232,5 +164,7 @@ class ExpenseIntent {
     this.items = const [],
     this.note,
     this.fallback = false,
+    this.isRejected = false,
+    this.rejectionReason,
   });
 }

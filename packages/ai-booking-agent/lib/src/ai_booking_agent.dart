@@ -86,7 +86,7 @@ class AIBookingAgent {
     }
 
     // Extract amount if present
-    final amountMatch = RegExp(r'\$?\s*(\d+(?:\.\d{1,2})?)\s*(?:蚊|元|塊|块| dollars?|dollars?|pesos?|PHP|HKD)?', caseSensitive: false)
+    final amountMatch = RegExp(r'\$?\s*(\d+(?:\.\d{1,2})?)\s*(?:蚊|元|塊|块|港幣|港币|HKD| dollars?|dollars?|pesos?|PHP)?', caseSensitive: false)
         .firstMatch(text);
     if (amountMatch != null) {
       amount = double.tryParse(amountMatch.group(1)!);

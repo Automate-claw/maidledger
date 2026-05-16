@@ -1,0 +1,31 @@
+name: employer_maidledger
+description: MaidLedger Employer App
+
+publish_to: 'none'
+
+version: 1.0.0+1
+
+environment:
+  sdk: '>=3.0.0 <4.0.0'
+
+dependencies:
+  flutter:
+    sdk: flutter
+
+  flutter_riverpod: ^3.3.1
+  supabase_flutter: ^2.10.0
+  flutter_dotenv: ^5.1.0
+  cupertino_icons: ^1.0.6
+  google_fonts: ^8.1.0
+  shared_preferences: ^2.2.2
+  intl: ^0.20.2
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^6.0.0
+
+flutter:
+  uses-material-design: true
+  assets:
+    - .env
