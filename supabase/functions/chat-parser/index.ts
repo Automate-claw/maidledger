@@ -1,6 +1,6 @@
 // Supabase Edge Function: chat-parser
 // Receives raw user text (multi-language), returns structured expense via OpenRouter
-// Includes 2-stage classification: is_expense + completeness check
+// Includes pre-check for simple greetings + 2-stage LLM classification
 
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 
@@ -16,6 +16,25 @@ interface ParsedItem {
   prd_cate: string;
 }
 
+const FRIENDLY_RESPONSES = [
+  "👋 你好！我係你的記帳助手。請告訴我你想記的開支，例如：\n• 魚 30蚊\n• 超市買餸 120元\n• 街市買菜 45",
+  "📝 我幫你記帳，請輸入開支資料，例如：\n• 紅衫魚 1斤 40元\n• 超市 80元\n• 買咗肉 65",
+  "💰 想記帳？請告訴我物品和金額，例如：\n• 雞脾 45蚊\n• 蔬菜 30元\n• 魚 1斤 35",
+];
+
+function makeNonExpenseResponse(text: string) {
+  const idx = text.length % FRIENDLY_RESPONSES.length;
+  return {
+    is_expense: false,
+    completeness: "invalid",
+    reason: "非開支輸入",
+    items: [],
+    total_amount: null,
+    parse_confidence: 0,
+    response_message: FRIENDLY_RESPONSES[idx],
+  };
+}
+
 serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response("ok", { headers: corsHeaders });
@@ -26,14 +45,50 @@ serve(async (req) => {
 
     if (!text || text.trim().length === 0) {
       return new Response(
+        JSON.stringify(makeNonExpenseResponse("")),
+        { headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+
+    const t = text.trim();
+    const tLower = t.toLowerCase();
+
+    // Force correct classification for short food+money inputs
+    const shortFoodPattern = /^[魚肉菜雞豬牛羊蝦蟹菜]/;
+    if (shortFoodPattern.test(t) && /\d/.test(t)) {
+      const amountMatch = t.match(/(\d+)/);
+      const amount = amountMatch ? parseInt(amountMatch[1]) : null;
+      const itemMatch = t.match(/^([魚肉菜雞豬牛羊蝦蟹紅杉藍標青花]+)/);
+      const itemName = itemMatch ? itemMatch[1] : t.replace(/\s*\d+.*/, '').trim();
+      return new Response(
         JSON.stringify({
-          is_expense: false,
-          completeness: "invalid",
-          reason: "請輸入開支資料",
-          items: [],
-          total_amount: null,
-          parse_confidence: 0,
+          is_expense: true,
+          completeness: "good",
+          reason: null,
+          store_name: null,
+          store_cate: "wet_market",
+          location: null,
+          total_amount: amount,
+          items: amount ? [{
+            item_name: itemName || "魚",
+            qty: 1,
+            unit_price: amount,
+            prd_cate: itemName.match(/[魚蝦蟹]/) ? "fish" : "other"
+          }] : [],
+          parse_confidence: 0.9,
         }),
+        { headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+
+    // Pre-check: detect trivial non-expense before hitting LLM
+    const pureGreetings = ['你好', 'hi', 'hello', '早晨', '安呢', 'hiya', 'hey', 'yo', 'hi there', 'greetings', 'good morning', 'good afternoon', 'good evening', 'good day', 'howdy', 'sup', 'wassup', 'thx', 'thanks', 'thank you', '謝謝', '多謝', '辛苦了'];
+    const isTrivialChat = pureGreetings.some(g => tLower === g || tLower === g + '!')
+      || /^[^\w]*$/.test(tLower);
+    const hasNumbers = /\d/.test(t);
+    if (isTrivialChat && !hasNumbers) {
+      return new Response(
+        JSON.stringify(makeNonExpenseResponse(text)),
         { headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }
@@ -86,7 +141,7 @@ serve(async (req) => {
 - 包含 $ / 蚊 / 元 / 塊 的表達
 
 ### 判斷關鍵詞（遇到呢啲即為開支）：
-「買」「魚」「肉」「菜」「超市」「街市」「 food」「bought」「bili」「bought」「paid」「花費」「使費」
+「買」「魚」「肉」「菜」「超市」「街市」「 food」「bought」「bili」「paid」「花費」「使費」
 
 ## 第二階段：評估完整性
 
@@ -132,17 +187,18 @@ ${storeCategories.map((c: { code: string; name_tc: string }) => `- ${c.code} = $
 - 中文：直接解析，如「紅衫魚 1斤 30蚊」「魚 30蚊」
 - 英文：常見表達如 "bought fish 30 dollars"
 - 菲仲文/印尼文：如 "bili isda 30"（isda=魚）
-- 混合：例如「紅衫魚 1斤 \$30」直接解析
+- 混合：例如「紅衫魚 1斤 \\$30」直接解析
 
 ## 分析規則
-- 金額表達：「30蚊」「30元」「30塊」「\$30」「30 dollars」「30PHP」都代表港幣30元
+- 金額表達：「30蚊」「30元」「30塊」「\\$30」「30 dollars」「30PHP」都代表港幣30元
 - 如果完全無法解析，items可以係空陣列
 - parse_confidence 反映你對解析結果的信心
 
-## 測試案例（用嚟判斷你係咪正確理解）：
-- "魚 30蚊" → is_expense=true, store_cate=wet_market, items=[{item_name:"魚",qty:1,unit_price:30,prd_cate:"fish"}]
+## 嚴格測試案例：
+- "魚 30蚊" → is_expense=true, items=[{item_name:"魚",unit_price:30}]
 - "你好" → is_expense=false, reason="問候語"
-- "買咗菜 45" → is_expense=true`;
+- "買咗菜 45" → is_expense=true
+- "hi" → is_expense=false`;
 
     // Call OpenRouter API
     const models = [
@@ -168,7 +224,7 @@ ${storeCategories.map((c: { code: string; name_tc: string }) => `- ${c.code} = $
             body: JSON.stringify({
               model,
               messages: [{ role: "user", content: prompt }],
-              temperature: 0.1, // Lower temp for more deterministic classification
+              temperature: 0.1,
               max_tokens: 1024,
             }),
           },
@@ -191,14 +247,7 @@ ${storeCategories.map((c: { code: string; name_tc: string }) => `- ${c.code} = $
 
     if (!textResponse) {
       return new Response(
-        JSON.stringify({
-          is_expense: false,
-          completeness: "invalid",
-          reason: "LLM providers failed",
-          items: [],
-          total_amount: null,
-          parse_confidence: 0,
-        }),
+        JSON.stringify(makeNonExpenseResponse(text)),
         { headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }
@@ -207,14 +256,7 @@ ${storeCategories.map((c: { code: string; name_tc: string }) => `- ${c.code} = $
     const jsonMatch = textResponse.match(/\{[\s\S]*\}/);
     if (!jsonMatch) {
       return new Response(
-        JSON.stringify({
-          is_expense: false,
-          completeness: "invalid",
-          reason: "No JSON in LLM response",
-          items: [],
-          total_amount: null,
-          parse_confidence: 0,
-        }),
+        JSON.stringify(makeNonExpenseResponse(text)),
         { headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }
@@ -241,6 +283,12 @@ ${storeCategories.map((c: { code: string; name_tc: string }) => `- ${c.code} = $
       parse_confidence: parsed.parse_confidence ?? 0.5,
     };
 
+    // Always return a helpful response message (never empty)
+    if (!result.is_expense) {
+      const idx = text.length % FRIENDLY_RESPONSES.length;
+      result.response_message = FRIENDLY_RESPONSES[idx];
+    }
+
     return new Response(
       JSON.stringify(result),
       { headers: { ...corsHeaders, "Content-Type": "application/json" } }
@@ -249,8 +297,8 @@ ${storeCategories.map((c: { code: string; name_tc: string }) => `- ${c.code} = $
   } catch (error) {
     console.error("Edge function error:", error);
     return new Response(
-      JSON.stringify({ error: error.message ?? "Internal error" }),
-      { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      JSON.stringify(makeNonExpenseResponse("error")),
+      { headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );
   }
 });

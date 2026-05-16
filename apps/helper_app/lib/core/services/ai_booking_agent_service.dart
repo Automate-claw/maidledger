@@ -21,13 +21,28 @@ class AIBookingAgent {
     // Stage 1: Check if it's even an expense
     final isExpense = response['is_expense'] as bool? ?? false;
     if (!isExpense) {
+      // Use friendly response_message from edge function (never show error)
+      final responseMsg = response['response_message'] as String?;
+      if (responseMsg != null) {
+        return ExpenseIntent(
+          rawText: text,
+          intent: 'chat',
+          category: null,
+          amount: null,
+          confidence: 0.0,
+          items: [],
+          note: responseMsg,
+          fallback: false,
+          isRejected: false,
+        );
+      }
       final reason = response['reason'] as String? ?? '請輸入開支資料';
       return _rejectionIntent(reason);
     }
 
     // Stage 2: Check completeness
     final completeness = response['completeness'] as String? ?? 'invalid';
-    if (completeness == 'insufficient' || completeness == 'invalid') {
+    if (completeness == 'insufficient') {
       final reason = response['reason'] as String? ?? '資料不足，請提供更多詳細';
       return _rejectionIntent(reason);
     }
@@ -108,7 +123,12 @@ class AIBookingAgent {
 
   /// Build conversation response
   String buildResponse(ExpenseIntent intent) {
-    // Handle rejection
+    // Handle chat/non-expense response (friendly guidance, not error)
+    if (intent.intent == 'chat') {
+      return intent.note ?? '請告訴我你想記帳的內容，例如：魚 30蚊';
+    }
+
+    // Handle rejection (insufficient data)
     if (intent.isRejected) {
       return '📋 ${intent.rejectionReason}\n\n'
           '請輸入開支格式，例如：\n'
