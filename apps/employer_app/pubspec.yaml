@@ -20,6 +20,10 @@ dependencies:
   google_fonts: ^8.1.0
   intl: ^0.20.2
 
+  # Localization
+  maidledger_localization:
+    path: ../../packages/localization
+
 dev_dependencies:
   flutter_test:
     sdk: flutter

@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:maidledger_localization/maidledger_localization.dart';
 
 import 'core/services/supabase_client_provider.dart';
 import 'features/auth/auth_provider.dart';
@@ -41,7 +42,7 @@ class NotificationEnabledNotifier extends StateNotifier<bool> {
 /// Global notification service
 class NotificationService {
   NotificationService._();
-  static final instance = NotificationService._();
+  static final NotificationService instance = NotificationService._();
 
   RealtimeChannel? _channel;
 
@@ -145,22 +146,17 @@ Future<void> main() async {
   );
 }
 
-class EmployerApp extends ConsumerStatefulWidget {
+class EmployerApp extends ConsumerWidget {
   const EmployerApp({super.key});
 
   @override
-  ConsumerState<EmployerApp> createState() => _EmployerAppState();
-}
+  Widget build(BuildContext context, WidgetRef ref) {
+    final appLocale = ref.watch(localeProvider);
 
-class _EmployerAppState extends ConsumerState<EmployerApp> {
-  bool _profileEnsured = false;
-  bool _notificationsInitialized = false;
-
-  @override
-  Widget build(BuildContext context) {
     return MaterialApp(
-      title: 'MaidLedger 僱主',
+      title: 'MaidLedger',
       debugShowCheckedModeBanner: false,
+      locale: appLocaleToFlutterLocale(appLocale),
       theme: ThemeData(
         colorScheme: ColorScheme.fromSeed(
           seedColor: const Color(0xFF4CAF50),
@@ -236,14 +232,16 @@ class MainScreen extends ConsumerStatefulWidget {
 class _MainScreenState extends ConsumerState<MainScreen> {
   int _currentIndex = 0;
 
-  final _pages = const [
-    ReceiptsScreen(),
-    MyCodeScreen(),
-    SettingsScreen(),
-  ];
-
   @override
   Widget build(BuildContext context) {
+    final locale = ref.watch(localeProvider);
+
+    final _pages = const [
+      ReceiptsScreen(),
+      MyCodeScreen(),
+      SettingsScreen(),
+    ];
+
     return Scaffold(
       body: IndexedStack(
         index: _currentIndex,
@@ -254,21 +252,21 @@ class _MainScreenState extends ConsumerState<MainScreen> {
         onDestinationSelected: (index) {
           setState(() => _currentIndex = index);
         },
-        destinations: const [
+        destinations: [
           NavigationDestination(
-            icon: Icon(Icons.receipt_long_outlined),
-            selectedIcon: Icon(Icons.receipt_long),
-            label: '收據',
+            icon: const Icon(Icons.receipt_long_outlined),
+            selectedIcon: const Icon(Icons.receipt_long),
+            label: AppStrings.get(locale, 'history'),
           ),
           NavigationDestination(
-            icon: Icon(Icons.qr_code_outlined),
-            selectedIcon: Icon(Icons.qr_code),
-            label: '我的邀請碼',
+            icon: const Icon(Icons.qr_code_outlined),
+            selectedIcon: const Icon(Icons.qr_code),
+            label: 'My Code',
           ),
           NavigationDestination(
-            icon: Icon(Icons.settings_outlined),
-            selectedIcon: Icon(Icons.settings),
-            label: '設定',
+            icon: const Icon(Icons.settings_outlined),
+            selectedIcon: const Icon(Icons.settings),
+            label: AppStrings.settings(locale),
           ),
         ],
       ),

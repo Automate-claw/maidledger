@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:exif/exif.dart';
+import 'package:maidledger_localization/maidledger_localization.dart';
 import '../../core/services/supabase_client_provider.dart';
 import '../../core/services/ai_booking_agent_service.dart';
 
@@ -32,16 +33,15 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
   void initState() {
     super.initState();
     _agent = AIBookingAgent();
+    _messages.add(ChatMessage(text: AppStrings.greeting(AppLocale.tradChinese), isUser: false));
+  }
 
-    _messages.add(const ChatMessage(
-      text: '👋 你好！用任何語言告訴我你想記帳的內容。\n\n'
-          '例如：\n'
-          '• "買咗菜 45 蚊"\n'
-          '• "超市 50"\n'
-          '• "街市買魚 80"\n\n'
-          '你也可以夾相片作為記帳憑證 📎',
-      isUser: false,
-    ));
+  void _refreshGreeting() {
+    final locale = ref.read(localeProvider);
+    setState(() {
+      _messages.clear();
+      _messages.add(ChatMessage(text: AppStrings.greeting(locale), isUser: false));
+    });
   }
 
   // ─────────────────────────────────────────────
@@ -176,9 +176,11 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
     final text = _messageController.text.trim();
     if (text.isEmpty && _attachedImage == null) return;
 
+    final locale = ref.read(localeProvider);
+
     setState(() {
       _messages.add(ChatMessage(
-        text: text.isEmpty ? '(相片記帳)' : text,
+        text: text.isEmpty ? AppStrings.photoExpense(locale) : text,
         isUser: true,
         imagePath: _attachedImage?.path,
       ));
@@ -217,13 +219,14 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
         _showSaveDialog(intent, imageForSend, locationForSend);
       }
     } catch (e) {
+      final locale = ref.read(localeProvider);
       String errorMsg;
       if (e.toString().contains('timeout')) {
-        errorMsg = '⏱️ AI 回應超時，請再試一次';
+        errorMsg = AppStrings.timeout(locale);
       } else if (e.toString().contains('rate_limit') || e.toString().contains('rate_limited')) {
-        errorMsg = '⏱️ 操作太頻繁，請稍後再試。';
+        errorMsg = AppStrings.rateLimited(locale);
       } else {
-        errorMsg = '⚠️ 抱歉，我遇到問題了。請再試一次。\n錯誤：${e.toString().substring(0, 100)}';
+        errorMsg = '${AppStrings.sorryError(locale)}\n錯誤：${e.toString().substring(0, 100)}';
         debugPrint('Chat error: $e');
       }
       setState(() {
@@ -239,37 +242,38 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
   }
 
   void _showSaveDialog(ExpenseIntent intent, XFile? image, String? location) {
+    final locale = ref.read(localeProvider);
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
-        title: const Text('💾 確認記帳？'),
+        title: Text(AppStrings.confirmExpense(locale)),
         content: Column(
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text('輸入：${intent.rawText}'),
+            Text('${AppStrings.input(locale)}：${intent.rawText}'),
             const SizedBox(height: 4),
-            Text('類別：${intent.category ?? "未知"}'),
+            Text('${AppStrings.category(locale)}：${intent.category ?? "未知"}'),
             if (intent.amount != null)
-              Text('金額：\$${intent.amount!.toStringAsFixed(0)}'),
-            Text('信心度：${(intent.confidence * 100).toInt()}%'),
+              Text('${AppStrings.amount(locale)}：\$${intent.amount!.toStringAsFixed(0)}'),
+            Text('${AppStrings.confidence(locale)}：${(intent.confidence * 100).toInt()}%'),
             if (intent.items.isNotEmpty)
-              Text('貨品：${intent.items.join("、")}'),
-            if (location != null) Text('地點：$location'),
-            if (image != null) const Text('📎 附有相片'),
+              Text('${AppStrings.items(locale)}：${intent.items.join("、")}'),
+            if (location != null) Text('${AppStrings.location(locale)}：$location'),
+            if (image != null) Text(AppStrings.photoAttached(locale)),
           ],
         ),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context),
-            child: const Text('取消'),
+            child: Text(AppStrings.cancel(locale)),
           ),
           FilledButton(
             onPressed: () {
               Navigator.pop(context);
               _saveExpense(intent, image, location);
             },
-            child: const Text('✅ 確認'),
+            child: Text(AppStrings.confirm(locale)),
           ),
         ],
       ),
@@ -280,13 +284,12 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
   // Save expense
   // ─────────────────────────────────────────────
   Future<void> _saveExpense(ExpenseIntent intent, XFile? image, String? location) async {
+    final locale = ref.read(localeProvider);
     try {
       final client = supabase;
       final now = DateTime.now().millisecondsSinceEpoch;
-
       final userId = client.auth.currentSession?.user.id;
       if (userId == null) throw Exception('Not logged in');
-
       final relations = await client
           .from('employer_helper_relations')
           .select('employer_id, id')
@@ -294,23 +297,17 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
           .eq('status', 'active')
           .maybeSingle();
 
-      // employer_id can be null if helper hasn't linked yet
       final employerId = relations?['employer_id'];
       final relationId = relations?['id'];
 
-      // Upload image to Supabase Storage (if attached)
       String? imageStorageUrl;
       if (image != null) {
         imageStorageUrl = await _uploadImage(image, userId);
       }
 
-      // Build items list
       final items = _buildItemsFromIntent(intent);
-
-      // Parse transaction date
       final transactionDate = _parseTransactionDate(intent.rawText);
 
-      // INSERT receipts
       final receiptId = DateTime.now().millisecondsSinceEpoch.toString();
       await client.from('receipts').insert({
         'id': receiptId,
@@ -334,7 +331,6 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
         'created_at': DateTime.now().toIso8601String(),
       });
 
-      // INSERT receipt_items
       if (items.isNotEmpty) {
         await client.from('receipt_items').insert(
           items.map((item) => {
@@ -349,7 +345,6 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
           }).toList(),
         );
       } else {
-        // Single-item fallback
         await client.from('receipt_items').insert({
           'receipt_id': receiptId,
           'item_name': intent.items.isNotEmpty ? intent.items.first : intent.rawText,
@@ -362,8 +357,6 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
         });
       }
 
-      // Trigger notification broadcast to employer (non-blocking)
-      // Only if helper has linked to employer
       if (employerId != null) {
         try {
           await client.functions.invoke('notification-broadcast', body: {
@@ -386,8 +379,8 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
 
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('✅ 記帳已保存！'),
+          SnackBar(
+            content: Text(AppStrings.expenseSaved(locale)),
             backgroundColor: Colors.green,
           ),
         );
@@ -396,7 +389,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('❌ 保存失敗：$e'),
+            content: Text('${AppStrings.expenseSaveFailed(locale)}：$e'),
             backgroundColor: Colors.red,
           ),
         );
@@ -443,14 +436,11 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
   }
 
   double? _extractPriceForItem(String rawText, String itemName) {
-    // Pattern: "itemName $123" or "itemName $ 123" etc.
     final pattern1 = RegExp(itemName + r'\s*[美澳散]?\s*\$?\s*(\d+(?:\.\d{1,2})?)');
-    // Pattern: standalone price before "蚊/元/塊"
     final pattern2 = RegExp(r'(\d+(?:\.\d{1,2})?)\s*[蚊元塊]');
 
     final match1 = pattern1.firstMatch(rawText);
     if (match1 != null) return double.tryParse(match1.group(1)!);
-
 
     final match2 = pattern2.firstMatch(rawText);
     if (match2 != null) return double.tryParse(match2.group(1)!);
@@ -470,7 +460,6 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
   }
 
   DateTime? _parseTransactionDate(String rawText) {
-    // Try DD-MM-YYYY or DD/MM/YYYY
     final match1 = RegExp(r'(\d{1,2})[/\-](\d{1,2})[/\-](\d{4})').firstMatch(rawText);
     if (match1 != null) {
       final g1 = int.parse(match1.group(1)!);
@@ -478,7 +467,6 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
       final g3 = int.parse(match1.group(3)!);
       return DateTime(g3, g2, g1);
     }
-    // Try YYYY-MM-DD
     final match2 = RegExp(r'(\d{4})[/\-](\d{1,2})[/\-](\d{1,2})').firstMatch(rawText);
     if (match2 != null) {
       final g1 = int.parse(match2.group(1)!);
@@ -490,15 +478,16 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
   }
 
   void _showNeedRelationDialog() {
+    final locale = ref.read(localeProvider);
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
-        title: const Text('🔗 需要先連接僱主'),
-        content: const Text('請先輸入僱主的邀請碼來連接。'),
+        title: Text(AppStrings.needLinkEmployer(locale)),
+        content: Text(AppStrings.enterInviteCode(locale)),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context),
-            child: const Text('確定'),
+            child: Text(AppStrings.ok(locale)),
           ),
         ],
       ),
@@ -526,22 +515,15 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final locale = ref.watch(localeProvider);
     return Scaffold(
       appBar: AppBar(
-        title: const Text('AI 記帳助理'),
+        title: Text(AppStrings.get(locale, 'chat')),
         centerTitle: true,
         actions: [
           IconButton(
             icon: const Icon(Icons.refresh),
-            onPressed: () {
-              setState(() {
-                _messages.clear();
-                _messages.add(const ChatMessage(
-                  text: '👋 你好！用任何語言告訴我你想記帳的內容。',
-                  isUser: false,
-                ));
-              });
-            },
+            onPressed: _refreshGreeting,
           ),
         ],
       ),
@@ -565,7 +547,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
                       ),
                     ),
                     const SizedBox(width: 8),
-                    const Text('📎 已附加相片'),
+                    Text(AppStrings.photoAttached(locale)),
                     const SizedBox(width: 8),
                   ],
                   if (_extractedLocation != null) ...[
@@ -598,19 +580,19 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
 
           // Typing indicator
           if (_isTyping)
-            const Padding(
-              padding: EdgeInsets.all(8),
+            Padding(
+              padding: const EdgeInsets.all(8),
               child: Row(
                 children: [
-                  Text('🤖 ', style: TextStyle(fontSize: 14)),
-                  SizedBox(width: 8),
-                  SizedBox(
+                  const Text('🤖 ', style: TextStyle(fontSize: 14)),
+                  const SizedBox(width: 8),
+                  const SizedBox(
                     width: 16,
                     height: 16,
                     child: CircularProgressIndicator(strokeWidth: 2),
                   ),
-                  SizedBox(width: 8),
-                  Text('AI 正在思考...'),
+                  const SizedBox(width: 8),
+                  Text(AppStrings.aiThinking(locale)),
                 ],
               ),
             ),
@@ -638,12 +620,12 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
                       IconButton(
                         onPressed: _takePhoto,
                         icon: const Icon(Icons.camera_alt),
-                        tooltip: '拍照',
+                        tooltip: AppStrings.takePhoto(locale),
                       ),
                       IconButton(
                         onPressed: _pickImage,
                         icon: const Icon(Icons.photo_library),
-                        tooltip: '相片簿',
+                        tooltip: AppStrings.pickPhoto(locale),
                       ),
                       const Spacer(),
                     ],
@@ -655,7 +637,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
                         child: TextField(
                           controller: _messageController,
                           decoration: InputDecoration(
-                            hintText: '輸入記帳內容...',
+                            hintText: AppStrings.typeExpenseHint(locale),
                             border: OutlineInputBorder(
                               borderRadius: BorderRadius.circular(24),
                             ),

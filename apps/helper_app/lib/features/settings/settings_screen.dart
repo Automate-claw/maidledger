@@ -1,49 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:shared_preferences/shared_preferences.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
+import 'package:maidledger_localization/maidledger_localization.dart';
 import '../../core/services/supabase_client_provider.dart';
 import '../auth/auth_provider.dart';
-
-/// Supported locales
-enum AppLocale {
-  tradChinese('繁體中文', 'zh_HK'),
-  english('English', 'en');
-
-  final String label;
-  final String code;
-  const AppLocale(this.label, this.code);
-}
-
-/// Locale provider (persisted)
-final localeProvider = NotifierProvider<LocaleNotifier, AppLocale>(() {
-  return LocaleNotifier();
-});
-
-class LocaleNotifier extends Notifier<AppLocale> {
-  @override
-  AppLocale build() {
-    _load();
-    return AppLocale.tradChinese;
-  }
-
-  static const _key = 'app_locale';
-
-  Future<void> _load() async {
-    final prefs = await SharedPreferences.getInstance();
-    final code = prefs.getString(_key) ?? 'zh_HK';
-    state = AppLocale.values.firstWhere(
-      (l) => l.code == code,
-      orElse: () => AppLocale.tradChinese,
-    );
-  }
-
-  Future<void> setLocale(AppLocale locale) async {
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.setString(_key, locale.code);
-    state = locale;
-  }
-}
 
 /// Settings screen with logout + language switch
 class SettingsScreen extends ConsumerWidget {
@@ -59,12 +19,12 @@ class SettingsScreen extends ConsumerWidget {
 
     return Scaffold(
       appBar: AppBar(
-        title: const Text('設定'),
+        title: Text(AppStrings.settings(locale)),
         centerTitle: true,
       ),
       body: profileAsync.when(
         data: (profile) {
-          final name = profile?['name'] ?? '工人';
+          final name = profile?['name'] ?? AppStrings.get(locale, 'worker');
           final phone = profile?['phone'];
 
           return ListView(
@@ -76,10 +36,10 @@ class SettingsScreen extends ConsumerWidget {
                   padding: const EdgeInsets.all(16),
                   child: Row(
                     children: [
-                      const CircleAvatar(
+                      CircleAvatar(
                         radius: 32,
                         backgroundColor: Colors.blue,
-                        child: Icon(Icons.person, color: Colors.white, size: 32),
+                        child: const Icon(Icons.person, color: Colors.white, size: 32),
                       ),
                       const SizedBox(width: 16),
                       Expanded(
@@ -95,9 +55,9 @@ class SettingsScreen extends ConsumerWidget {
                             ),
                             if (phone != null)
                               Text(phone, style: const TextStyle(color: Colors.grey)),
-                            const Text(
-                              '工人',
-                              style: TextStyle(color: Colors.blue, fontSize: 12),
+                            Text(
+                              AppStrings.get(locale, 'worker'),
+                              style: const TextStyle(color: Colors.blue, fontSize: 12),
                             ),
                           ],
                         ),
@@ -113,14 +73,14 @@ class SettingsScreen extends ConsumerWidget {
                   children: [
                     ListTile(
                       leading: const Icon(Icons.language),
-                      title: const Text('語言'),
+                      title: Text(AppStrings.language(locale)),
                       trailing: const Icon(Icons.chevron_right),
                       onTap: () => _showLanguagePicker(context, ref),
                     ),
                     Padding(
                       padding: const EdgeInsets.only(left: 56, bottom: 8),
                       child: Text(
-                        locale == AppLocale.tradChinese ? '繁體中文' : 'English',
+                        '${locale.flag} ${locale.label}',
                         style: const TextStyle(color: Colors.grey),
                       ),
                     ),
@@ -132,14 +92,17 @@ class SettingsScreen extends ConsumerWidget {
               Card(
                 child: Column(
                   children: [
-                    const ListTile(
-                      leading: Icon(Icons.info_outline),
-                      title: Text('版本'),
-                      trailing: Text('1.0.0', style: TextStyle(color: Colors.grey)),
+                    ListTile(
+                      leading: const Icon(Icons.info_outline),
+                      title: Text(AppStrings.version(locale)),
+                      trailing: const Text('1.0.0', style: TextStyle(color: Colors.grey)),
                     ),
                     ListTile(
                       leading: const Icon(Icons.logout, color: Colors.red),
-                      title: const Text('登出', style: TextStyle(color: Colors.red)),
+                      title: Text(
+                        AppStrings.logout(locale),
+                        style: const TextStyle(color: Colors.red),
+                      ),
                       onTap: () => _confirmLogout(context, ref),
                     ),
                   ],
@@ -158,13 +121,13 @@ class SettingsScreen extends ConsumerWidget {
     showDialog(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: const Text('選擇語言'),
+        title: Text(AppStrings.selectLanguage(ref.read(localeProvider))),
         content: Column(
           mainAxisSize: MainAxisSize.min,
           children: AppLocale.values.map((l) {
             final current = ref.read(localeProvider);
             return ListTile(
-              title: Text(l.label),
+              title: Text('${l.flag}  ${l.label}'),
               leading: Radio<AppLocale>(
                 value: l,
                 groupValue: current,
@@ -187,21 +150,22 @@ class SettingsScreen extends ConsumerWidget {
   }
 
   void _confirmLogout(BuildContext context, WidgetRef ref) {
+    final locale = ref.read(localeProvider);
     showDialog(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: const Text('確定要登出嗎？'),
+        title: Text('${AppStrings.logout(locale)}?'),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(ctx),
-            child: const Text('取消'),
+            child: Text(AppStrings.cancel(locale)),
           ),
           FilledButton(
             onPressed: () {
               Navigator.pop(ctx);
               ref.read(authStateProvider.notifier).signOut();
             },
-            child: const Text('登出'),
+            child: Text(AppStrings.confirm(locale)),
           ),
         ],
       ),

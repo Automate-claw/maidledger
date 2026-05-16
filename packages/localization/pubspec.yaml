@@ -1,0 +1,17 @@
+name: maidledger_localization
+description: MaidLedger localization package with locale provider and strings
+version: 1.0.0
+
+publish_to: 'none'
+
+environment:
+  sdk: '>=3.0.0 <4.0.0'
+
+dependencies:
+  flutter:
+    sdk: flutter
+  flutter_riverpod: ^3.3.1
+  shared_preferences: ^2.2.2
+
+dev_dependencies:
+  flutter_lints: ^6.0.0

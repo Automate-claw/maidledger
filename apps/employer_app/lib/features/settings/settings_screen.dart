@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import '../../core/services/supabase_client_provider.dart';
+import 'package:maidledger_localization/maidledger_localization.dart';
 import '../auth/auth_provider.dart';
 import '../../main.dart';
 
@@ -10,15 +10,16 @@ class SettingsScreen extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final profileAsync = ref.watch(employerProfileProvider);
+    final locale = ref.watch(localeProvider);
 
     return Scaffold(
       appBar: AppBar(
-        title: const Text('設定'),
+        title: Text(AppStrings.settings(locale)),
         centerTitle: true,
       ),
       body: profileAsync.when(
         data: (profile) {
-          final name = profile?['name'] ?? '僱主';
+          final name = profile?['name'] ?? AppStrings.get(locale, 'employer');
           final phone = profile?['phone'];
 
           return ListView(
@@ -52,9 +53,9 @@ class SettingsScreen extends ConsumerWidget {
                                 phone,
                                 style: const TextStyle(color: Colors.grey),
                               ),
-                            const Text(
-                              '僱主',
-                              style: TextStyle(
+                            Text(
+                              AppStrings.get(locale, 'employer'),
+                              style: const TextStyle(
                                 color: Colors.green,
                                 fontSize: 12,
                               ),
@@ -69,29 +70,20 @@ class SettingsScreen extends ConsumerWidget {
               const SizedBox(height: 16),
               // Settings items
               _SettingsSection(
-                title: '一般',
+                title: 'General',
                 children: [
                   _NotificationToggleItem(),
-                  const _SettingsItem(
-                    icon: Icons.language,
-                    title: '語言',
-                    subtitle: '繁體中文',
-                  ),
+                  _LanguageSettingsItem(),
                 ],
               ),
               const SizedBox(height: 16),
-              const _SettingsSection(
-                title: '關於',
+              _SettingsSection(
+                title: 'About',
                 children: [
                   _SettingsItem(
                     icon: Icons.info_outline,
-                    title: '版本',
+                    title: AppStrings.version(locale),
                     subtitle: '1.0.0',
-                  ),
-                  _SettingsItem(
-                    icon: Icons.description_outlined,
-                    title: '使用條款',
-                    subtitle: '查看使用條款和隱私政策',
                   ),
                 ],
               ),
@@ -99,30 +91,31 @@ class SettingsScreen extends ConsumerWidget {
               // Sign out
               FilledButton.tonal(
                 onPressed: () => _signOut(context, ref),
-                child: const Text('登出'),
+                child: Text(AppStrings.logout(locale)),
               ),
             ],
           );
         },
         loading: () => const Center(child: CircularProgressIndicator()),
-        error: (err, _) => Center(child: Text('錯誤：$err')),
+        error: (err, _) => Center(child: Text('Error: $err')),
       ),
     );
   }
 
   Future<void> _signOut(BuildContext context, WidgetRef ref) async {
+    final locale = ref.read(localeProvider);
     final confirm = await showDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
-        title: const Text('確定要登出嗎？'),
+        title: Text('${AppStrings.logout(locale)}?'),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context, false),
-            child: const Text('取消'),
+            child: Text(AppStrings.cancel(locale)),
           ),
           FilledButton(
             onPressed: () => Navigator.pop(context, true),
-            child: const Text('登出'),
+            child: Text(AppStrings.confirm(locale)),
           ),
         ],
       ),
@@ -177,10 +170,59 @@ class _NotificationToggleItem extends ConsumerWidget {
         enabled ? Icons.notifications : Icons.notifications_off_outlined,
         color: Colors.grey,
       ),
-      title: const Text('通知設定'),
-      subtitle: Text(enabled ? '接收工人上傳的收據通知' : '通知已關閉'),
+      title: const Text('Notifications'),
+      subtitle: Text(enabled ? 'Receive helper receipt uploads' : 'Notifications off'),
       value: enabled,
       onChanged: (_) => ref.read(notificationEnabledProvider.notifier).toggle(),
+    );
+  }
+}
+
+class _LanguageSettingsItem extends ConsumerWidget {
+  const _LanguageSettingsItem();
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final locale = ref.watch(localeProvider);
+
+    return ListTile(
+      leading: const Icon(Icons.language, color: Colors.grey),
+      title: Text(AppStrings.language(locale)),
+      subtitle: Text('${locale.flag} ${locale.label}'),
+      trailing: const Icon(Icons.chevron_right),
+      onTap: () => _showLanguagePicker(context, ref),
+    );
+  }
+
+  void _showLanguagePicker(BuildContext context, WidgetRef ref) {
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: Text(AppStrings.selectLanguage(ref.read(localeProvider))),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: AppLocale.values.map((l) {
+            final current = ref.read(localeProvider);
+            return ListTile(
+              title: Text('${l.flag}  ${l.label}'),
+              leading: Radio<AppLocale>(
+                value: l,
+                groupValue: current,
+                onChanged: (value) {
+                  if (value != null) {
+                    ref.read(localeProvider.notifier).setLocale(value);
+                    Navigator.pop(ctx);
+                  }
+                },
+              ),
+              onTap: () {
+                ref.read(localeProvider.notifier).setLocale(l);
+                Navigator.pop(ctx);
+              },
+            );
+          }).toList(),
+        ),
+      ),
     );
   }
 }
