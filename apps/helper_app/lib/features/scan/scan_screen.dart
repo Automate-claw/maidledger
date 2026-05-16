@@ -297,16 +297,17 @@ class _ScanScreenState extends ConsumerState<ScanScreen> {
     }
 
     // Trigger notification broadcast to employer via Edge Function (only if linked)
-    if (relations?['employer_id'] != null) {
+    final empId = relations?['employer_id'];
+    if (empId != null) {
       try {
         await supabase.functions.invoke('notification-broadcast', body: {
           'type': 'INSERT',
           'table': 'receipts',
           'record': {
             'id': receiptId,
-            'employer_id': relations['employer_id'],
+            'employer_id': empId,
             'helper_id': user.id,
-            'relation_id': relations['id'],
+            'relation_id': relations!['id'],
             'store_name': parseResult.storeName,
             'amount': parseResult.totalAmount,
             'created_at': DateTime.now().toIso8601String(),
