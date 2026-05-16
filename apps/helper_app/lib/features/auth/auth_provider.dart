@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../../core/services/supabase_client_provider.dart';
@@ -73,27 +74,35 @@ Future<bool> _runWithTimeout({
 
 /// Ensure helper profile exists in user_profiles (call after OAuth sign-in)
 Future<void> ensureHelperProfile() async {
-  final user = supabase.auth.currentUser;
-  if (user == null) return;
+  try {
+    final user = supabase.auth.currentUser;
+    if (user == null) return;
 
-  final existing = await supabase
-      .from('user_profiles')
-      .select('id')
-      .eq('id', user.id)
-      .maybeSingle();
+    final existing = await supabase
+        .from('user_profiles')
+        .select('id')
+        .eq('id', user.id)
+        .maybeSingle();
 
-  if (existing != null) return;
+    if (existing != null) return;
 
-  final role = user.userMetadata?['role'] as String? ?? 'helper';
-  final name = user.userMetadata?['name'] as String? ??
-                user.userMetadata?['full_name'] as String? ??
-                user.email ?? '工人';
+    // Handle Google OAuth metadata (different from Supabase signUp metadata)
+    final meta = user.userMetadata ?? {};
+    final role = meta['role'] as String? ?? 'helper';
+    final name = (meta['name'] as String?) ??
+                 (meta['full_name'] as String?) ??
+                 (meta['given_name'] as String?) ??
+                 user.email ?? '工人';
 
-  await supabase.from('user_profiles').insert({
-    'id': user.id,
-    'role': role,
-    'name': name,
-  });
+    await supabase.from('user_profiles').insert({
+      'id': user.id,
+      'role': role,
+      'name': name,
+    });
+  } catch (e) {
+    debugPrint('ensureHelperProfile failed: $e');
+    // Don't rethrow - profile creation failure shouldn't crash the app
+  }
 }
 
 /// Builds a new authenticated state from a session.
@@ -137,6 +146,7 @@ class AuthNotifier extends Notifier<AuthState> {
 
       if (event == AuthChangeEvent.signedIn && session != null) {
         state = _authFromSession(session);
+        ensureHelperProfile();
       } else if (event == AuthChangeEvent.signedOut) {
         state = const AuthUnauthenticated();
       } else if (event == AuthChangeEvent.tokenRefreshed && session != null) {
