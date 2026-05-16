@@ -69,7 +69,7 @@ class AIBookingAgent {
     final uri = Uri.parse(_edgeUrl);
     final req = await HttpClient().postUrl(uri);
 
-    req.headers.set('Content-Type', 'application/json');
+    req.headers.set('Content-Type', 'application/json; charset=utf-8');
     req.headers.set(
         'Authorization',
         'Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJl'
@@ -77,8 +77,8 @@ class AIBookingAgent {
             'Nzg2NTUwMjcsImV4cCI6MjA5NDIzMTAyN30.lo2HAv0E9WK1CRHTtU3idlrq3'
             'xNogdUAbWfpXvz90J0');
 
-    final body = jsonEncode({'text': text, 'user_id': userId ?? 'anonymous'});
-    req.write(body);
+    final bodyBytes = utf8.encode(jsonEncode({'text': text, 'user_id': userId ?? 'anonymous'}));
+    req.write(bodyBytes);
 
     final resp = await req.close();
     final respStr = await resp.transform(utf8.decoder).join();
