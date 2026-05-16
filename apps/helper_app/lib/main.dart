@@ -7,6 +7,7 @@ import 'features/auth/relation_gate.dart';
 import 'features/scan/scan_screen.dart';
 import 'features/chat/chat_screen.dart';
 import 'features/history/history_screen.dart';
+import 'features/settings/settings_screen.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -94,6 +95,7 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
     ScanScreen(),
     ChatScreen(),
     HistoryScreen(),
+    SettingsScreen(),
   ];
 
   @override
@@ -123,6 +125,11 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
             icon: Icon(Icons.history_outlined),
             selectedIcon: Icon(Icons.history),
             label: 'History',
+          ),
+          NavigationDestination(
+            icon: Icon(Icons.settings_outlined),
+            selectedIcon: Icon(Icons.settings),
+            label: 'Settings',
           ),
         ],
       ),
