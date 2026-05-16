@@ -10,9 +10,9 @@ class AIBookingAgent {
       'https://hnyazfrkzpxdjiyfzemm.supabase.co/functions/v1/chat-parser';
 
   /// Parse user input into structured expense
-  /// Returns rejection if input is not a valid expense or is insufficient
-  Future<ExpenseIntent> parseExpense(String text) async {
-    final response = await _callEdgeLLM(text);
+  /// [userId] is passed for rate limiting
+  Future<ExpenseIntent> parseExpense(String text, {String? userId}) async {
+    final response = await _callEdgeLLM(text, userId: userId);
 
     if (response['error'] != null) {
       throw Exception(response['error']);
@@ -65,7 +65,7 @@ class AIBookingAgent {
     );
   }
 
-  Future<Map<String, dynamic>> _callEdgeLLM(String text) async {
+  Future<Map<String, dynamic>> _callEdgeLLM(String text, {String? userId}) async {
     final uri = Uri.parse(_edgeUrl);
     final req = await HttpClient().postUrl(uri);
 
@@ -77,7 +77,7 @@ class AIBookingAgent {
             'Nzg2NTUwMjcsImV4cCI6MjA5NDIzMTAyN30.lo2HAv0E9WK1CRHTtU3idlrq3'
             'xNogdUAbWfpXvz90J0');
 
-    final body = jsonEncode({'text': text});
+    final body = jsonEncode({'text': text, 'user_id': userId ?? 'anonymous'});
     req.write(body);
 
     final resp = await req.close();

@@ -191,7 +191,11 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
     _scrollToBottom();
 
     try {
-      final intent = await _agent.parseExpense(text.isEmpty ? 'photo expense' : text).timeout(
+      final userId = supabase.auth.currentUser?.id;
+      final intent = await _agent.parseExpense(
+        text.isEmpty ? 'photo expense' : text,
+        userId: userId,
+      ).timeout(
         const Duration(seconds: 15),
         onTimeout: () => throw Exception('AI timeout'),
       );
