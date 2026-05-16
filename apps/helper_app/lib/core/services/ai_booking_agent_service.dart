@@ -110,11 +110,11 @@ class AIBookingAgent {
   String buildResponse(ExpenseIntent intent) {
     // Handle rejection
     if (intent.isRejected) {
-      return '📋 $rejectionReason\n\n'
+      return '📋 ${intent.rejectionReason}\n\n'
           '請輸入開支格式，例如：\n'
           '• 魚 30蚊\n'
           '• 紅衫魚 1斤 40元\n'
-          '• 超市 買餸 $120';
+          '• 超市 買餸 \$120';
     }
 
     // Handle partial (low confidence but saveable)

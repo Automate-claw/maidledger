@@ -45,7 +45,7 @@ class AuthError extends AuthState {
 /// Runs [action] with a shared timeout timer.
 Future<bool> _runWithTimeout({
   required Duration timeout,
-  required AuthStateUpdater setState,
+  required void Function(AuthState) setState,
   required Future<void> Function() action,
   required String timeoutMessage,
 }) async {

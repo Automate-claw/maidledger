@@ -31,11 +31,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
   @override
   void initState() {
     super.initState();
-    final apiKey = const String.fromEnvironment('GEMINI_API_KEY', defaultValue: '');
-    _agent = AIBookingAgent(
-      geminiApiKey: apiKey,
-      translateApiKey: '',
-    );
+    _agent = AIBookingAgent();
 
     _messages.add(const ChatMessage(
       text: '👋 你好！用任何語言告訴我你想記帳的內容。\n\n'
