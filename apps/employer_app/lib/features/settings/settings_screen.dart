@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../core/services/supabase_client_provider.dart';
 import '../auth/auth_provider.dart';
+import '../../main.dart';
 
 class SettingsScreen extends ConsumerWidget {
   const SettingsScreen({super.key});
@@ -67,15 +68,11 @@ class SettingsScreen extends ConsumerWidget {
               ),
               const SizedBox(height: 16),
               // Settings items
-              const _SettingsSection(
+              _SettingsSection(
                 title: '一般',
                 children: [
-                  _SettingsItem(
-                    icon: Icons.notifications_outlined,
-                    title: '通知設定',
-                    subtitle: '接收工人上傳的收據通知',
-                  ),
-                  _SettingsItem(
+                  _NotificationToggleItem(),
+                  const _SettingsItem(
                     icon: Icons.language,
                     title: '語言',
                     subtitle: '繁體中文',
@@ -164,6 +161,26 @@ class _SettingsSection extends StatelessWidget {
           child: Column(children: children),
         ),
       ],
+    );
+  }
+}
+
+class _NotificationToggleItem extends ConsumerWidget {
+  const _NotificationToggleItem();
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final enabled = ref.watch(notificationEnabledProvider);
+
+    return SwitchListTile(
+      secondary: Icon(
+        enabled ? Icons.notifications : Icons.notifications_off_outlined,
+        color: Colors.grey,
+      ),
+      title: const Text('通知設定'),
+      subtitle: Text(enabled ? '接收工人上傳的收據通知' : '通知已關閉'),
+      value: enabled,
+      onChanged: (_) => ref.read(notificationEnabledProvider.notifier).toggle(),
     );
   }
 }

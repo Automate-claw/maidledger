@@ -360,6 +360,25 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
         });
       }
 
+      // Trigger notification broadcast to employer (non-blocking)
+      try {
+        await client.functions.invoke('notification-broadcast', body: {
+          'type': 'INSERT',
+          'table': 'receipts',
+          'record': {
+            'id': receiptId,
+            'employer_id': employerId,
+            'helper_id': userId,
+            'relation_id': relationId,
+            'store_name': null,
+            'amount': intent.amount,
+            'created_at': DateTime.now().toIso8601String(),
+          },
+        });
+      } catch (e) {
+        debugPrint('Notification broadcast failed: $e');
+      }
+
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(

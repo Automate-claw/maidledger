@@ -299,6 +299,26 @@ class _ScanScreenState extends ConsumerState<ScanScreen> {
 
       await supabase.from('receipt_items').insert(itemRows);
     }
+
+    // Trigger notification broadcast to employer via Edge Function
+    try {
+      await supabase.functions.invoke('notification-broadcast', body: {
+        'type': 'INSERT',
+        'table': 'receipts',
+        'record': {
+          'id': receiptId,
+          'employer_id': relations['employer_id'],
+          'helper_id': user.id,
+          'relation_id': relations['id'],
+          'store_name': parseResult.storeName,
+          'amount': parseResult.totalAmount,
+          'created_at': DateTime.now().toIso8601String(),
+        },
+      });
+    } catch (e) {
+      // Notification is non-critical, don't fail the save
+      debugPrint('Notification broadcast failed: $e');
+    }
   }
 
   void _showRelationRequiredDialog() {
