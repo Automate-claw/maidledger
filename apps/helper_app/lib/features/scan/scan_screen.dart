@@ -258,7 +258,7 @@ class _ScanScreenState extends ConsumerState<ScanScreen> {
     final user = supabase.auth.currentUser;
     if (user == null) throw Exception('Not logged in');
 
-    // Get active relation
+    // Get active relation (nullable - helper can save without linking)
     final relations = await supabase
         .from('employer_helper_relations')
         .select('id, employer_id')
@@ -266,19 +266,15 @@ class _ScanScreenState extends ConsumerState<ScanScreen> {
         .eq('status', 'active')
         .maybeSingle();
 
-    if (relations == null) {
-      throw Exception('NO_ACTIVE_RELATION');
-    }
-
     final receiptId = const Uuid().v4();
     final now = DateTime.now().millisecondsSinceEpoch;
 
-    // Insert receipt header
+    // Insert receipt header (employer_id can be null)
     await supabase.from('receipts').insert({
       'id': receiptId,
-      'employer_id': relations['employer_id'],
+      'employer_id': relations?['employer_id'],
       'helper_id': user.id,
-      'relation_id': relations['id'],
+      'relation_id': relations?['id'],
       'store_name': parseResult.storeName,
       'store_cate': parseResult.storeCate,
       'location': parseResult.location,
@@ -300,24 +296,26 @@ class _ScanScreenState extends ConsumerState<ScanScreen> {
       await supabase.from('receipt_items').insert(itemRows);
     }
 
-    // Trigger notification broadcast to employer via Edge Function
-    try {
-      await supabase.functions.invoke('notification-broadcast', body: {
-        'type': 'INSERT',
-        'table': 'receipts',
-        'record': {
-          'id': receiptId,
-          'employer_id': relations['employer_id'],
-          'helper_id': user.id,
-          'relation_id': relations['id'],
-          'store_name': parseResult.storeName,
-          'amount': parseResult.totalAmount,
-          'created_at': DateTime.now().toIso8601String(),
-        },
-      });
-    } catch (e) {
-      // Notification is non-critical, don't fail the save
-      debugPrint('Notification broadcast failed: $e');
+    // Trigger notification broadcast to employer via Edge Function (only if linked)
+    if (relations?['employer_id'] != null) {
+      try {
+        await supabase.functions.invoke('notification-broadcast', body: {
+          'type': 'INSERT',
+          'table': 'receipts',
+          'record': {
+            'id': receiptId,
+            'employer_id': relations['employer_id'],
+            'helper_id': user.id,
+            'relation_id': relations['id'],
+            'store_name': parseResult.storeName,
+            'amount': parseResult.totalAmount,
+            'created_at': DateTime.now().toIso8601String(),
+          },
+        });
+      } catch (e) {
+        // Notification is non-critical, don't fail the save
+        debugPrint('Notification broadcast failed: $e');
+      }
     }
   }
 

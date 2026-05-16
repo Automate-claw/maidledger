@@ -217,9 +217,15 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
         _showSaveDialog(intent, imageForSend, locationForSend);
       }
     } catch (e) {
-      final errorMsg = e.toString().contains('timeout')
-          ? '⏱️ AI 回應超時，請再試一次'
-          : '⚠️ 抱歉，我遇到問題了。請再試一次。';
+      String errorMsg;
+      if (e.toString().contains('timeout')) {
+        errorMsg = '⏱️ AI 回應超時，請再試一次';
+      } else if (e.toString().contains('rate_limit') || e.toString().contains('rate_limited')) {
+        errorMsg = '⏱️ 操作太頻繁，請稍後再試。';
+      } else {
+        errorMsg = '⚠️ 抱歉，我遇到問題了。請再試一次。\n錯誤：${e.toString().substring(0, 100)}';
+        debugPrint('Chat error: $e');
+      }
       setState(() {
         _messages.add(ChatMessage(text: errorMsg, isUser: false));
         _isTyping = false;
@@ -288,13 +294,9 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
           .eq('status', 'active')
           .maybeSingle();
 
-      if (relations == null) {
-        _showNeedRelationDialog();
-        return;
-      }
-
-      final employerId = relations['employer_id'];
-      final relationId = relations['id'];
+      // employer_id can be null if helper hasn't linked yet
+      final employerId = relations?['employer_id'];
+      final relationId = relations?['id'];
 
       // Upload image to Supabase Storage (if attached)
       String? imageStorageUrl;
@@ -361,22 +363,25 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
       }
 
       // Trigger notification broadcast to employer (non-blocking)
-      try {
-        await client.functions.invoke('notification-broadcast', body: {
-          'type': 'INSERT',
-          'table': 'receipts',
-          'record': {
-            'id': receiptId,
-            'employer_id': employerId,
-            'helper_id': userId,
-            'relation_id': relationId,
-            'store_name': null,
-            'amount': intent.amount,
-            'created_at': DateTime.now().toIso8601String(),
-          },
-        });
-      } catch (e) {
-        debugPrint('Notification broadcast failed: $e');
+      // Only if helper has linked to employer
+      if (employerId != null) {
+        try {
+          await client.functions.invoke('notification-broadcast', body: {
+            'type': 'INSERT',
+            'table': 'receipts',
+            'record': {
+              'id': receiptId,
+              'employer_id': employerId,
+              'helper_id': userId,
+              'relation_id': relationId,
+              'store_name': null,
+              'amount': intent.amount,
+              'created_at': DateTime.now().toIso8601String(),
+            },
+          });
+        } catch (e) {
+          debugPrint('Notification broadcast failed: $e');
+        }
       }
 
       if (mounted) {
