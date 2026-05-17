@@ -346,7 +346,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
       }
 
       final items = _buildItemsFromIntent(intent);
-      final transactionDate = _parseTransactionDate(intent.rawText);
+      final transactionDate = _parseTransactionDate(intent.rawText) ?? DateTime.now();
 
       final receiptId = Uuid().v4();
       await client.from('receipts').insert({
@@ -506,21 +506,27 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
   }
 
   DateTime? _parseTransactionDate(String rawText) {
+    if (rawText.isEmpty) return null;
+
     final match1 = RegExp(r'(\d{1,2})[/\-](\d{1,2})[/\-](\d{4})').firstMatch(rawText);
     if (match1 != null) {
-      final g1 = int.parse(match1.group(1)!);
-      final g2 = int.parse(match1.group(2)!);
-      final g3 = int.parse(match1.group(3)!);
-      return DateTime(g3, g2, g1);
+      final d = int.parse(match1.group(1)!);
+      final m = int.parse(match1.group(2)!);
+      final y = int.parse(match1.group(3)!);
+      if (y > 1900 && y < 2100 && m >= 1 && m <= 12 && d >= 1 && d <= 31) {
+        return DateTime(y, m, d);
+      }
     }
     final match2 = RegExp(r'(\d{4})[/\-](\d{1,2})[/\-](\d{1,2})').firstMatch(rawText);
     if (match2 != null) {
-      final g1 = int.parse(match2.group(1)!);
-      final g2 = int.parse(match2.group(2)!);
-      final g3 = int.parse(match2.group(3)!);
-      return DateTime(g1, g2, g3);
+      final y = int.parse(match2.group(1)!);
+      final m = int.parse(match2.group(2)!);
+      final d = int.parse(match2.group(3)!);
+      if (y > 1900 && y < 2100 && m >= 1 && m <= 12 && d >= 1 && d <= 31) {
+        return DateTime(y, m, d);
+      }
     }
-    return null;
+    return null; // caller will use DateTime.now()
   }
 
   void _showNeedRelationDialog() {
