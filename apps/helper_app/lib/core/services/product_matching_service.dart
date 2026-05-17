@@ -27,7 +27,7 @@ class ProductMatchingService {
       final ilikeMatch = await _ilikeMatch(keywords, prdCate);
       if (ilikeMatch != null) {
         // Auto-create alias for next time
-        await _createAlias(ilikeMatch['id'] as String, cleanName, 'ocr');
+        await _createAlias(ilikeMatch.masterProductId, cleanName, 'ocr');
         return ilikeMatch;
       }
     }
@@ -66,18 +66,16 @@ class ProductMatchingService {
       tsQuery = keywords.join(' ');
     }
 
-    var query = _supabase
+    final query = _supabase
         .from('master_products')
         .select('id, canonical_name, brand, prd_cate')
         .textSearch('canonical_name', tsQuery, config: 'simple');
 
-    if (prdCate != null && prdCate.isNotEmpty && prdCate != 'other') {
-      query = query.eq('prd_cate', prdCate);
-    }
+    final filteredQuery = prdCate != null && prdCate.isNotEmpty && prdCate != 'other'
+        ? query.eq('prd_cate', prdCate)
+        : query;
 
-    query = query.limit(5);
-
-    final results = await query;
+    final results = await filteredQuery.limit(5);
     final rows = results as List;
 
     if (rows.isEmpty) return null;

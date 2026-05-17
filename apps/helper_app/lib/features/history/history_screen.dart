@@ -43,7 +43,7 @@ class _HistoryScreenState extends ConsumerState<HistoryScreen> {
         final itemsRes = await supabase
             .from('receipt_items')
             .select('id, receipt_id')
-            .in_('receipt_id', ids);
+            .filter('receipt_id', 'in', '($ids)');
         final itemsList = itemsRes as List;
         final itemsPerReceipt = <String, int>{};
         for (final item in itemsList) {

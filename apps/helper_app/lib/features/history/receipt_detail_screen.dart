@@ -20,7 +20,6 @@ class _ReceiptDetailScreenState extends ConsumerState<ReceiptDetailScreen> {
   String? _error;
   bool _isSaving = false;
 
-  // Editable fields
   late TextEditingController _storeNameController;
   late TextEditingController _locationController;
   late TextEditingController _amountController;
@@ -47,7 +46,6 @@ class _ReceiptDetailScreenState extends ConsumerState<ReceiptDetailScreen> {
   Future<void> _loadReceipt() async {
     setState(() => _isLoading = true);
     try {
-      // Load receipt header
       final receiptRes = await supabase
           .from('receipts')
           .select()
@@ -55,11 +53,13 @@ class _ReceiptDetailScreenState extends ConsumerState<ReceiptDetailScreen> {
           .maybeSingle();
 
       if (receiptRes == null) {
-        setState(() => _error = 'Receipt not found', _isLoading = false);
+        setState(() {
+          _error = 'Receipt not found';
+          _isLoading = false;
+        });
         return;
       }
 
-      // Load items
       final itemsRes = await supabase
           .from('receipt_items')
           .select()
@@ -78,7 +78,10 @@ class _ReceiptDetailScreenState extends ConsumerState<ReceiptDetailScreen> {
         _isLoading = false;
       });
     } catch (e) {
-      setState(() => _error = e.toString(), _isLoading = false);
+      setState(() {
+        _error = e.toString();
+        _isLoading = false;
+      });
     }
   }
 
@@ -89,7 +92,6 @@ class _ReceiptDetailScreenState extends ConsumerState<ReceiptDetailScreen> {
     try {
       final amount = double.tryParse(_amountController.text);
 
-      // Update receipt header
       await supabase.from('receipts').update({
         'store_name': _storeNameController.text.trim(),
         'store_cate': _storeCate,
@@ -102,7 +104,7 @@ class _ReceiptDetailScreenState extends ConsumerState<ReceiptDetailScreen> {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(content: Text('✅ 已儲存'), backgroundColor: Colors.green),
         );
-        Navigator.pop(context, true); // return true = changed
+        Navigator.pop(context, true);
       }
     } catch (e) {
       if (mounted) {
@@ -174,11 +176,8 @@ class _ReceiptDetailScreenState extends ConsumerState<ReceiptDetailScreen> {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      // ─── Photo ───
                       _buildPhotoSection(),
                       const SizedBox(height: 24),
-
-                      // ─── Store Info ───
                       _buildSectionTitle('🏪 商戶資料'),
                       const SizedBox(height: 12),
                       TextField(
@@ -220,8 +219,6 @@ class _ReceiptDetailScreenState extends ConsumerState<ReceiptDetailScreen> {
                         ),
                       ),
                       const SizedBox(height: 24),
-
-                      // ─── Amount + Date ───
                       _buildSectionTitle('💰 金額與日期'),
                       const SizedBox(height: 12),
                       Row(
@@ -231,7 +228,7 @@ class _ReceiptDetailScreenState extends ConsumerState<ReceiptDetailScreen> {
                               controller: _amountController,
                               keyboardType: TextInputType.number,
                               decoration: const InputDecoration(
-                                labelText: '總金額 (HK$)',
+                                labelText: '總金額 (HK\$)',
                                 border: OutlineInputBorder(),
                                 prefixIcon: Icon(Icons.attach_money),
                               ),
@@ -258,8 +255,6 @@ class _ReceiptDetailScreenState extends ConsumerState<ReceiptDetailScreen> {
                         ],
                       ),
                       const SizedBox(height: 24),
-
-                      // ─── Items ───
                       _buildSectionTitle('🛒 項目明細'),
                       const SizedBox(height: 12),
                       if (_items.isEmpty)
@@ -270,7 +265,7 @@ class _ReceiptDetailScreenState extends ConsumerState<ReceiptDetailScreen> {
                             borderRadius: BorderRadius.circular(12),
                           ),
                           child: const Center(
-                            child: Text('暫無項目，請新增', style: TextStyle(color: Colors.grey)),
+                            child: Text('暫無項目', style: TextStyle(color: Colors.grey)),
                           ),
                         )
                       else
@@ -309,7 +304,6 @@ class _ReceiptDetailScreenState extends ConsumerState<ReceiptDetailScreen> {
       );
     }
 
-    // Try to show as network URL or local file
     final isNetwork = imagePath.startsWith('http');
     final isBase64 = imagePath.length > 100 && !imagePath.contains('/');
 
@@ -377,49 +371,45 @@ class _ReceiptDetailScreenState extends ConsumerState<ReceiptDetailScreen> {
       margin: const EdgeInsets.only(bottom: 12),
       child: Padding(
         padding: const EdgeInsets.all(12),
-        child: Column(
+        child: Row(
           children: [
-            Row(
-              children: [
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        itemName,
-                        style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
-                      ),
-                      const SizedBox(height: 4),
-                      Text(
-                        '單價: ${unitPrice != null ? 'HK\$$unitPrice' : '-'}  ×  $qty  =  ${lineTotal != null ? 'HK\$$lineTotal' : '-'}',
-                        style: TextStyle(color: Colors.grey[600], fontSize: 13),
-                      ),
-                      Container(
-                        margin: const EdgeInsets.only(top: 4),
-                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
-                        decoration: BoxDecoration(
-                          color: _getPrdCateColor(prdCate).withValues(alpha: 0.1),
-                          borderRadius: BorderRadius.circular(12),
-                        ),
-                        child: Text(
-                          _getPrdCateName(prdCate),
-                          style: TextStyle(fontSize: 11, color: _getPrdCateColor(prdCate)),
-                        ),
-                      ),
-                    ],
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    itemName,
+                    style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
                   ),
-                ),
-                IconButton(
-                  icon: const Icon(Icons.edit, size: 20),
-                  onPressed: () => _showEditItemDialog(index),
-                  color: Colors.blue,
-                ),
-                IconButton(
-                  icon: const Icon(Icons.delete, size: 20),
-                  onPressed: () => _confirmDeleteItem(index),
-                  color: Colors.red,
-                ),
-              ],
+                  const SizedBox(height: 4),
+                  Text(
+                    '單價: ${unitPrice != null ? 'HK\$$unitPrice' : '-'}  ×  $qty  =  ${lineTotal != null ? 'HK\$$lineTotal' : '-'}',
+                    style: TextStyle(color: Colors.grey[600], fontSize: 13),
+                  ),
+                  const SizedBox(height: 4),
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                    decoration: BoxDecoration(
+                      color: _getPrdCateColor(prdCate).withAlpha(25),
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    child: Text(
+                      _getPrdCateName(prdCate),
+                      style: TextStyle(fontSize: 11, color: _getPrdCateColor(prdCate)),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            IconButton(
+              icon: const Icon(Icons.edit, size: 20),
+              onPressed: () => _showEditItemDialog(index),
+              color: Colors.blue,
+            ),
+            IconButton(
+              icon: const Icon(Icons.delete, size: 20),
+              onPressed: () => _confirmDeleteItem(index),
+              color: Colors.red,
             ),
           ],
         ),
@@ -461,7 +451,7 @@ class _ReceiptDetailScreenState extends ConsumerState<ReceiptDetailScreen> {
                     child: TextField(
                       controller: priceCtrl,
                       keyboardType: TextInputType.number,
-                      decoration: const InputDecoration(labelText: '單價 (HK$)', border: OutlineInputBorder()),
+                      decoration: const InputDecoration(labelText: '單價 (HK\$)', border: OutlineInputBorder()),
                     ),
                   ),
                 ],
@@ -473,7 +463,7 @@ class _ReceiptDetailScreenState extends ConsumerState<ReceiptDetailScreen> {
                 items: const [
                   DropdownMenuItem(value: 'fish', child: Text('魚')),
                   DropdownMenuItem(value: 'pork', child: Text('豬肉')),
-                  DropdownMenuItem(value: 'beef', child: Text:('牛肉')),
+                  DropdownMenuItem(value: 'beef', child: Text('牛肉')),
                   DropdownMenuItem(value: 'chicken', child: Text('雞')),
                   DropdownMenuItem(value: 'vegetables', child: Text('蔬菜')),
                   DropdownMenuItem(value: 'rice', child: Text('米')),
@@ -543,7 +533,7 @@ class _ReceiptDetailScreenState extends ConsumerState<ReceiptDetailScreen> {
       'chicken': Colors.orange,
       'vegetables': Colors.green,
       'rice': Colors.amber,
-      'oil': Colors.yellow[700]!,
+      'oil': Colors.yellow,
       'seasoning': Colors.purple,
       'snack': Colors.pink,
       'drink': Colors.cyan,
