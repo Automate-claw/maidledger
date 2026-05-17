@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-import 'src/locale_provider.dart';
+import 'locale_provider.dart';
 
 /// Localized strings keyed by AppLocale
 class AppStrings {
