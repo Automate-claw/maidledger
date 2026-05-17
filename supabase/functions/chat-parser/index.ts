@@ -260,9 +260,9 @@ ${storeCategories.map((c: { code: string; name_tc: string }) => `- ${c.code} = $
 
 ## 分析規則
 - 金額表達：「30蚊」「30元」「30塊」「\\$30」「30 dollars」「30PHP」都代表港幣30元
-- **用戶明確輸入的金額億先**。如果用戶說「紅衞魚 100$」，total_amount 必頁係 100，唔可以係你查到的魚單價或任何其他數值
-- **從 items 計算 total_amount**。如果用戶換了商品和金額，total_amount = sum(unit_price * qty)
-- **重要：唔可以自行查到或探斷市價格**，完全跟用戶輸入的金錯值
+- **用戶明確輸入的金額優先**。如果用戶說「紅衫魚 100$」，total_amount 必須係 100，唔可以係你查到的魚單價或任何其他數值
+- **從 items 計算 total_amount**。如果用戶提供了商品和金額，total_amount = sum(unit_price * qty)
+- **重要：唔可以自行查到或探斷市價格**，完全跟用戶輸入的金錢值
 - 如果完全無法解析，items可以係空陣列
 - parse_confidence 反映你對解析結果的信心`;
 
