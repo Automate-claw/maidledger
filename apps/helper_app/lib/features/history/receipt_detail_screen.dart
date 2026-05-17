@@ -305,7 +305,8 @@ class _ReceiptDetailScreenState extends ConsumerState<ReceiptDetailScreen> {
     }
 
     final isNetwork = imagePath.startsWith('http');
-    final isBase64 = imagePath.length > 100 && !imagePath.contains('/');
+    // isBase64: data:image URI OR long string with no protocol marker
+    final isBase64 = imagePath.startsWith('data:image') || (imagePath.length > 100 && !imagePath.contains('://'));
 
     return ClipRRect(
       borderRadius: BorderRadius.circular(12),
