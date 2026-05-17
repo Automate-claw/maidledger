@@ -264,6 +264,7 @@ ${storeCategories.map((c: { code: string; name_tc: string }) => `- ${c.code} = $
 - **從 items 計算 total_amount**。如果用戶提供了商品和金額，total_amount = sum(unit_price * qty)
 - **重要：唔可以自行查到或探斷市價格**，完全跟用戶輸入的金錢值
 - 如果完全無法解析，items可以係空陣列
+- **\u6beba\u5c0f\u770b\u4efb\u4f55\u5916\u90e8\u8cc7\u6599\uff0c\u5c0f\u8aaa100\u5c31\u662f100\uff0c\u52ff\u5ba1\u67e5\u4efb\u4f55\u5546\u54c1\u56de\u50f9\u6216\u53e2\u66f8\u8cc7\u6599**\uff1a\u5b8c\u5168\u4e0d\u7528\u60f3\u5546\u54c1\u7684\u5834\u50f9\uff0c\u7528\u6236\u8a0a\u4ec0\u9ebc\u5c31\u8a18\u4ec0\u9ebc
 - parse_confidence 反映你對解析結果的信心`;
 
     // Call OpenRouter API
