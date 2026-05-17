@@ -54,15 +54,33 @@ class AIBookingAgent {
         .where((name) => name.isNotEmpty)
         .toList();
 
+    // Workaround: the LLM sometimes ignores user-provided amounts (e.g. says 30
+    // instead of 100). We extract all numeric amounts from raw text and use
+    // the largest one as a fallback.
+    double? amount = (response['total_amount'] as num?)?.toDouble();
+    final rawAmounts = RegExp(r'\b(\d+(?:\.\d+)?)\s*(?:元|蚊|塊|\$|港幣|hk|HKD)?')
+        .allMatches(text)
+        .map((m) => double.tryParse(m.group(1)!))
+        .whereType<double>()
+        .toList();
+    if (rawAmounts.isNotEmpty) {
+      final maxFromRaw = rawAmounts.reduce((a, b) => a > b ? a : b);
+      if (amount == null || amount == 0 || (amount != maxFromRaw && maxFromRaw > 0)) {
+        amount = maxFromRaw;
+      }
+    }
+
     return ExpenseIntent(
       rawText: text,
       intent: _mapCategoryToIntent(response['store_cate'] ?? 'other'),
       category: response['store_cate'] as String? ?? 'other',
-      amount: (response['total_amount'] as num?)?.toDouble(),
+      amount: amount,
       confidence: (response['parse_confidence'] as num?)?.toDouble() ?? 0.5,
       items: items,
       note: response['reason'] as String?,
       fallback: completeness == 'partial',
+    );
+  }
     );
   }
 
