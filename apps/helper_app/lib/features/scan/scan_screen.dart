@@ -12,6 +12,7 @@ import 'package:uuid/uuid.dart';
 import '../../core/services/supabase_client_provider.dart';
 import '../../core/services/receipt_scanner_provider.dart';
 import '../../core/services/receipt_scanner_service.dart';
+import '../../core/services/product_matching_service.dart';
 
 /// Camera scan screen for receipt scanning
 /// Workflow: Photo → Compress → Upload to Storage → OCR → Edge LLM Parse → DB
@@ -288,12 +289,44 @@ class _ScanScreenState extends ConsumerState<ScanScreen> {
     });
 
     // Insert receipt items
+    final productMatcher = ProductMatchingService(supabase);
     if (parseResult.hasItems) {
       final itemRows = parseResult.items
           .map((item) => item.toMap(receiptId))
           .toList();
 
       await supabase.from('receipt_items').insert(itemRows);
+
+      // Auto-match items to master_products (silent, no user intervention)
+      for (var i = 0; i < parseResult.items.length; i++) {
+        final item = parseResult.items[i];
+        try {
+          final match = await productMatcher.matchItem(
+            itemName: item.itemRawText.isNotEmpty ? item.itemRawText : item.itemName,
+            prdCate: item.prdCate,
+          );
+          if (match != null) {
+            // Find the receipt_item by matching item_name + receipt_id
+            final itemRow = await supabase
+                .from('receipt_items')
+                .select('id')
+                .eq('receipt_id', receiptId)
+                .eq('item_name', item.itemName)
+                .maybeSingle();
+            if (itemRow != null) {
+              await productMatcher.bindReceiptItem(itemRow['id'] as String, match.masterProductId);
+            }
+          } else {
+            // No confident match — create new master product silently
+            await productMatcher.createMasterProduct(
+              rawName: item.itemName,
+              prdCate: item.prdCate,
+            );
+          }
+        } catch (_) {
+          // Matching errors should not break the save flow
+        }
+      }
     }
 
     // Trigger notification broadcast to employer via Edge Function (only if linked)
