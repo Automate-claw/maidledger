@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../core/services/supabase_client_provider.dart';
+import 'receipt_detail_screen.dart';
 
 /// History screen for viewing past receipts
 class HistoryScreen extends ConsumerStatefulWidget {
@@ -34,8 +35,28 @@ class _HistoryScreenState extends ConsumerState<HistoryScreen> {
           .order('created_at', ascending: false)
           .limit(50);
 
+      final receipts = List<Map<String, dynamic>>.from(response as List);
+
+      // Fetch items count per receipt
+      if (receipts.isNotEmpty) {
+        final ids = receipts.map((r) => r['id'] as String).toList();
+        final itemsRes = await supabase
+            .from('receipt_items')
+            .select('id, receipt_id')
+            .in_('receipt_id', ids);
+        final itemsList = itemsRes as List;
+        final itemsPerReceipt = <String, int>{};
+        for (final item in itemsList) {
+          final rid = item['receipt_id'] as String;
+          itemsPerReceipt[rid] = (itemsPerReceipt[rid] ?? 0) + 1;
+        }
+        for (final r in receipts) {
+          r['_items_count'] = itemsPerReceipt[r['id']] ?? 0;
+        }
+      }
+
       setState(() {
-        _receipts = List<Map<String, dynamic>>.from(response as List);
+        _receipts = receipts;
         _isLoading = false;
       });
     } catch (e) {
@@ -137,6 +158,17 @@ class _HistoryScreenState extends ConsumerState<HistoryScreen> {
                           return ReceiptCard(
                             receipt: receipt,
                             onDelete: () => _deleteReceipt(receipt['id'] as String),
+                            onTap: () async {
+                              final changed = await Navigator.push<bool>(
+                                context,
+                                MaterialPageRoute(
+                                  builder: (_) => ReceiptDetailScreen(
+                                    receiptId: receipt['id'] as String,
+                                  ),
+                                ),
+                              );
+                              if (changed == true) _loadReceipts();
+                            },
                           );
                         },
                       ),
@@ -148,24 +180,29 @@ class _HistoryScreenState extends ConsumerState<HistoryScreen> {
 class ReceiptCard extends StatelessWidget {
   final Map<String, dynamic> receipt;
   final VoidCallback onDelete;
+  final VoidCallback? onTap;
 
   const ReceiptCard({
     super.key,
     required this.receipt,
     required this.onDelete,
+    this.onTap,
   });
 
   @override
   Widget build(BuildContext context) {
     final amount = receipt['amount'];
-    final category = receipt['category'] as String? ?? 'other';
+    final storeCate = receipt['store_cate'] as String? ?? 'other';
     final syncStatus = receipt['sync_status'] as String? ?? 'pending';
     final createdAt = DateTime.tryParse(receipt['created_at'] as String? ?? '');
+    final storeName = receipt['store_name'] as String?;
+    final itemsCount = receipt['_items_count'] as int? ?? 0;
+    final hasImage = (receipt['image_local_path'] as String?)?.isNotEmpty == true;
 
     return Card(
       margin: const EdgeInsets.only(bottom: 12),
       child: InkWell(
-        onTap: () => _showReceiptDetail(context),
+        onTap: onTap,
         borderRadius: BorderRadius.circular(12),
         child: Padding(
           padding: const EdgeInsets.all(16),
@@ -174,53 +211,83 @@ class ReceiptCard extends StatelessWidget {
             children: [
               Row(
                 children: [
+                  // Photo indicator or category icon
                   Container(
-                    padding: const EdgeInsets.all(8),
+                    width: 48,
+                    height: 48,
+                    margin: const EdgeInsets.only(right: 12),
                     decoration: BoxDecoration(
-                      color: _getCategoryColor(category).withValues(alpha: 0.1),
                       borderRadius: BorderRadius.circular(8),
+                      color: hasImage
+                          ? Colors.grey[200]
+                          : _getCategoryColor(storeCate).withValues(alpha: 0.1),
                     ),
                     child: Icon(
-                      _getCategoryIcon(category),
-                      color: _getCategoryColor(category),
+                      hasImage ? Icons.receipt : _getCategoryIcon(storeCate),
+                      color: hasImage ? Colors.grey : _getCategoryColor(storeCate),
                       size: 24,
                     ),
                   ),
-                  const SizedBox(width: 12),
                   Expanded(
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        Text(
-                          amount != null ? '\$${amount.toStringAsFixed(0)}' : 'No amount',
-                          style: const TextStyle(
-                            fontSize: 20,
-                            fontWeight: FontWeight.bold,
-                          ),
+                        Row(
+                          children: [
+                            Text(
+                              amount != null ? '\$${amount.toStringAsFixed(0)}' : '-',
+                              style: const TextStyle(
+                                fontSize: 20,
+                                fontWeight: FontWeight.bold,
+                              ),
+                            ),
+                            if (storeName != null && storeName.isNotEmpty) ...[
+                              const SizedBox(width: 8),
+                              Expanded(
+                                child: Text(
+                                  storeName,
+                                  style: TextStyle(fontSize: 13, color: Colors.grey[600]),
+                                  overflow: TextOverflow.ellipsis,
+                                ),
+                              ),
+                            ],
+                          ],
                         ),
-                        Text(
-                          _getCategoryName(category),
-                          style: TextStyle(color: Colors.grey[600]),
+                        const SizedBox(height: 4),
+                        Row(
+                          children: [
+                            Container(
+                              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1),
+                              decoration: BoxDecoration(
+                                color: _getCategoryColor(storeCate).withValues(alpha: 0.1),
+                                borderRadius: BorderRadius.circular(8),
+                              ),
+                              child: Text(
+                                _getCategoryName(storeCate),
+                                style: TextStyle(fontSize: 11, color: _getCategoryColor(storeCate)),
+                              ),
+                            ),
+                            if (itemsCount > 0) ...[
+                              const SizedBox(width: 6),
+                              Container(
+                                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1),
+                                decoration: BoxDecoration(
+                                  color: Colors.blue.withValues(alpha: 0.1),
+                                  borderRadius: BorderRadius.circular(8),
+                                ),
+                                child: Text(
+                                  '$itemsCount 項',
+                                  style: const TextStyle(fontSize: 11, color: Colors.blue),
+                                ),
+                              ),
+                            ],
+                          ],
                         ),
                       ],
                     ),
                   ),
                   _buildSyncStatusChip(syncStatus),
                 ],
-              ),
-              const SizedBox(height: 12),
-              Container(
-                padding: const EdgeInsets.all(8),
-                decoration: BoxDecoration(
-                  color: Colors.grey[100],
-                  borderRadius: BorderRadius.circular(8),
-                ),
-                child: Text(
-                  receipt['raw_text'] as String? ?? '',
-                  maxLines: 2,
-                  overflow: TextOverflow.ellipsis,
-                  style: const TextStyle(fontFamily: 'monospace', fontSize: 12),
-                ),
               ),
               const SizedBox(height: 12),
               Row(
@@ -319,83 +386,24 @@ class ReceiptCard extends StatelessWidget {
     );
   }
 
-  void _showReceiptDetail(BuildContext context) {
-    showModalBottomSheet(
-      context: context,
-      isScrollControlled: true,
-      builder: (context) => DraggableScrollableSheet(
-        initialChildSize: 0.6,
-        minChildSize: 0.4,
-        maxChildSize: 0.9,
-        expand: false,
-        builder: (context, scrollController) => SingleChildScrollView(
-          controller: scrollController,
-          padding: const EdgeInsets.all(16),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Center(
-                child: Container(
-                  width: 40,
-                  height: 4,
-                  margin: const EdgeInsets.only(bottom: 16),
-                  decoration: BoxDecoration(
-                    color: Colors.grey[300],
-                    borderRadius: BorderRadius.circular(2),
-                  ),
-                ),
-              ),
-              const Text(
-                '📋 Receipt Details',
-                style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
-              ),
-              const SizedBox(height: 24),
-              const Text('Raw Text:', style: TextStyle(fontWeight: FontWeight.w600)),
-              const SizedBox(height: 8),
-              Container(
-                width: double.infinity,
-                padding: const EdgeInsets.all(12),
-                decoration: BoxDecoration(
-                  color: Colors.grey[100],
-                  borderRadius: BorderRadius.circular(8),
-                ),
-                child: SelectableText(
-                  receipt['raw_text'] as String? ?? '',
-                  style: const TextStyle(fontFamily: 'monospace'),
-                ),
-              ),
-              const SizedBox(height: 16),
-              if (receipt['parsed_data'] != null) ...[
-                const Text('Parsed Data:', style: TextStyle(fontWeight: FontWeight.w600)),
-                const SizedBox(height: 8),
-                Container(
-                  width: double.infinity,
-                  padding: const EdgeInsets.all(12),
-                  decoration: BoxDecoration(
-                    color: Colors.green[50],
-                    borderRadius: BorderRadius.circular(8),
-                  ),
-                  child: Text(
-                    receipt['parsed_data'].toString(),
-                    style: TextStyle(fontFamily: 'monospace', color: Colors.green[800]),
-                  ),
-                ),
-              ],
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-
   Color _getCategoryColor(String category) {
     switch (category) {
-      case 'food':
-        return Colors.green;
-      case 'transport':
+      case 'supermarket':
         return Colors.blue;
-      case 'household':
+      case 'wet_market':
+        return Colors.green;
+      case 'pharmacy':
+        return Colors.red;
+      case 'convenience':
+        return Colors.orange;
+      case 'online':
         return Colors.purple;
+      case 'restaurant':
+        return Colors.deepOrange;
+      case 'cafe':
+        return Colors.brown;
+      case 'takeaway':
+        return Colors.amber[700]!;
       default:
         return Colors.grey;
     }
@@ -403,12 +411,22 @@ class ReceiptCard extends StatelessWidget {
 
   IconData _getCategoryIcon(String category) {
     switch (category) {
-      case 'food':
+      case 'supermarket':
+        return Icons.shopping_cart;
+      case 'wet_market':
+        return Icons.storefront;
+      case 'pharmacy':
+        return Icons.local_pharmacy;
+      case 'convenience':
+        return Icons.store;
+      case 'online':
+        return Icons.language;
+      case 'restaurant':
         return Icons.restaurant;
-      case 'transport':
-        return Icons.directions_bus;
-      case 'household':
-        return Icons.home;
+      case 'cafe':
+        return Icons.local_cafe;
+      case 'takeaway':
+        return Icons.takeout_dining;
       default:
         return Icons.receipt;
     }
@@ -416,12 +434,22 @@ class ReceiptCard extends StatelessWidget {
 
   String _getCategoryName(String category) {
     switch (category) {
-      case 'food':
-        return '食物';
-      case 'transport':
-        return '交通';
-      case 'household':
-        return '家居';
+      case 'supermarket':
+        return '超市';
+      case 'wet_market':
+        return '街市';
+      case 'pharmacy':
+        return '藥房';
+      case 'convenience':
+        return '便利店';
+      case 'online':
+        return '網購';
+      case 'restaurant':
+        return '餐廳';
+      case 'cafe':
+        return '茶餐廳';
+      case 'takeaway':
+        return '外賣';
       default:
         return '其他';
     }
