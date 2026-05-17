@@ -78,12 +78,17 @@ class AIBookingAgent {
             'xNogdUAbWfpXvz90J0');
 
     final bodyBytes = utf8.encode(jsonEncode({'text': text, 'user_id': userId ?? 'anonymous'}));
+    debugPrint('🤖 [AIBookingAgent] Calling edge function with text: $text');
+
     req.write(bodyBytes);
 
     final resp = await req.close();
     final respStr = await resp.transform(utf8.decoder).join();
 
+    debugPrint('🤖 [AIBookingAgent] Edge response: $respStr');
+
     if (resp.statusCode != 200) {
+      debugPrint('🤖 [AIBookingAgent] Error response code: ${resp.statusCode}');
       throw Exception('Edge function error: $respStr');
     }
 

@@ -193,7 +193,9 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
     _scrollToBottom();
 
     try {
+      debugPrint('🔵 [_sendMessage] Sending message: $text');
       final userId = supabase.auth.currentUser?.id;
+      debugPrint('🔵 [_sendMessage] userId: $userId');
       final intent = await _agent.parseExpense(
         text.isEmpty ? 'photo expense' : text,
         userId: userId,
@@ -201,6 +203,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
         const Duration(seconds: 15),
         onTimeout: () => throw Exception('AI timeout'),
       );
+      debugPrint('🔵 [_sendMessage] Received intent: intent=${intent.intent}, confidence=${intent.confidence}, amount=${intent.amount}, items=${intent.items}');
 
       final response = _agent.buildResponse(intent);
 
