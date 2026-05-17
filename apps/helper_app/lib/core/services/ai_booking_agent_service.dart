@@ -1,6 +1,6 @@
 import 'dart:convert';
-import 'dart:io';
 import 'package:flutter/foundation.dart';
+import 'package:http/http.dart' as http;
 
 /// AI Booking Agent
 /// Multi-language conversational expense entry
@@ -67,33 +67,28 @@ class AIBookingAgent {
   }
 
   Future<Map<String, dynamic>> _callEdgeLLM(String text, {String? userId}) async {
-    final uri = Uri.parse(_edgeUrl);
-    final req = await HttpClient().postUrl(uri);
-
-    req.headers.set('Content-Type', 'application/json; charset=utf-8');
-    req.headers.set(
-        'Authorization',
-        'Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJl'
-            'ZiI6ImhueWF6ZnJrenB4ZGppeWZ6ZW1tIiwicm9sZSI6ImFub24iLCJpYXQiOjE3'
-            'Nzg2NTUwMjcsImV4cCI6MjA5NDIzMTAyN30.lo2HAv0E9WK1CRHTtU3idlrq3'
-            'xNogdUAbWfpXvz90J0');
-
-    final bodyBytes = utf8.encode(jsonEncode({'text': text, 'user_id': userId ?? 'anonymous'}));
     debugPrint('🤖 [AIBookingAgent] Calling edge function with text: $text');
 
-    req.write(bodyBytes);
+    final bodyBytes = utf8.encode(jsonEncode({'text': text, 'user_id': userId ?? 'anonymous'}));
 
-    final resp = await req.close();
-    final respStr = await resp.transform(utf8.decoder).join();
+    final resp = await http.post(
+      Uri.parse(_edgeUrl),
+      headers: {
+        'Content-Type': 'application/json; charset=utf-8',
+        'Authorization': 'Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImhueWF6ZnJrenB4ZGppeWZ6ZW1tIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzg2NTUwMjcsImV4cCI6MjA5NDIzMTAyN30.lo2HAv0E9WK1CRHTtU3idlrq3xNogdUAbWfpXvz90J0',
+      },
+      body: bodyBytes,
+    ).timeout(const Duration(seconds: 20));
 
-    debugPrint('🤖 [AIBookingAgent] Edge response: $respStr');
+    debugPrint('🤖 [AIBookingAgent] Edge response status: ${resp.statusCode}');
+    debugPrint('🤖 [AIBookingAgent] Edge response body: ${resp.body}');
 
     if (resp.statusCode != 200) {
       debugPrint('🤖 [AIBookingAgent] Error response code: ${resp.statusCode}');
-      throw Exception('Edge function error: $respStr');
+      throw Exception('Edge function error: ${resp.body}');
     }
 
-    return jsonDecode(respStr) as Map<String, dynamic>;
+    return jsonDecode(resp.body) as Map<String, dynamic>;
   }
 
   /// Create a rejection intent (is_expense=false or insufficient)
