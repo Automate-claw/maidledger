@@ -27,6 +27,8 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
   // Attached image state
   XFile? _attachedImage;
   String? _extractedLocation;
+  bool _isExtractingLocation = false; // blocks send until location is ready
+  String? _attachedImageBase64; // for reliable display
 
   late final AIBookingAgent _agent;
 
@@ -58,8 +60,16 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
     );
     if (image == null) return;
 
-    setState(() => _attachedImage = image);
+    final bytes = await image.readAsBytes();
+    final base64 = base64Encode(bytes);
+
+    setState(() {
+      _attachedImage = image;
+      _attachedImageBase64 = base64;
+      _isExtractingLocation = true;
+    });
     await _extractExifLocation(image);
+    if (mounted) setState(() => _isExtractingLocation = false);
   }
 
   Future<void> _takePhoto() async {
@@ -72,8 +82,16 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
     );
     if (image == null) return;
 
-    setState(() => _attachedImage = image);
+    final bytes = await image.readAsBytes();
+    final base64 = base64Encode(bytes);
+
+    setState(() {
+      _attachedImage = image;
+      _attachedImageBase64 = base64;
+      _isExtractingLocation = true;
+    });
     await _extractExifLocation(image);
+    if (mounted) setState(() => _isExtractingLocation = false);
   }
 
   Future<void> _extractExifLocation(XFile image) async {
@@ -166,6 +184,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
   void _removeAttachment() {
     setState(() {
       _attachedImage = null;
+      _attachedImageBase64 = null;
       _extractedLocation = null;
     });
   }
@@ -183,13 +202,18 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
       _messages.add(ChatMessage(
         text: text.isEmpty ? AppStrings.photoExpense(locale) : text,
         isUser: true,
-        imagePath: _attachedImage?.path,
+        imagePath: _attachedImageBase64, // use base64 for reliable display
       ));
       _isTyping = true;
     });
 
     _messageController.clear();
     final imageForSend = _attachedImage;
+    final imageBase64ForSend = _attachedImageBase64;
+    // Wait for location extraction to finish before sending
+    while (_isExtractingLocation) {
+      await Future.delayed(const Duration(milliseconds: 100));
+    }
     final locationForSend = _extractedLocation;
     _scrollToBottom();
 
@@ -220,7 +244,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
       _scrollToBottom();
 
       if (intent.confidence > 0.7 && (intent.amount != null || intent.items.isNotEmpty)) {
-        _showSaveDialog(intent, imageForSend, locationForSend);
+        _showSaveDialog(intent, imageForSend, locationForSend, imageBase64ForSend);
       }
     } catch (e) {
       final locale = ref.read(localeProvider);
@@ -245,7 +269,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
     });
   }
 
-  void _showSaveDialog(ExpenseIntent intent, XFile? image, String? location) {
+  void _showSaveDialog(ExpenseIntent intent, XFile? image, String? location, String? imageBase64) {
     final locale = ref.read(localeProvider);
     showDialog(
       context: context,
@@ -255,6 +279,18 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
+            if (imageBase64 != null) ...[
+              ClipRRect(
+                borderRadius: BorderRadius.circular(8),
+                child: Image.memory(
+                  base64Decode(imageBase64),
+                  width: 80,
+                  height: 80,
+                  fit: BoxFit.cover,
+                ),
+              ),
+              const SizedBox(height: 8),
+            ],
             Text('${AppStrings.input(locale)}：${intent.rawText}'),
             const SizedBox(height: 4),
             Text('${AppStrings.category(locale)}：${intent.category ?? "未知"}'),
@@ -275,7 +311,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
           FilledButton(
             onPressed: () {
               Navigator.pop(context);
-              _saveExpense(intent, image, location);
+              _saveExpense(intent, image, location, imageBase64: imageBase64ForSend);
             },
             child: Text(AppStrings.confirm(locale)),
           ),
@@ -287,7 +323,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
   // ─────────────────────────────────────────────
   // Save expense
   // ─────────────────────────────────────────────
-  Future<void> _saveExpense(ExpenseIntent intent, XFile? image, String? location) async {
+  Future<void> _saveExpense(ExpenseIntent intent, XFile? image, String? location, {String? imageBase64}) async {
     final locale = ref.read(localeProvider);
     try {
       final client = supabase;
@@ -306,7 +342,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
 
       String? imageStorageUrl;
       if (image != null) {
-        imageStorageUrl = await _uploadImage(image, userId);
+        imageStorageUrl = await _uploadImage(image, userId, base64: imageBase64);
       }
 
       final items = _buildItemsFromIntent(intent);
@@ -401,22 +437,28 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
     }
   }
 
-  Future<String?> _uploadImage(XFile image, String userId) async {
+  Future<String?> _uploadImage(XFile image, String userId, {String? base64}) async {
     try {
       final client = supabase;
       final fileName = '${userId}_${DateTime.now().millisecondsSinceEpoch}.jpg';
-      final bytes = await image.readAsBytes();
+      final bytes = base64 != null
+          ? base64Decode(base64)
+          : await image.readAsBytes();
 
-      await client.storage
-          .from('receipts')
-          .uploadBinary(fileName, bytes);
+      try {
+        await client.storage
+            .from('receipts')
+            .uploadBinary(fileName, bytes);
 
-      final url = client.storage
-          .from('receipts')
-          .getPublicUrl(fileName);
-
-      return url;
+        return client.storage
+            .from('receipts')
+            .getPublicUrl(fileName);
+      } catch (_) {
+        // Storage upload failed — store base64 directly as data URL
+        return 'data:image/jpeg;base64,$base64';
+      }
     } catch (e) {
+      debugPrint('_uploadImage error: $e');
       return null;
     }
   }
@@ -543,8 +585,8 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
                   if (_attachedImage != null) ...[
                     ClipRRect(
                       borderRadius: BorderRadius.circular(8),
-                      child: Image.file(
-                        File(_attachedImage!.path),
+                      child: Image.memory(
+                        base64Decode(_attachedImageBase64!),
                         width: 48,
                         height: 48,
                         fit: BoxFit.cover,
@@ -716,12 +758,19 @@ class ChatBubble extends StatelessWidget {
                 padding: const EdgeInsets.only(bottom: 8),
                 child: ClipRRect(
                   borderRadius: BorderRadius.circular(8),
-                  child: Image.file(
-                    File(message.imagePath!),
-                    width: 120,
-                    height: 120,
-                    fit: BoxFit.cover,
-                  ),
+                  child: message.imagePath!.length > 100
+                      ? Image.memory(
+                          base64Decode(message.imagePath!),
+                          width: 120,
+                          height: 120,
+                          fit: BoxFit.cover,
+                        )
+                      : Image.file(
+                          File(message.imagePath!),
+                          width: 120,
+                          height: 120,
+                          fit: BoxFit.cover,
+                        ),
                 ),
               ),
             Text(
