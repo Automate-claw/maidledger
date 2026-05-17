@@ -30,6 +30,11 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
   bool _isExtractingLocation = false; // blocks send until location is ready
   String? _attachedImageBase64; // for reliable display
 
+  // Buffer for save dialog (needed because dialog outlives _sendMessage scope)
+  XFile? _pendingImage;
+  String? _pendingLocation;
+  String? _pendingImageBase64;
+
   late final AIBookingAgent _agent;
 
   @override
@@ -208,13 +213,14 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
     });
 
     _messageController.clear();
-    final imageForSend = _attachedImage;
-    final imageBase64ForSend = _attachedImageBase64;
+    // Save to pending buffers so dialog can access after _sendMessage returns
+    _pendingImage = _attachedImage;
+    _pendingImageBase64 = _attachedImageBase64;
+    _pendingLocation = _extractedLocation;
     // Wait for location extraction to finish before sending
     while (_isExtractingLocation) {
       await Future.delayed(const Duration(milliseconds: 100));
     }
-    final locationForSend = _extractedLocation;
     _scrollToBottom();
 
     try {
@@ -244,7 +250,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
       _scrollToBottom();
 
       if (intent.confidence > 0.7 && (intent.amount != null || intent.items.isNotEmpty)) {
-        _showSaveDialog(intent, imageForSend, locationForSend, imageBase64ForSend);
+        _showSaveDialog(intent, _pendingImage, _pendingLocation, _pendingImageBase64);
       }
     } catch (e) {
       final locale = ref.read(localeProvider);
@@ -265,7 +271,11 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
 
     setState(() {
       _attachedImage = null;
+      _attachedImageBase64 = null;
       _extractedLocation = null;
+      _pendingImage = null;
+      _pendingLocation = null;
+      _pendingImageBase64 = null;
     });
   }
 
@@ -311,7 +321,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
           FilledButton(
             onPressed: () {
               Navigator.pop(context);
-              _saveExpense(intent, image, location, imageBase64: imageBase64ForSend);
+              _saveExpense(intent, image, location, imageBase64: imageBase64);
             },
             child: Text(AppStrings.confirm(locale)),
           ),
