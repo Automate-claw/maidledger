@@ -1,5 +1,5 @@
 import 'dart:convert';
-import 'dart:io';
+import 'package:uuid/uuid.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:image_picker/image_picker.dart';
@@ -311,7 +311,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
       final items = _buildItemsFromIntent(intent);
       final transactionDate = _parseTransactionDate(intent.rawText);
 
-      final receiptId = DateTime.now().millisecondsSinceEpoch.toString();
+      final receiptId = Uuid().v4();
       await client.from('receipts').insert({
         'id': receiptId,
         'employer_id': employerId,
