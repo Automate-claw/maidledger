@@ -22,8 +22,9 @@ const FRIENDLY_RESPONSES = [
   "💰 想記帳？請告訴我物品和金額，例如：\n• 雞脾 45蚊\n• 蔬菜 30元\n• 魚 1斤 35",
 ];
 
-function friendlyResponse(text: string) {
-  const idx = text.length % FRIENDLY_RESPONSES.length;
+function friendlyResponse(text?: string) {
+  const safeText = text ?? "";
+  const idx = safeText.length % FRIENDLY_RESPONSES.length;
   return FRIENDLY_RESPONSES[idx];
 }
 
