@@ -28,6 +28,47 @@ function friendlyResponse(text?: string) {
   return FRIENDLY_RESPONSES[idx];
 }
 
+// ─── Helper: write chat log to DB ───
+async function logToDb(
+  supabaseUrl: string,
+  supabaseKey: string,
+  userId: string,
+  inputText: string,
+  output: Record<string, unknown>,
+  rawResponse: string | null,
+  durationMs: number,
+  error: string | null,
+) {
+  try {
+    await fetch(
+      `${supabaseUrl}/rest/v1/chat_logs`,
+      {
+        method: "POST",
+        headers: {
+          "apikey": supabaseKey,
+          "Authorization": `Bearer ${supabaseKey}`,
+          "Content-Type": "application/json",
+          "Prefer": "return=minimal",
+        },
+        body: JSON.stringify({
+          user_id: userId,
+          input_text: inputText,
+          output_response: output,
+          is_expense: output.is_expense ?? false,
+          completeness: output.completeness ?? null,
+          total_amount: output.total_amount ?? null,
+          parse_confidence: output.parse_confidence ?? null,
+          llm_raw_response: rawResponse,
+          duration_ms: durationMs,
+          error: error,
+        }),
+      },
+    );
+  } catch (_) {
+    // Log failure should never break the main flow
+  }
+}
+
 serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response("ok", { headers: corsHeaders });
@@ -36,19 +77,23 @@ serve(async (req) => {
   try {
     const { text, user_id } = await req.json();
 
+    // ─── Parse input ───
+    const uid = user_id ?? 'anonymous';
+    const startTime = Date.now();
+
     if (!text || text.trim().length === 0) {
-      return new Response(
-        JSON.stringify({
-          is_expense: false,
-          completeness: "invalid",
-          reason: null,
-          items: [],
-          total_amount: null,
-          parse_confidence: 0,
-          response_message: friendlyResponse(text),
-        }),
-        { headers: { ...corsHeaders, "Content-Type": "application/json" } }
-      );
+      const emptyResp = {
+        is_expense: false,
+        completeness: "invalid",
+        reason: null,
+        items: [],
+        total_amount: null,
+        parse_confidence: 0,
+        response_message: friendlyResponse(text),
+      };
+      // Log empty input
+      await logToDb(supabaseUrl, supabaseKey, uid, text ?? "", emptyResp, null, Date.now() - startTime, null);
+      return new Response(JSON.stringify(emptyResp), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
     }
 
     const supabaseUrl = Deno.env.get("SUPABASE_URL") ?? "";
@@ -56,14 +101,12 @@ serve(async (req) => {
     const openRouterKey = Deno.env.get("OPENROUTER_API_KEY");
 
     if (!openRouterKey) {
-      return new Response(
-        JSON.stringify({ error: "OPENROUTER_API_KEY not configured" }),
-        { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-      );
+      const noKeyResp = { error: "OPENROUTER_API_KEY not configured" };
+      await logToDb(supabaseUrl, supabaseKey, uid, text, noKeyResp, null, 0, "OPENROUTER_API_KEY not configured");
+      return new Response(JSON.stringify(noKeyResp), { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } });
     }
 
     // ─── Rate Limiting ───
-    const uid = user_id ?? 'anonymous';
     const now = Date.now();
 
     // Count requests in last 60 seconds
@@ -267,34 +310,32 @@ ${storeCategories.map((c: { code: string; name_tc: string }) => `- ${c.code} = $
 
     // Build response
     if (!textResponse) {
-      return new Response(
-        JSON.stringify({
-          is_expense: false,
-          completeness: "invalid",
-          reason: null,
-          items: [],
-          total_amount: null,
-          parse_confidence: 0,
-          response_message: friendlyResponse(text),
-        }),
-        { headers: { ...corsHeaders, "Content-Type": "application/json" } }
-      );
+      const noLlmsResp = {
+        is_expense: false,
+        completeness: "invalid",
+        reason: null,
+        items: [],
+        total_amount: null,
+        parse_confidence: 0,
+        response_message: friendlyResponse(text),
+      };
+      await logToDb(supabaseUrl, supabaseKey, uid, text, noLlmsResp, null, Date.now() - startTime, `No LLM response: ${lastError}`);
+      return new Response(JSON.stringify(noLlmsResp), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
     }
 
     const jsonMatch = textResponse.match(/\{[\s\S]*\}/);
     if (!jsonMatch) {
-      return new Response(
-        JSON.stringify({
-          is_expense: false,
-          completeness: "invalid",
-          reason: null,
-          items: [],
-          total_amount: null,
-          parse_confidence: 0,
-          response_message: friendlyResponse(text),
-        }),
-        { headers: { ...corsHeaders, "Content-Type": "application/json" } }
-      );
+      const jsonFailResp = {
+        is_expense: false,
+        completeness: "invalid",
+        reason: null,
+        items: [],
+        total_amount: null,
+        parse_confidence: 0,
+        response_message: friendlyResponse(text),
+      };
+      await logToDb(supabaseUrl, supabaseKey, uid, text, jsonFailResp, textResponse, Date.now() - startTime, "No JSON found in LLM response");
+      return new Response(JSON.stringify(jsonFailResp), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
     }
 
     const parsed = JSON.parse(jsonMatch[0]);
@@ -324,6 +365,9 @@ ${storeCategories.map((c: { code: string; name_tc: string }) => `- ${c.code} = $
       result.response_message = friendlyResponse(text);
     }
 
+    // Log successful parse
+    await logToDb(supabaseUrl, supabaseKey, uid, text, result, textResponse, Date.now() - startTime, null);
+
     return new Response(
       JSON.stringify(result),
       { headers: { ...corsHeaders, "Content-Type": "application/json" } }
@@ -331,16 +375,19 @@ ${storeCategories.map((c: { code: string; name_tc: string }) => `- ${c.code} = $
 
   } catch (error) {
     console.error("Edge function error:", error);
+    const errResp = {
+      is_expense: false,
+      completeness: "invalid",
+      reason: null,
+      items: [],
+      total_amount: null,
+      parse_confidence: 0,
+      response_message: friendlyResponse("error"),
+    };
+    // Attempt to log error (use 'unknown' for uid since we may not have parsed it)
+    await logToDb(supabaseUrl, supabaseKey, user_id ?? 'unknown', text ?? '', errResp, null, 0, String(error));
     return new Response(
-      JSON.stringify({
-        is_expense: false,
-        completeness: "invalid",
-        reason: null,
-        items: [],
-        total_amount: null,
-        parse_confidence: 0,
-        response_message: friendlyResponse("error"),
-      }),
+      JSON.stringify(errResp),
       { headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );
   }
