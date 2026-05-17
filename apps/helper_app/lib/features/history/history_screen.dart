@@ -39,16 +39,14 @@ class _HistoryScreenState extends ConsumerState<HistoryScreen> {
 
       // Fetch items count per receipt
       if (receipts.isNotEmpty) {
-        final ids = receipts.map((r) => r['id'] as String).toList();
-        final itemsRes = await supabase
-            .from('receipt_items')
-            .select('id, receipt_id')
-            .filter('receipt_id', 'in', '($ids)');
-        final itemsList = itemsRes as List;
         final itemsPerReceipt = <String, int>{};
-        for (final item in itemsList) {
-          final rid = item['receipt_id'] as String;
-          itemsPerReceipt[rid] = (itemsPerReceipt[rid] ?? 0) + 1;
+        for (final r in receipts) {
+          final rid = r['id'] as String;
+          final itemsRes = await supabase
+              .from('receipt_items')
+              .select('id')
+              .eq('receipt_id', rid);
+          itemsPerReceipt[rid] = (itemsRes as List).length;
         }
         for (final r in receipts) {
           r['_items_count'] = itemsPerReceipt[r['id']] ?? 0;
