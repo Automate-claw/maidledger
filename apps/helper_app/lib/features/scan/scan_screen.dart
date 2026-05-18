@@ -193,19 +193,24 @@ class _ScanScreenState extends ConsumerState<ScanScreen> {
   /// Upload compressed image to Supabase Storage, return public URL
   Future<String> _uploadToStorage(Uint8List bytes, String originalPath) async {
     final fileName = 'receipt_${DateTime.now().millisecondsSinceEpoch}.jpg';
-    final filePath = 'receipts/$fileName';
+    // Upload with just filename (not 'receipts/filename') to avoid double-nesting
+    // getPublicUrl creates full path including bucket name
 
     try {
       await supabase.storage
           .from('receipts')
-          .uploadBinary(filePath, bytes);
+          .uploadBinary(fileName, bytes);
     } catch (e) {
       throw Exception('Upload failed: $e');
     }
 
-    // Return public URL
-    final url = supabase.storage.from('receipts').getPublicUrl(filePath);
-    return url;
+    // Use createSignedUrl for authenticated access (bucket is not public)
+    final signedUrl = await supabase.storage
+        .from('receipts')
+        .createSignedUrl(fileName, 60 * 60 * 24 * 365); // 1 year validity
+
+    debugPrint('_uploadToStorage: success, signedUrl=$signedUrl');
+    return signedUrl;
   }
 
   /// Call Supabase Edge Function for LLM parsing
