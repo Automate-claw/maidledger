@@ -531,13 +531,16 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
       debugPrint('_uploadImage: attempting storage upload, file=$fileName, size=${bytes.length}');
 
       try {
-        await client.storage
-            .from('receipts')
-            .uploadBinary(fileName, bytes);
+        final storage = client.storage.from('receipts');
+        
+        await storage.uploadBinary(
+          fileName, 
+          bytes,
+        );
 
-        final publicUrl = client.storage
-            .from('receipts')
-            .getPublicUrl(fileName);
+        // Construct public URL manually to avoid double 'receipts/' in path
+        // Supabase public URL format: https://project.supabase.co/storage/v1/object/public/bucket/filename
+        final publicUrl = 'https://hnyazfrkzpxdjiyfzemm.supabase.co/storage/v1/object/public/receipts/$fileName';
 
         debugPrint('_uploadImage: success, publicUrl=$publicUrl');
         return publicUrl;
