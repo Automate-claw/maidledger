@@ -192,26 +192,20 @@ class _ScanScreenState extends ConsumerState<ScanScreen> {
 
   /// Upload compressed image to Supabase Storage, return public URL
   Future<String> _uploadToStorage(Uint8List bytes, String originalPath) async {
-    // Flutter SDK auto-prepends bucket name 'receipts' to path
-    // So use just filename - stored at receipts/filename
     final fileName = 'receipt_${DateTime.now().millisecondsSinceEpoch}.jpg';
+    final filePath = 'receipts/$fileName';
 
     try {
       await supabase.storage
           .from('receipts')
-          .uploadBinary(fileName, bytes);
-      debugPrint('_uploadToStorage: uploadBinary(\'$fileName\') succeeded');
+          .uploadBinary(filePath, bytes);
     } catch (e) {
-      debugPrint('_uploadToStorage: uploadBinary failed: $e');
       throw Exception('Upload failed: $e');
     }
 
-    // createSignedUrl: SDK prepends bucket automatically
-    final signedUrl = await supabase.storage
-        .from('receipts')
-        .createSignedUrl(fileName, 60 * 60 * 24 * 365);
-    debugPrint('_uploadToStorage: signedUrl=$signedUrl');
-    return signedUrl;
+    // Return public URL
+    final url = supabase.storage.from('receipts').getPublicUrl(filePath);
+    return url;
   }
 
   /// Call Supabase Edge Function for LLM parsing
