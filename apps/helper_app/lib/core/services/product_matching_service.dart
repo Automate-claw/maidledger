@@ -1,5 +1,23 @@
 import 'package:supabase_flutter/supabase_flutter.dart';
 
+static const Map<String, List<String>> multiLangFish = {
+  'fish': ['魚', '魚類', '紅衫魚', '石斑', 'isda', 'ikan', 'fish', 'iping', 'bangus'],
+};
+
+static const Map<String, List<String>> multiLangMeat = {
+  'pork': ['豬肉', '豬', 'carne', 'karne', 'baboy', 'daging babi'],
+  'beef': ['牛肉', '牛', 'beef', 'carne de res', 'sapi'],
+  'chicken': ['雞肉', '雞', 'chicken', 'manok', 'ayam'],
+};
+
+static const Map<String, List<String>> multiLangVeg = {
+  'vegetables': ['蔬菜', '菜', 'veggies', 'gulay', 'sayur', 'sayuran'],
+};
+
+static const Map<String, List<String>> multiLangRice = {
+  'rice': ['米', '飯', 'rice', 'kanin', 'nasi'],
+};
+
 /// ILIKE-based product matching service
 /// Phase 1 MVP: no pgvector dependency
 class ProductMatchingService {
@@ -66,7 +84,7 @@ class ProductMatchingService {
       tsQuery = keywords.join(' ');
     }
 
-    final query = _supabase
+    var query = _supabase
         .from('master_products')
         .select('id, canonical_name, brand, prd_cate')
         .textSearch('canonical_name', tsQuery, config: 'simple');
@@ -78,7 +96,9 @@ class ProductMatchingService {
     final results = await filteredQuery.limit(5);
     final rows = results as List;
 
-    if (rows.isEmpty) return null;
+    if (rows.isEmpty) {
+      return _multiLangFallbackMatch(keywords, prdCate);
+    }
 
     // Score by how many keywords matched
     MasterMatchResult? best;
@@ -109,6 +129,40 @@ class ProductMatchingService {
       return best;
     }
 
+    return _multiLangFallbackMatch(keywords, prdCate);
+  }
+
+  Future<MasterMatchResult?> _multiLangFallbackMatch(List<String> keywords, String? prdCate) async {
+    final allLangDicts = [multiLangFish, multiLangMeat, multiLangVeg, multiLangRice];
+
+    for (final kw in keywords) {
+      final kwLower = kw.toLowerCase();
+      for (final dict in allLangDicts) {
+        for (final entry in dict.entries) {
+          if (entry.value.contains(kwLower)) {
+            final englishKeyword = entry.key;
+            final langResults = await _supabase
+                .from('master_products')
+                .select('id, canonical_name, brand, prd_cate')
+                .textSearch('canonical_name', englishKeyword, config: 'simple')
+                .limit(3);
+
+            final rows = langResults as List;
+            if (rows.isNotEmpty) {
+              final row = rows.first;
+              return MasterMatchResult(
+                masterProductId: row['id'] as String,
+                canonicalName: row['canonical_name'] as String,
+                brand: row['brand'] as String?,
+                prdCate: row['prd_cate'] as String?,
+                confidence: 0.6,
+                matchedVia: MatchedVia.ilike,
+              );
+            }
+          }
+        }
+      }
+    }
     return null;
   }
 
