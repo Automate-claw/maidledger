@@ -333,3 +333,15 @@ flutter_local_notifications.show() → 本地推送
 | 2026-05-17 | chat-parser: 簡化 logic（移除預檢，直接 LLM）|
 | 2026-05-17 | chat-parser: 加入 rate limiting（6/min, >5 non-expense→30min block）|
 | 2026-05-17 | chat-parser: 非開支 → friendly guidance，唔係 error |
+| 2026-05-18 | 加入 shops + shop_aliases + shop_matching_service（眾包店舖標準化）|
+| 2026-05-18 | 加入 raw amount extraction + validation（防止 LLM 忽略用戶金額）|
+| 2026-05-18 | 加入 multi-language product matching |
+| 2026-05-18 | 加入 price_history table + write flow |
+| 2026-05-18 | 加入 price-alert-engine + weather suppression |
+| 2026-05-18 | 加入 weather-check edge function（HK Observatory API）|
+
+---
+
+## 🏷️ Crowdsourced Price System
+
+見 [docs/CROWDSOURCED_PRICE_SYSTEM.md](./docs/CROWDSOURCED_PRICE_SYSTEM.md) |

@@ -273,7 +273,13 @@ checkRelationStatus(userId)
 | 2-stage input classification (is_expense) | ✅ 完成 | Prevents conversational abuse |
 | employer_app | ⬜ 未開始 | 需要 My Code + Receipt list |
 | user_profiles.default_location | ⬜ 待做 | Location fallback for chat |
-| Rate limiting | ⬜ 暫時不做 | — |
+| Rate limiting | ✅ 完成 | 6/min + 30min block |
+| Raw amount extraction + validation | ✅ 完成 | Regex-based pre-LLM extraction |
+| Shop standardization (shops + aliases) | ✅ 完成 | shop_matching_service.dart |
+| Multi-language product matching | ✅ 完成 | isda/ikan/bangus support |
+| Price history write flow | ✅ 完成 | price_history table |
+| Price alert engine | ✅ 完成 | weather suppression |
+| Weather check function | ✅ 完成 | HK Observatory API stub |
 
 ---
 
@@ -324,3 +330,7 @@ Phase 3
 | 2026-05-15 | 加入 receipt_items（normalized item storage）|
 | 2026-05-15 | 加入 short_code（6位僱主邀請碼）|
 | 2026-05-13 | 初始版本 |
+| 2026-05-18 | 加入眾包價格系統（shops, shop_aliases, price_history, price_alerts）|
+| 2026-05-18 | chat-parser: raw amount extraction + LLM output validation |
+| 2026-05-18 | multi-language product matching（魚/isda/ikan）|
+| 2026-05-18 | price-alert-engine with weather suppression | |
