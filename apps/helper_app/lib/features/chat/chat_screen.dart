@@ -421,6 +421,8 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
         });
       }
 
+      await _writePriceHistory(receiptId, items, matchedShopId, location);
+
       if (employerId != null) {
         try {
           await client.functions.invoke('notification-broadcast', body: {
@@ -551,6 +553,33 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
       }
     }
     return null; // caller will use DateTime.now()
+  }
+
+  Future<void> _writePriceHistory(String receiptId, List<Map<String, dynamic>> items, String? shopId, String? location) async {
+    if (items.isEmpty) return;
+
+    try {
+      final client = supabase;
+      final priceRecords = items
+          .where((item) => item['unit_price'] != null && (item['unit_price'] as double) > 0)
+          .map((item) => {
+            'master_product_id': item['master_product_id'],
+            'shop_id': shopId,
+            'location': location,
+            'price': item['unit_price'],
+            'unit': '件',
+            'source_receipt_id': receiptId,
+            'recorded_at': DateTime.now().toIso8601String().split('T')[0],
+          })
+          .where((record) => record['master_product_id'] != null)
+          .toList();
+
+      if (priceRecords.isNotEmpty) {
+        await client.from('price_history').insert(priceRecords);
+      }
+    } catch (e) {
+      debugPrint('_writePriceHistory error: $e');
+    }
   }
 
   void _showNeedRelationDialog() {
