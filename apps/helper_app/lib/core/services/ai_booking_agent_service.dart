@@ -79,8 +79,7 @@ class AIBookingAgent {
       items: items,
       note: response['reason'] as String?,
       fallback: completeness == 'partial',
-    );
-  }
+      storeName: response['store_name'] as String?,
     );
   }
 
@@ -193,6 +192,7 @@ class ExpenseIntent {
   final bool fallback;
   final bool isRejected;
   final String? rejectionReason;
+  final String? storeName;
 
   ExpenseIntent({
     required this.rawText,
@@ -205,5 +205,6 @@ class ExpenseIntent {
     this.fallback = false,
     this.isRejected = false,
     this.rejectionReason,
+    this.storeName,
   });
 }

@@ -8,6 +8,7 @@ import 'package:exif/exif.dart';
 import 'package:maidledger_localization/maidledger_localization.dart';
 import '../../core/services/supabase_client_provider.dart';
 import '../../core/services/ai_booking_agent_service.dart';
+import '../../core/services/shop_matching_service.dart';
 
 /// Chat screen for AI-powered expense entry
 /// Supports: text input + optional image attachment + EXIF location
@@ -359,6 +360,17 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
       final transactionDate = _parseTransactionDate(intent.rawText) ?? DateTime.now();
 
       final receiptId = Uuid().v4();
+
+      String? matchedShopId;
+      if (intent.storeName != null && intent.storeName.isNotEmpty) {
+        final shopService = ShopMatchingService(supabase);
+        final shopResult = await shopService.matchShop(
+          rawShopName: intent.storeName!,
+          shopType: intent.category,
+        );
+        matchedShopId = shopResult?.shopId;
+      }
+
       await client.from('receipts').insert({
         'id': receiptId,
         'employer_id': employerId,
@@ -370,12 +382,14 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
           'category': intent.category,
           'amount': intent.amount,
           'items': intent.items,
+          'store_name': intent.storeName,
         },
         'amount': intent.amount,
         'category': intent.category,
         'location': location,
         'transaction_date': transactionDate?.toIso8601String().split('T')[0],
         'image_local_path': imageStorageUrl,
+        'shop_id': matchedShopId,
         'sync_status': 'synced',
         'local_timestamp': now,
         'created_at': DateTime.now().toIso8601String(),
