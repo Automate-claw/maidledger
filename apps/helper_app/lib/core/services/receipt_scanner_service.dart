@@ -2,6 +2,7 @@ import 'dart:io';
 import 'dart:ui';
 import 'package:google_mlkit_text_recognition/google_mlkit_text_recognition.dart';
 import 'package:exif/exif.dart' show readExifFromBytes;
+import 'location_service.dart'; // Uses GpsResult from location_service
 
 /// Receipt Scanner Service provider for managed lifecycle.
 ///
@@ -185,9 +186,4 @@ class TextBlock {
   });
 }
 
-class GpsResult {
-  final double latitude;
-  final double longitude;
-
-  GpsResult({required this.latitude, required this.longitude});
-}
+// GpsResult is defined in location_service.dart

@@ -221,7 +221,7 @@ class ReceiptCard extends StatelessWidget {
                     ),
                     child: ClipRRect(
                       borderRadius: BorderRadius.circular(8),
-                      child: _buildReceiptThumbnail(receipt['image_local_path'] as String?),
+                      child: _buildReceiptThumbnail(receipt['image_local_path'] as String?, storeCate),
                     ),
                   ),
                   Expanded(
@@ -463,7 +463,7 @@ class ReceiptCard extends StatelessWidget {
     return '${date.month}/${date.day} ${date.hour}:${date.minute.toString().padLeft(2, '0')}';
   }
 
-  Widget _buildReceiptThumbnail(String? imagePath) {
+  Widget _buildReceiptThumbnail(String? imagePath, String storeCate) {
     if (imagePath == null || imagePath.isEmpty) {
       return Icon(_getCategoryIcon(storeCate), color: _getCategoryColor(storeCate), size: 24);
     }

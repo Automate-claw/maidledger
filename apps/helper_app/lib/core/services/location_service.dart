@@ -1,5 +1,8 @@
 import 'dart:math';
 
+// GpsResult is shared between receipt_scanner_service and location_service
+export 'receipt_scanner_service.dart' show GpsResult;
+
 class GpsResult {
   final double latitude;
   final double longitude;
