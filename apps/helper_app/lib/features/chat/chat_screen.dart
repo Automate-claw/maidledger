@@ -9,6 +9,8 @@ import 'package:maidledger_localization/maidledger_localization.dart';
 import '../../core/services/supabase_client_provider.dart';
 import '../../core/services/ai_booking_agent_service.dart';
 import '../../core/services/shop_matching_service.dart';
+import '../../core/services/location_service.dart';
+import '../../core/services/receipt_scanner_service.dart';
 
 /// Chat screen for AI-powered expense entry
 /// Supports: text input + optional image attachment + EXIF location
@@ -37,6 +39,8 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
   String? _pendingImageBase64;
 
   late final AIBookingAgent _agent;
+  final _locationService = LocationService();
+  final _scanner = ReceiptScannerService();
 
   @override
   void initState() {
@@ -102,27 +106,48 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
 
   Future<void> _extractExifLocation(XFile image) async {
     try {
-      final bytes = await image.readAsBytes();
-      final tags = await readExifFromBytes(bytes);
+      final file = File(image.path);
+      final gps = await _scanner.extractGpsFromFile(file);
 
-      final lat = tags['GPS GPSLatitude'];
-      final latRef = tags['GPS GPSLatitudeRef'];
-      final lon = tags['GPS GPSLongitude'];
-      final lonRef = tags['GPS GPSLongitudeRef'];
-
-      if (lat == null || lon == null || latRef == null || lonRef == null) {
-        await _loadDefaultLocation();
-        return;
+      if (gps != null) {
+        final locResult = _locationService.reverseGeocode(gps);
+        if (locResult != null && (locResult.confidence ?? 0) > 0.5) {
+          final confirmed = await _showLocationConfirmationDialog(context, locResult.displayText);
+          if (confirmed != null) {
+            setState(() => _extractedLocation = confirmed);
+            return;
+          }
+        }
       }
 
-      final latitude = _parseGpsCoordinate(lat, latRef);
-      final longitude = _parseGpsCoordinate(lon, lonRef);
-
-      final locationName = await _reverseGeocode(latitude, longitude);
-      setState(() => _extractedLocation = locationName);
+      await _loadDefaultLocation();
     } catch (e) {
       await _loadDefaultLocation();
     }
+  }
+
+  Future<String?> _showLocationConfirmationDialog(BuildContext context, String detectedLocation) async {
+    return showDialog<String>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('📍 確認地點'),
+        content: Text('系統偵測到您可能喺「$detectedLocation」'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, detectedLocation),
+            child: const Text('✅ 是'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(context, null),
+            child: const Text('❌ 不是'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(context, null),
+            child: const Text('📍 手動選擇'),
+          ),
+        ],
+      ),
+    );
   }
 
   double _parseGpsCoordinate(IfdTag tag, IfdTag ref) {
