@@ -1,26 +1,27 @@
 import 'package:supabase_flutter/supabase_flutter.dart';
 
-static const Map<String, List<String>> multiLangFish = {
-  'fish': ['魚', '魚類', '紅衫魚', '石斑', 'isda', 'ikan', 'fish', 'iping', 'bangus'],
-};
-
-static const Map<String, List<String>> multiLangMeat = {
-  'pork': ['豬肉', '豬', 'carne', 'karne', 'baboy', 'daging babi'],
-  'beef': ['牛肉', '牛', 'beef', 'carne de res', 'sapi'],
-  'chicken': ['雞肉', '雞', 'chicken', 'manok', 'ayam'],
-};
-
-static const Map<String, List<String>> multiLangVeg = {
-  'vegetables': ['蔬菜', '菜', 'veggies', 'gulay', 'sayur', 'sayuran'],
-};
-
-static const Map<String, List<String>> multiLangRice = {
-  'rice': ['米', '飯', 'rice', 'kanin', 'nasi'],
-};
-
 /// ILIKE-based product matching service
 /// Phase 1 MVP: no pgvector dependency
 class ProductMatchingService {
+  // Multi-language keyword dictionaries (moved inside class as static const)
+  static const Map<String, List<String>> _multiLangFish = {
+    'fish': ['魚', '魚類', '紅衫魚', '石斑', 'isda', 'ikan', 'fish', 'iping', 'bangus'],
+  };
+
+  static const Map<String, List<String>> _multiLangMeat = {
+    'pork': ['豬肉', '豬', 'carne', 'karne', 'baboy', 'daging babi'],
+    'beef': ['牛肉', '牛', 'beef', 'carne de res', 'sapi'],
+    'chicken': ['雞肉', '雞', 'chicken', 'manok', 'ayam'],
+  };
+
+  static const Map<String, List<String>> _multiLangVeg = {
+    'vegetables': ['蔬菜', '菜', 'veggies', 'gulay', 'sayur', 'sayuran'],
+  };
+
+  static const Map<String, List<String>> _multiLangRice = {
+    'rice': ['米', '飯', 'rice', 'kanin', 'nasi'],
+  };
+
   final SupabaseClient _supabase;
 
   ProductMatchingService(this._supabase);
@@ -133,7 +134,7 @@ class ProductMatchingService {
   }
 
   Future<MasterMatchResult?> _multiLangFallbackMatch(List<String> keywords, String? prdCate) async {
-    final allLangDicts = [multiLangFish, multiLangMeat, multiLangVeg, multiLangRice];
+    final allLangDicts = [_multiLangFish, _multiLangMeat, _multiLangVeg, _multiLangRice];
 
     for (final kw in keywords) {
       final kwLower = kw.toLowerCase();

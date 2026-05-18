@@ -362,10 +362,11 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
       final receiptId = Uuid().v4();
 
       String? matchedShopId;
-      if (intent.storeName != null && intent.storeName.isNotEmpty) {
+      final storeName = intent.storeName;
+      if (storeName != null && storeName.isNotEmpty) {
         final shopService = ShopMatchingService(supabase);
         final shopResult = await shopService.matchShop(
-          rawShopName: intent.storeName!,
+          rawShopName: storeName,
           shopType: intent.category,
         );
         matchedShopId = shopResult?.shopId;
