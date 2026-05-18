@@ -1,6 +1,7 @@
 import 'dart:io';
 import 'dart:ui';
 import 'package:google_mlkit_text_recognition/google_mlkit_text_recognition.dart';
+import 'package:exif/exif.dart' show readExifFromBytes;
 
 /// Receipt Scanner Service provider for managed lifecycle.
 ///
@@ -91,6 +92,46 @@ class ReceiptScannerService {
   void dispose() {
     _textRecognizer.close();
   }
+
+  Future<GpsResult?> extractGpsFromFile(File file) async {
+    try {
+      final bytes = await file.readAsBytes();
+      final exifData = await readExifFromBytes(bytes);
+
+      final lat = exifData['GPS GPSLatitude'];
+      final lon = exifData['GPS GPSLongitude'];
+      final latRef = exifData['GPS GPSLatitudeRef']?.printable;
+      final lonRef = exifData['GPS GPSLongitudeRef']?.printable;
+
+      if (lat == null || lon == null) return null;
+
+      final latitude = _parseDMS(lat.printable, latRef);
+      final longitude = _parseDMS(lon.printable, lonRef);
+
+      if (latitude == null || longitude == null) return null;
+
+      return GpsResult(latitude: latitude, longitude: longitude);
+    } catch (e) {
+      return null;
+    }
+  }
+
+  double? _parseDMS(String dms, String? ref) {
+    final regex = RegExp(r"(\d+)°\s*(\d+)'?\s*(\d+(?:\.\d+)?)?[""']?");
+    final match = regex.firstMatch(dms);
+    if (match == null) return null;
+
+    final degrees = double.parse(match.group(1)!);
+    final minutes = double.parse(match.group(2)!);
+    final seconds = double.tryParse(match.group(3) ?? '0') ?? 0;
+
+    double decimal = degrees + (minutes / 60) + (seconds / 3600);
+
+    if (ref == 'S') decimal = -decimal;
+    if (ref == 'W') decimal = -decimal;
+
+    return decimal;
+  }
 }
 
 /// Result of a receipt scan including grouped rows.
@@ -142,4 +183,11 @@ class TextBlock {
     required this.text,
     required this.boundingBox,
   });
+}
+
+class GpsResult {
+  final double latitude;
+  final double longitude;
+
+  GpsResult({required this.latitude, required this.longitude});
 }
