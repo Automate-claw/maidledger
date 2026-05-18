@@ -192,24 +192,25 @@ class _ScanScreenState extends ConsumerState<ScanScreen> {
 
   /// Upload compressed image to Supabase Storage, return public URL
   Future<String> _uploadToStorage(Uint8List bytes, String originalPath) async {
-    final fileName = 'receipt_${DateTime.now().millisecondsSinceEpoch}.jpg';
-    // Upload with just filename (not 'receipts/filename') to avoid double-nesting
-    // getPublicUrl creates full path including bucket name
+    // Use full path to match where files are actually stored in the bucket
+    final fileName = 'receipts/receipt_${DateTime.now().millisecondsSinceEpoch}.jpg';
 
     try {
       await supabase.storage
           .from('receipts')
           .uploadBinary(fileName, bytes);
+      debugPrint('_uploadToStorage: upload success to $fileName');
     } catch (e) {
+      debugPrint('_uploadToStorage: upload failed: $e');
       throw Exception('Upload failed: $e');
     }
 
-    // Use createSignedUrl for authenticated access (bucket is not public)
+    // createSignedUrl must use the SAME path as upload
     final signedUrl = await supabase.storage
         .from('receipts')
         .createSignedUrl(fileName, 60 * 60 * 24 * 365); // 1 year validity
 
-    debugPrint('_uploadToStorage: success, signedUrl=$signedUrl');
+    debugPrint('_uploadToStorage: signedUrl=$signedUrl');
     return signedUrl;
   }
 
