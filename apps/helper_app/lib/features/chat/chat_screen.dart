@@ -188,6 +188,31 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
     }
   }
 
+  Future<String?> _showLocationPickerDialog(BuildContext context) async {
+    final districts = ['九龍', '新界', '港島', '旺角', '灣仔', '北角', '粉嶺', '大埔', '其他'];
+
+    return showDialog<String>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('📍 添加位置'),
+        content: SizedBox(
+          width: double.maxFinite,
+          child: GridView.count(
+            crossAxisCount: 3,
+            shrinkWrap: true,
+            children: districts.map((d) => ListTile(
+              title: Text(d),
+              onTap: () => Navigator.pop(ctx, d),
+            )).toList(),
+          ),
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('取消')),
+        ],
+      ),
+    );
+  }
+
   Future<String?> _reverseGeocode(double lat, double lon) async {
     try {
       final uri = Uri.parse(
@@ -429,6 +454,9 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
             'item_raw_text': item['item_raw_text'],
             'qty': item['qty'],
             'unit_price': item['unit_price'],
+            'actual_price': item['actual_price'],
+            'is_discounted': item['is_discounted'],
+            'discount_note': item['discount_note'],
             'prd_cate': item['prd_cate'],
             'line_total': item['line_total'],
             'created_at': DateTime.now().toIso8601String(),
@@ -441,6 +469,9 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
           'item_raw_text': intent.rawText,
           'qty': 1,
           'unit_price': intent.amount,
+          'actual_price': intent.amount,
+          'is_discounted': false,
+          'discount_note': null,
           'prd_cate': intent.category ?? 'other',
           'line_total': intent.amount,
           'created_at': DateTime.now().toIso8601String(),
@@ -587,15 +618,29 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
     try {
       final client = supabase;
       final priceRecords = items
-          .where((item) => item['unit_price'] != null && (item['unit_price'] as double) > 0)
-          .map((item) => {
-            'master_product_id': item['master_product_id'],
-            'shop_id': shopId,
-            'location': location,
-            'price': item['unit_price'],
-            'unit': '件',
-            'source_receipt_id': receiptId,
-            'recorded_at': DateTime.now().toIso8601String().split('T')[0],
+          .where((item) => item['unit_price'] != null || item['actual_price'] != null)
+          .map((item) {
+            final isDiscounted = item['is_discounted'] == true;
+            final qty = (item['qty'] as num?)?.toInt() ?? 1;
+            final unitPrice = (item['unit_price'] as num?)?.toDouble();
+            final actualPrice = (item['actual_price'] as num?)?.toDouble();
+
+            final priceToRecord = isDiscounted && actualPrice != null
+                ? actualPrice / qty
+                : (unitPrice ?? actualPrice ?? 0);
+
+            return {
+              'master_product_id': item['master_product_id'],
+              'shop_id': shopId,
+              'location': location,
+              'price': priceToRecord,
+              'original_price': unitPrice,
+              'total_paid': actualPrice,
+              'is_discount_bundle': isDiscounted,
+              'unit': '件',
+              'source_receipt_id': receiptId,
+              'recorded_at': DateTime.now().toIso8601String().split('T')[0],
+            };
           })
           .where((record) => record['master_product_id'] != null)
           .toList();
@@ -758,12 +803,29 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
                         icon: const Icon(Icons.photo_library),
                         tooltip: AppStrings.pickPhoto(locale),
                       ),
+                      IconButton(
+                        icon: const Icon(Icons.location_on_outlined, color: Colors.grey),
+                        onPressed: () async {
+                          final result = await _showLocationPickerDialog(context);
+                          if (result != null) {
+                            setState(() => _extractedLocation = result);
+                          }
+                        },
+                        tooltip: '📍 添加位置（可選）',
+                      ),
                       const Spacer(),
                     ],
                   ),
                   const SizedBox(height: 8),
                   Row(
                     children: [
+                      if (_extractedLocation != null)
+                        Chip(
+                          label: Text(_extractedLocation!, style: const TextStyle(fontSize: 12)),
+                          deleteIcon: const Icon(Icons.close, size: 14),
+                          onDeleted: () => setState(() => _extractedLocation = null),
+                        ),
+                      if (_extractedLocation != null) const SizedBox(width: 8),
                       Expanded(
                         child: TextField(
                           controller: _messageController,
