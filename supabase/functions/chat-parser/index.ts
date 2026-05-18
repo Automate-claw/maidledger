@@ -305,7 +305,14 @@ ${storeCategories.map((c: { code: string; name_tc: string }) => `- ${c.code} = $
 
 ## 分析規則
 - 金額表達：「30蚊」「30元」「30塊」「\$30」「30 dollars」「30PHP」都代表港幣30元
-- parse_confidence 反映你對解析結果的信心`;
+- parse_confidence 反映你對解析結果的信心
+
+## 地點提取（重要）
+- 單據上如有地址關鍵字，主動提取：「聯和墟」、「鵝頸橋」、「旺角街市」、「粉嶺」
+- 街市名稱放 location 欄（如：聯和墟街市）
+- 如果完全無法識別，location = null（唔好自己填）
+- 模糊地點：可以填「九龍」或「港島」等區域名稱作為 fallback
+- **唔好自己加地址**，用戶寫咩就記咩`;
 
     // Call OpenRouter API
     const models = [
