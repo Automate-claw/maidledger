@@ -13,6 +13,9 @@ interface ParsedItem {
   item_name: string;
   qty: number;
   unit_price: number | null;
+  actual_price: number | null;
+  is_discounted: boolean;
+  discount_note: string | null;
   prd_cate: string;
 }
 
@@ -303,6 +306,17 @@ ${storeCategories.map((c: { code: string; name_tc: string }) => `- ${c.code} = $
 - 菲仲文/印尼文：如 "bili isda 30"（isda=魚）
 - 混合：例如「紅衫魚 1斤 \$30」直接解析
 
+## 折扣/特價檢測（重要）
+- 如果單據顯示「2件 $54」「買2件54元」「套裝 $399」「$30×2=54」：
+  - qty = 2（件數）
+  - unit_price = 30（標籤單價 or 原價）
+  - actual_price = 54（實際總價）
+  - is_discounted = true
+  - discount_note = "買2件54元"
+  - **千祈不要自己乘**，跟單據上的數字
+- 如果冇特別標注，default: is_discounted = false, actual_price = unit_price
+- 「買二送一」：qty = 3, unit_price = 原價, actual_price = 總价（如 $60 for 3），discount_note = "買二送一"
+
 ## 分析規則
 - 金額表達：「30蚊」「30元」「30塊」「\$30」「30 dollars」「30PHP」都代表港幣30元
 - parse_confidence 反映你對解析結果的信心
@@ -415,12 +429,19 @@ ${storeCategories.map((c: { code: string; name_tc: string }) => `- ${c.code} = $
       store_cate: validStoreCodes.includes(parsed.store_cate) ? parsed.store_cate : "other",
       location: parsed.location ?? null,
       total_amount: validatedAmount,
-      items: (parsed.items ?? []).map((item: Partial<ParsedItem>) => ({
-        item_name: item.item_name ?? "",
-        qty: item.qty ?? 1,
-        unit_price: item.unit_price ?? null,
-        prd_cate: validPrdCodes.includes(item.prd_cate) ? item.prd_cate : "other",
-      })),
+      items: (parsed.items ?? []).map((item: Partial<ParsedItem>) => {
+        const isDiscounted = item.is_discounted === true && item.actual_price != null;
+
+        return {
+          item_name: item.item_name ?? "",
+          qty: item.qty ?? 1,
+          unit_price: item.unit_price ?? null,
+          actual_price: item.actual_price ?? item.unit_price ?? null,
+          is_discounted: isDiscounted,
+          discount_note: item.discount_note ?? null,
+          prd_cate: validPrdCodes.includes(item.prd_cate) ? item.prd_cate : "other",
+        };
+      }),
       parse_confidence: parsed.parse_confidence ?? 0.5,
       raw_amount: rawAmount, // include for debugging
     };
