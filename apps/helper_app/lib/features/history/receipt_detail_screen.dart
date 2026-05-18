@@ -319,13 +319,20 @@ class _ReceiptDetailScreenState extends ConsumerState<ReceiptDetailScreen> {
               errorBuilder: (_, __, ___) => _photoErrorPlaceholder(),
             )
           : isBase64
-              ? Image.memory(
-                  base64Decode(imagePath),
-                  height: 250,
-                  width: double.infinity,
-                  fit: BoxFit.cover,
-                  errorBuilder: (_, __, ___) => _photoErrorPlaceholder(),
-                )
+              ? (() {
+                  String cleanBase64 = imagePath;
+                  if (imagePath.contains(',')) {
+                    // Full data URI format stored - strip prefix
+                    cleanBase64 = imagePath.substring(imagePath.indexOf(',') + 1);
+                  }
+                  return Image.memory(
+                    base64Decode(cleanBase64),
+                    height: 250,
+                    width: double.infinity,
+                    fit: BoxFit.cover,
+                    errorBuilder: (_, __, ___) => _photoErrorPlaceholder(),
+                  );
+                })()
               : _photoErrorPlaceholder(),
     );
   }

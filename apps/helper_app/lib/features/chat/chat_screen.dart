@@ -537,8 +537,8 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
             .from('receipts')
             .getPublicUrl(fileName);
       } catch (_) {
-        // Storage upload failed — store base64 directly as data URL
-        return 'data:image/jpeg;base64,$base64';
+        // Storage upload failed — store raw base64 only (display adds data: prefix)
+        return base64;
       }
     } catch (e) {
       debugPrint('_uploadImage error: $e');
