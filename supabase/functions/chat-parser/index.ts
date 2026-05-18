@@ -16,6 +16,39 @@ interface ParsedItem {
   prd_cate: string;
 }
 
+// ─── Raw Amount Extraction ───
+// Regex-based extraction BEFORE LLM to validate LLM output
+function extractRawAmount(text: string): number | null {
+  if (!text || text.trim().length === 0) return null;
+
+  const patterns = [
+    /\$\s*(\d+(?:\.\d{1,2})?)/g,           // $100, $ 100
+    /(\d+(?:\.\d{1,2})?)\s*蚊/g,           // 30蚊
+    /(\d+(?:\.\d{1,2})?)\s*元/g,           // 100元
+    /(\d+(?:\.\d{1,2})?)\s*塊/g,           // 50塊
+    /(\d+(?:\.\d{1,2})?)\s*(?:dollars?)/gi, // 100 dollars, 100dollar
+    /(\d+(?:\.\d{1,2})?)\s*(?:php|peso)/gi, // 100PHP, 100peso
+  ];
+
+  const allAmounts: number[] = [];
+
+  for (const pattern of patterns) {
+    const regex = new RegExp(pattern.source, pattern.flags);
+    let match;
+    while ((match = regex.exec(text)) !== null) {
+      const val = parseFloat(match[1]);
+      if (!isNaN(val) && val > 0 && val < 1000000) {
+        allAmounts.push(val);
+      }
+    }
+  }
+
+  if (allAmounts.length === 0) return null;
+
+  // Return the largest amount found (most likely the total)
+  return Math.max(...allAmounts);
+}
+
 const FRIENDLY_RESPONSES = [
   "👋 你好！我係你的記帳助手。請告訴我你想記的開支，例如：\n• 魚 30蚊\n• 超市買餸 120元\n• 街市買菜 45",
   "📝 我幫你記帳，請輸入開支資料，例如：\n• 紅衫魚 1斤 40元\n• 超市 80元\n• 買咗肉 65",
@@ -187,6 +220,9 @@ serve(async (req) => {
     const storeCategories = await storeFetch.json();
     const prdCategories = await prdFetch.json();
 
+// ─── Extract raw amount BEFORE LLM ───
+    const rawAmount = extractRawAmount(text);
+
     // ─── LLM Classification Prompt ───
     const prompt = `你係一個嚴格的家庭開支記帳助手。
 
@@ -252,19 +288,23 @@ ${prdCategories.map((c: { code: string; name_tc: string }) => `- ${c.code} = ${c
 ## 有效商店類別：
 ${storeCategories.map((c: { code: string; name_tc: string }) => `- ${c.code} = ${c.name}`).join("\n")}
 
+## 金額處理（重要）
+- raw_amount（用戶明確輸入的金額）: ${rawAmount !== null ? rawAmount : 'null'}
+- **用戶輸入的金額優先**，千萬不要自己調整或記住舊數字
+- 如果用戶說「紅衫魚 100$」，total_amount 必須係 100，唔可以係你查到的魚單價或任何其他數值
+- **從 items 計算 total_amount**。如果用戶提供了商品和金額，total_amount = sum(unit_price * qty)
+- **重要：唔可以自行查到或探斷市價格**，完全跟用戶輸入的金錢值
+- 如果完全無法解析，items可以係空陣列
+- **千萬不要查任何外部資料**，用戶訊什麼就記什麼
+
 ## 語言處理
 - 中文：直接解析，如「紅衫魚 1斤 30蚊」「魚 30蚊」
 - 英文：常見表達如 "bought fish 30 dollars"
 - 菲仲文/印尼文：如 "bili isda 30"（isda=魚）
-- 混合：例如「紅衫魚 1斤 \\$30」直接解析
+- 混合：例如「紅衫魚 1斤 \$30」直接解析
 
 ## 分析規則
-- 金額表達：「30蚊」「30元」「30塊」「\\$30」「30 dollars」「30PHP」都代表港幣30元
-- **用戶明確輸入的金額優先**。如果用戶說「紅衫魚 100$」，total_amount 必須係 100，唔可以係你查到的魚單價或任何其他數值
-- **從 items 計算 total_amount**。如果用戶提供了商品和金額，total_amount = sum(unit_price * qty)
-- **重要：唔可以自行查到或探斷市價格**，完全跟用戶輸入的金錢值
-- 如果完全無法解析，items可以係空陣列
-- **千萬不要查任何外部資料，小說100就是100，勿審查商品市場價或叢書資料**：完全不用想商品場價，用戶訊什麼就記什麼
+- 金額表達：「30蚊」「30元」「30塊」「\$30」「30 dollars」「30PHP」都代表港幣30元
 - parse_confidence 反映你對解析結果的信心`;
 
     // Call OpenRouter API
@@ -344,6 +384,19 @@ ${storeCategories.map((c: { code: string; name_tc: string }) => `- ${c.code} = $
 
     const parsed = JSON.parse(jsonMatch[0]);
 
+    // ─── Discrepancy Check: raw_amount vs llm_amount ───
+    let validatedAmount: number | null = parsed.total_amount;
+    if (rawAmount !== null && parsed.total_amount !== null) {
+      const diff = Math.abs(parsed.total_amount - rawAmount);
+      const pct = diff / rawAmount;
+      if (pct > 0.1) { // >10% difference
+        console.warn(`[chat-parser] Discrepancy: raw=${rawAmount}, llm=${parsed.total_amount}, diff=${(pct*100).toFixed(1)}% — preferring raw_amount`);
+        validatedAmount = rawAmount;
+      }
+    } else if (rawAmount !== null) {
+      validatedAmount = rawAmount;
+    }
+
     const validStoreCodes = storeCategories.map((c: { code: string }) => c.code);
     const validPrdCodes = prdCategories.map((c: { code: string }) => c.code);
 
@@ -354,7 +407,7 @@ ${storeCategories.map((c: { code: string; name_tc: string }) => `- ${c.code} = $
       store_name: parsed.store_name ?? null,
       store_cate: validStoreCodes.includes(parsed.store_cate) ? parsed.store_cate : "other",
       location: parsed.location ?? null,
-      total_amount: parsed.total_amount ?? null,
+      total_amount: validatedAmount,
       items: (parsed.items ?? []).map((item: Partial<ParsedItem>) => ({
         item_name: item.item_name ?? "",
         qty: item.qty ?? 1,
@@ -362,6 +415,7 @@ ${storeCategories.map((c: { code: string; name_tc: string }) => `- ${c.code} = $
         prd_cate: validPrdCodes.includes(item.prd_cate) ? item.prd_cate : "other",
       })),
       parse_confidence: parsed.parse_confidence ?? 0.5,
+      raw_amount: rawAmount, // include for debugging
     };
 
     // Non-expense → friendly guidance (never error)
