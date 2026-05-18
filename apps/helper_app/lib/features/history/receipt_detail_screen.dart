@@ -308,21 +308,23 @@ class _ReceiptDetailScreenState extends ConsumerState<ReceiptDetailScreen> {
     // isBase64: data:image URI OR long string with no protocol marker
     final isBase64 = imagePath.startsWith('data:image') || (imagePath.length > 100 && !imagePath.contains('://'));
 
-    return ClipRRect(
-      borderRadius: BorderRadius.circular(12),
-      child: isNetwork
-          ? Image.network(
-              imagePath,
-              height: 250,
-              width: double.infinity,
-              fit: BoxFit.cover,
-              errorBuilder: (_, __, ___) => _photoErrorPlaceholder(),
-            )
-          : isBase64
-              ? (() {
+    return GestureDetector(
+      onTap: () => _openFullscreenImage(context, imagePath),
+      child: Hero(
+        tag: 'receipt_image_${widget.receiptId}',
+        child: ClipRRect(
+          borderRadius: BorderRadius.circular(12),
+          child: isNetwork
+              ? Image.network(
+                  imagePath,
+                  height: 250,
+                  width: double.infinity,
+                  fit: BoxFit.cover,
+                  errorBuilder: (_, __, ___) => _photoErrorPlaceholder(),
+                )
+              : (() {
                   String cleanBase64 = imagePath;
                   if (imagePath.contains(',')) {
-                    // Full data URI format stored - strip prefix
                     cleanBase64 = imagePath.substring(imagePath.indexOf(',') + 1);
                   }
                   return Image.memory(
@@ -332,8 +334,9 @@ class _ReceiptDetailScreenState extends ConsumerState<ReceiptDetailScreen> {
                     fit: BoxFit.cover,
                     errorBuilder: (_, __, ___) => _photoErrorPlaceholder(),
                   );
-                })()
-              : _photoErrorPlaceholder(),
+                })(),
+        ),
+      ),
     );
   }
 
@@ -355,6 +358,45 @@ class _ReceiptDetailScreenState extends ConsumerState<ReceiptDetailScreen> {
         ),
       ),
     );
+  }
+
+  void _openFullscreenImage(BuildContext context, String imagePath) {
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (context) => Scaffold(
+          backgroundColor: Colors.black,
+          appBar: AppBar(
+            backgroundColor: Colors.black,
+            iconTheme: const IconThemeData(color: Colors.white),
+          ),
+          body: Center(
+            child: Hero(
+              tag: 'receipt_image_${widget.receiptId}',
+              child: InteractiveViewer(
+                minScale: 0.5,
+                maxScale: 4.0,
+                child: isNetworkImage(imagePath)
+                    ? Image.network(imagePath, fit: BoxFit.contain)
+                    : Image.memory(
+                        base64Decode(extractBase64(imagePath)),
+                        fit: BoxFit.contain,
+                      ),
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  bool isNetworkImage(String path) => path.startsWith('http');
+
+  String extractBase64(String imagePath) {
+    if (imagePath.contains(',')) {
+      return imagePath.substring(imagePath.indexOf(',') + 1);
+    }
+    return imagePath;
   }
 
   Future<void> _pickDate() async {

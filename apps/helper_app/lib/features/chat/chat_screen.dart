@@ -521,30 +521,35 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
   }
 
   Future<String?> _uploadImage(XFile image, String userId, {String? base64}) async {
+  try {
+    final client = supabase;
+    final fileName = '${userId}_${DateTime.now().millisecondsSinceEpoch}.jpg';
+    final bytes = base64 != null
+        ? base64Decode(base64)
+        : await image.readAsBytes();
+
+    debugPrint('_uploadImage: attempting storage upload, file=$fileName, size=${bytes.length}');
+
     try {
-      final client = supabase;
-      final fileName = '${userId}_${DateTime.now().millisecondsSinceEpoch}.jpg';
-      final bytes = base64 != null
-          ? base64Decode(base64)
-          : await image.readAsBytes();
+      await client.storage
+          .from('receipts')
+          .uploadBinary(fileName, bytes);
 
-      try {
-        await client.storage
-            .from('receipts')
-            .uploadBinary(fileName, bytes);
+      final publicUrl = client.storage
+          .from('receipts')
+          .getPublicUrl(fileName);
 
-        return client.storage
-            .from('receipts')
-            .getPublicUrl(fileName);
-      } catch (_) {
-        // Storage upload failed — store raw base64 only (display adds data: prefix)
-        return base64;
-      }
-    } catch (e) {
-      debugPrint('_uploadImage error: $e');
-      return null;
+      debugPrint('_uploadImage: success, publicUrl=$publicUrl');
+      return publicUrl;
+    } catch (storageError) {
+      debugPrint('_uploadImage: storage failed, falling back to base64, error=$storageError');
+      return base64;
     }
+  } catch (e) {
+    debugPrint('_uploadImage: error=$e');
+    return null;
   }
+}
 
   List<Map<String, dynamic>> _buildItemsFromIntent(ExpenseIntent intent) {
     if (intent.items.isEmpty) return [];

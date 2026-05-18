@@ -1,3 +1,4 @@
+import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../core/services/supabase_client_provider.dart';
@@ -216,14 +217,11 @@ class ReceiptCard extends StatelessWidget {
                     margin: const EdgeInsets.only(right: 12),
                     decoration: BoxDecoration(
                       borderRadius: BorderRadius.circular(8),
-                      color: hasImage
-                          ? Colors.grey[200]
-                          : _getCategoryColor(storeCate).withValues(alpha: 0.1),
+                      color: Colors.grey[200],
                     ),
-                    child: Icon(
-                      hasImage ? Icons.receipt : _getCategoryIcon(storeCate),
-                      color: hasImage ? Colors.grey : _getCategoryColor(storeCate),
-                      size: 24,
+                    child: ClipRRect(
+                      borderRadius: BorderRadius.circular(8),
+                      child: _buildReceiptThumbnail(receipt['image_local_path'] as String?),
                     ),
                   ),
                   Expanded(
@@ -463,5 +461,35 @@ class ReceiptCard extends StatelessWidget {
     if (diff.inDays < 7) return '${diff.inDays}d ago';
 
     return '${date.month}/${date.day} ${date.hour}:${date.minute.toString().padLeft(2, '0')}';
+  }
+
+  Widget _buildReceiptThumbnail(String? imagePath) {
+    if (imagePath == null || imagePath.isEmpty) {
+      return Icon(_getCategoryIcon(storeCate), color: _getCategoryColor(storeCate), size: 24);
+    }
+
+    final isNetwork = imagePath.startsWith('http');
+    final isBase64 = imagePath.startsWith('data:image') || (imagePath.length > 100 && !imagePath.contains('://'));
+
+    if (isNetwork) {
+      return Image.network(
+        imagePath,
+        fit: BoxFit.cover,
+        errorBuilder: (_, __, ___) => Icon(Icons.receipt, color: Colors.grey, size: 24),
+      );
+    } else if (isBase64) {
+      try {
+        String clean = imagePath.contains(',') ? imagePath.substring(imagePath.indexOf(',') + 1) : imagePath;
+        return Image.memory(
+          base64Decode(clean),
+          fit: BoxFit.cover,
+          errorBuilder: (_, __, ___) => Icon(Icons.receipt, color: Colors.grey, size: 24),
+        );
+      } catch (_) {
+        return Icon(Icons.receipt, color: Colors.grey, size: 24);
+      }
+    }
+
+    return Icon(Icons.receipt, color: Colors.grey, size: 24);
   }
 }
