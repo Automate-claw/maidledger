@@ -538,12 +538,12 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
           bytes,
         );
 
-        // Construct public URL manually to avoid double 'receipts/' in path
-        // Supabase public URL format: https://project.supabase.co/storage/v1/object/public/bucket/filename
-        final publicUrl = 'https://hnyazfrkzpxdjiyfzemm.supabase.co/storage/v1/object/public/receipts/$fileName';
+        // Use createSignedUrl for access (bucket requires auth - not public)
+        // Token-based URL: /storage/v1/object/sign/receipts/filename?token=...
+        final signedUrl = await storage.createSignedUrl(fileName, 60 * 60 * 24 * 365); // 1 year expiry
 
-        debugPrint('_uploadImage: success, publicUrl=$publicUrl');
-        return publicUrl;
+        debugPrint('_uploadImage: success, signedUrl=$signedUrl');
+        return signedUrl;
       } catch (storageError) {
         debugPrint('_uploadImage: storage failed, falling back to base64, error=$storageError');
         return base64;

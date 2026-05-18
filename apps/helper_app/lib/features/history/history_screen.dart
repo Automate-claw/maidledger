@@ -469,25 +469,15 @@ class ReceiptCard extends StatelessWidget {
     }
 
     final isNetwork = imagePath.startsWith('http');
-    final isBase64 = imagePath.startsWith('data:image') || (imagePath.length > 100 && !imagePath.contains('://'));
+    final isSigned = imagePath.contains('/sign/');
 
     if (isNetwork) {
       return Image.network(
         imagePath,
         fit: BoxFit.cover,
+        headers: isSigned ? {'Authorization': 'Bearer ${supabase.auth.currentSession?.accessToken}'} : null,
         errorBuilder: (_, __, ___) => Icon(Icons.receipt, color: Colors.grey, size: 24),
       );
-    } else if (isBase64) {
-      try {
-        String clean = imagePath.contains(',') ? imagePath.substring(imagePath.indexOf(',') + 1) : imagePath;
-        return Image.memory(
-          base64Decode(clean),
-          fit: BoxFit.cover,
-          errorBuilder: (_, __, ___) => Icon(Icons.receipt, color: Colors.grey, size: 24),
-        );
-      } catch (_) {
-        return Icon(Icons.receipt, color: Colors.grey, size: 24);
-      }
     }
 
     return Icon(Icons.receipt, color: Colors.grey, size: 24);
