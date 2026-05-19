@@ -576,14 +576,23 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
   }
 
   double? _extractPriceForItem(String rawText, String itemName) {
-    final pattern1 = RegExp(itemName + r'\s*[美澳散]?\s*\$?\s*(\d+(?:\.\d{1,2})?)');
-    final pattern2 = RegExp(r'(\d+(?:\.\d{1,2})?)\s*[蚊元塊]');
+    // Pattern 1: Item name or generic patterns followed by price
+    // e.g. "魚 40$", "40$ jin", "fish 40 dollars", "40 dollars"
+    final pricePatterns = [
+      r'(\d+(?:\.\d{1,2})?)\s*\$',           // "40$" or "40.5$"
+      r'\$\s*(\d+(?:\.\d{1,2})?)',           // "$40"
+      r'(\d+(?:\.\d{1,2})?)\s*(?:蚊|元|塊| dollars?)',  // "40蚊", "40元"
+      r'(\d+(?:\.\d{1,2})?)\s*[Jj]in',       // "40 jin" (斤)
+    ];
 
-    final match1 = pattern1.firstMatch(rawText);
-    if (match1 != null) return double.tryParse(match1.group(1)!);
-
-    final match2 = pattern2.firstMatch(rawText);
-    if (match2 != null) return double.tryParse(match2.group(1)!);
+    for (final patternStr in pricePatterns) {
+      final regex = RegExp(patternStr, caseSensitive: false);
+      final match = regex.firstMatch(rawText);
+      if (match != null) {
+        final result = double.tryParse(match.group(1)!);
+        if (result != null && result > 0) return result;
+      }
+    }
 
     return null;
   }

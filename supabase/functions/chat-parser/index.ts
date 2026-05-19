@@ -309,6 +309,8 @@ ${storeCategories.map((c: { code: string; name_tc: string }) => `- ${c.code} = $
 
 ## 魚類翻譯（重要！必須準確翻譯）
 以下係常見魚類嘅多語言名稱，請確保翻譯準確：
+- 黃立鯧 = "yellow pomfret" / "pomfret" / "銀鱲"
+- 白鴒責 = "white pomfret" / "白鴒魚"
 - 紅衫魚 = "Pulang snapper" / "red snapper" / "紅魚"
 - 石斑 = "grouper" / "stone bass"
 - 魽/花魽 = "carnation fish"
@@ -319,7 +321,8 @@ ${storeCategories.map((c: { code: string; name_tc: string }) => `- ${c.code} = $
 - 扒皮魚 = "filefish"
 - 印尼：isda=魚, salmon=三文魚, hipon=蝦, tinapa=鹹魚
 - 菲仲文：bangus=烏頭/魷魚, talaba=蜆, sapat=魚
-- 如果用户輸入英文魚名但你唔識，請用「魚」+ 英文名
+- 如果用户輸入英文魚名但你唔識，請用「魚」+ 英文名（例如：「魚 Pomfret」）
+- **千祈唔好乱咁映射**：例如 "yellow pomfret" 唔係 "Pulang snapper"，兩者係唔同魚種
 
 ## 翻譯規則
 - 收到英文魚名 → 搵對應中文名（上面列表）→ item_name 填中文
