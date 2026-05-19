@@ -539,11 +539,10 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
           bytes,
         );
 
-        // Use createSignedUrl for access (bucket requires auth - not public)
-        final signedUrl = await storage.createSignedUrl(filePath, 60 * 60 * 24 * 365); // 1 year expiry
-
-        debugPrint('_uploadImage: success, signedUrl=$signedUrl');
-        return signedUrl;
+        // Use getPublicUrl like scan_screen does (bucket is public)
+        final publicUrl = storage.getPublicUrl(filePath);
+        debugPrint('_uploadImage: success, publicUrl=$publicUrl');
+        return publicUrl;
       } catch (storageError) {
         debugPrint('_uploadImage: storage failed, falling back to base64, error=$storageError');
         return base64;
