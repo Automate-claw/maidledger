@@ -412,7 +412,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
       final receiptId = Uuid().v4();
 
       String? matchedShopId;
-      final storeName = intent.storeName;
+      final storeName = intent.storeName ?? _extractShopNameFromRawText(intent.rawText);
       if (storeName != null && storeName.isNotEmpty) {
         final shopService = ShopMatchingService(supabase);
         final shopResult = await shopService.matchShop(
@@ -420,6 +420,21 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
           shopType: intent.category,
         );
         matchedShopId = shopResult?.shopId;
+      }
+
+      String? _extractShopNameFromRawText(String rawText) {
+        // Try to extract shop-like keywords from rawText
+        final patterns = [
+          RegExp(r'(街市|市場|market)', CaseInsensitive: true),
+          RegExp(r'(惠康|百佳|萬寧|屈臣氏|超市)', CaseInsensitive: true),
+          RegExp(r'(菜市場|魚市場|肉檔)', CaseInsensitive: true),
+          RegExp(r'(wet market|supermarket)', CaseInsensitive: true),
+        ];
+        for (final pattern in patterns) {
+          final match = pattern.firstMatch(rawText);
+          if (match != null) return match.group(0)!;
+        }
+        return null;
       }
 
       await client.from('receipts').insert({
@@ -462,6 +477,9 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
             'created_at': DateTime.now().toIso8601String(),
           }).toList(),
         );
+
+        // Phase 4: Match products and write price_history
+        await _matchProductsAndWritePriceHistory(receiptId, items, matchedShopId, location);
       } else {
         await client.from('receipt_items').insert({
           'receipt_id': receiptId,
@@ -478,7 +496,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
         });
       }
 
-      await _writePriceHistory(receiptId, items, matchedShopId, location);
+      await _matchProductsAndWritePriceHistory(receiptId, singleItem, matchedShopId, location);
 
       if (employerId != null) {
         try {
@@ -561,7 +579,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
       final itemRawText = i < intent.itemRawTexts.length && intent.itemRawTexts[i].isNotEmpty
           ? intent.itemRawTexts[i]
           : intent.rawText;
-      final price = _extractPriceForItem(intent.rawText, itemName);
+      final price = _extractPriceForItem(intent.rawText, itemName) ?? intent.amount;
       final prdCate = _mapToPrdCate(intent.category, itemName);
 
       return {
@@ -569,6 +587,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
         'item_raw_text': itemRawText,  // original raw input for audit
         'qty': 1,
         'unit_price': price,
+        'actual_price': price,
         'prd_cate': prdCate,
         'line_total': price,
       };
@@ -654,44 +673,53 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
     return null; // caller will use DateTime.now()
   }
 
-  Future<void> _writePriceHistory(String receiptId, List<Map<String, dynamic>> items, String? shopId, String? location) async {
+  Future<void> _matchProductsAndWritePriceHistory(
+    String receiptId,
+    List<Map<String, dynamic>> items,
+    String? shopId,
+    String? location,
+  ) async {
     if (items.isEmpty) return;
 
     try {
       final client = supabase;
-      final priceRecords = items
-          .where((item) => item['unit_price'] != null || item['actual_price'] != null)
-          .map((item) {
-            final isDiscounted = item['is_discounted'] == true;
-            final qty = (item['qty'] as num?)?.toInt() ?? 1;
-            final unitPrice = (item['unit_price'] as num?)?.toDouble();
-            final actualPrice = (item['actual_price'] as num?)?.toDouble();
+      final productService = ProductMatchingService(client);
 
-            final priceToRecord = isDiscounted && actualPrice != null
-                ? actualPrice / qty
-                : (unitPrice ?? actualPrice ?? 0);
+      // For each item, match to master_product + write price_history
+      for (final item in items) {
+        final itemName = item['item_name'] as String? ?? '';
+        final rawText = item['item_raw_text'] as String? ?? itemName;
+        final unitPrice = (item['unit_price'] as num?)?.toDouble();
+        final actualPrice = (item['actual_price'] as num?)?.toDouble();
+        final prdCate = item['prd_cate'] as String? ?? 'other';
 
-            return {
-              'master_product_id': item['master_product_id'],
-              'shop_id': shopId,
-              'location': location,
-              'price': priceToRecord,
-              'original_price': unitPrice,
-              'total_paid': actualPrice,
-              'is_discount_bundle': isDiscounted,
-              'unit': '件',
-              'source_receipt_id': receiptId,
-              'recorded_at': DateTime.now().toIso8601String().split('T')[0],
-            };
-          })
-          .where((record) => record['master_product_id'] != null)
-          .toList();
+        if (unitPrice == null && actualPrice == null) continue;
 
-      if (priceRecords.isNotEmpty) {
-        await client.from('price_history').insert(priceRecords);
+        // Match product (creates master_product + alias if not exists)
+        final result = await productService.matchProduct(
+          rawName: rawText,
+          defaultUnit: '斤',
+          prdCate: prdCate,
+        );
+
+        final priceToRecord = actualPrice ?? unitPrice!;
+
+        // Write price_history
+        await client.from('price_history').insert({
+          'master_product_id': result.masterProductId,
+          'shop_id': shopId,
+          'location': location,
+          'price': priceToRecord,
+          'original_price': unitPrice,
+          'total_paid': actualPrice,
+          'is_discount_bundle': item['is_discounted'] == true,
+          'unit': '斤',
+          'source_receipt_id': receiptId,
+          'recorded_at': DateTime.now().toIso8601String().split('T')[0],
+        });
       }
     } catch (e) {
-      debugPrint('_writePriceHistory error: $e');
+      debugPrint('_matchProductsAndWritePriceHistory error: $e');
     }
   }
 

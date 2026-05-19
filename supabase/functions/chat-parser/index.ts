@@ -264,7 +264,12 @@ serve(async (req) => {
 ### 可處理（partial）：
 - 有物品冇金額 → completeness = "partial"，仍可創建 record
 
-## 輸出格式（只輸出JSON，唔好其他解釋）：
+## 輸出格式（只輸出JSON，唔好其他解釋）
+
+【重要】填寫 JSON 之前，必須先分析用戶輸入的實際文字：
+1. 先搵到 "$" 符號後面的數字（如 "80$" → 80）
+2. 確認冇睇錯（如 "30$" 唔係 "80$"）
+3. 然後先填 JSON
 
 {
   "is_expense": true或false,
@@ -294,12 +299,11 @@ ${storeCategories.map((c: { code: string; name_tc: string }) => `- ${c.code} = $
 
 ## 金額處理（重要）
 - raw_amount（用戶明確輸入的金額）: ${rawAmount !== null ? rawAmount : 'null'}
-- **用戶輸入的金額優先**，千萬不要自己調整或記住舊數字
-- 如果用戶說「紅衫魚 100$」，total_amount 必須係 100，唔可以係你查到的魚單價或任何其他數值
-- **從 items 計算 total_amount**。如果用戶提供了商品和金額，total_amount = sum(unit_price * qty)
-- **重要：唔可以自行查到或探斷市價格**，完全跟用戶輸入的金錢值
-- 如果完全無法解析，items可以係空陣列
-- **千萬不要查任何外部資料**，用戶訊什麼就記什麼
+- **當 raw_amount 存在時，total_amount 必須等於 raw_amount** — 呢個係强制規則
+- 例如："Pulang snapper, 80$, jin" → $ 符號後面係 80，所以 total_amount = 80，unit_price = 80
+- 如果 raw_amount = 80，LLM 解析 total_amount 必須係 80，唔可能係 30
+- **千祈唔好自己估算金額**，用戶寫咩你就記咩
+- **當用戶只提供 total price（如 "80$"）而冇指定 unit price**，unit_price = total_amount = 80，qty = 1
 
 ## 語言處理
 - 中文：直接解析，如「紅衫魚 1斤 30蚊」「魚 30蚊」
