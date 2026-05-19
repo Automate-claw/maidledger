@@ -472,7 +472,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
           'actual_price': intent.amount,
           'is_discounted': false,
           'discount_note': null,
-          'prd_cate': _mapToPrdCate(intent.category),  // store_cate → prd_cate fallback
+          'prd_cate': _mapToPrdCate(intent.category, intent.items.isNotEmpty ? intent.items.first : intent.rawText),
           'line_total': intent.amount,
           'created_at': DateTime.now().toIso8601String(),
         });
@@ -558,14 +558,14 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
 
     return intent.items.map((itemName) {
       final price = _extractPriceForItem(intent.rawText, itemName);
-      final category = _mapToPrdCate(intent.category);
+      final prdCate = _mapToPrdCate(intent.category, itemName);
 
       return {
         'item_name': itemName,
-        'item_raw_text': itemName,
+        'item_raw_text': intent.rawText,  // preserve full raw input for audit
         'qty': 1,
         'unit_price': price,
-        'prd_cate': category,
+        'prd_cate': prdCate,
         'line_total': price,
       };
     }).toList();
@@ -584,15 +584,37 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
     return null;
   }
 
-  String _mapToPrdCate(String? category) {
-    switch (category) {
-      case 'food':
-      case 'market':
-      case 'supermarket':
-        return 'other';
-      default:
-        return 'other';
+  String _mapToPrdCate(String? storeCate, String itemName) {
+    // First try to infer from item name keywords (multi-language)
+    final lowerItem = itemName.toLowerCase();
+    if (_containsAny(lowerItem, ['魚', 'snapper', 'pulang', 'isda', 'ikan', 'fish', 'bangus', '魽', '石斑', '紅衫'])) return 'fish';
+    if (_containsAny(lowerItem, ['豬', 'pork', 'carne', 'baboy', 'daging babi'])) return 'pork';
+    if (_containsAny(lowerItem, ['牛', 'beef', 'carne de res', 'sapi'])) return 'beef';
+    if (_containsAny(lowerItem, ['雞', 'chicken', 'manok', 'ayam'])) return 'chicken';
+    if (_containsAny(lowerItem, ['菜', '蔬菜', 'vegetables', 'gulay', 'sayur'])) return 'vegetables';
+    if (_containsAny(lowerItem, ['米', '飯', 'rice', 'kanin', 'nasi'])) return 'rice';
+    if (_containsAny(lowerItem, ['油', 'oil'])) return 'oil';
+    if (_containsAny(lowerItem, ['調味料', 'seasoning', '鹽', '糖'])) return 'seasoning';
+    if (_containsAny(lowerItem, ['零食', 'snack', '餅', '糖果'])) return 'snack';
+    if (_containsAny(lowerItem, ['飲', 'drink', '水', 'coffee', '茶', 'milk'])) return 'drink';
+    if (_containsAny(lowerItem, ['日用', 'daily', '紙巾', '牙膏'])) return 'daily';
+    if (_containsAny(lowerItem, ['外賣', 'takeaway', 'take out'])) return 'takeaway';
+
+    // Fallback to store_cate mapping
+    switch (storeCate) {
+      case 'wet_market': return 'other';
+      case 'supermarket': return 'other';
+      case 'pharmacy': return 'other';
+      case 'convenience': return 'other';
+      case 'restaurant':
+      case 'cafe': return 'other';
+      case 'takeaway': return 'takeaway';
+      default: return 'other';
     }
+  }
+
+  bool _containsAny(String text, List<String> keywords) {
+    return keywords.any((kw) => text.contains(kw));
   }
 
   DateTime? _parseTransactionDate(String rawText) {
