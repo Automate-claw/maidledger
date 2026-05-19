@@ -454,7 +454,7 @@ class _ScanScreenState extends ConsumerState<ScanScreen> {
       'item_raw_text': item.itemRawText,
       'qty': item.qty,
       'unit_price': item.unitPrice,
-      'actual_price': item.actualPrice,
+      'actual_price': item.unitPrice,
       'prd_cate': item.prdCate,
       'line_total': item.lineTotal,
     }).toList();
