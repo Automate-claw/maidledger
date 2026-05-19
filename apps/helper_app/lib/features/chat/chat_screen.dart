@@ -787,28 +787,32 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
         final amount = (item['line_total'] as num?)?.toDouble() ?? 0;
         if (amount <= 0) continue;
 
-        await client.from('expense_summaries').upsert({
-          'employer_id': employerId,
-          'helper_id': helperId,
-          'relation_id': relationId,
-          'month': month.toIso8601String().split('T')[0],
-          'category': prdCate,
-        }, onConflict: 'employer_id,helper_id,month,category');
-
-        // Increment count and amount via RPC or separate update
+        // Find existing summary record
         final existing = await client
             .from('expense_summaries')
-            .select()
+            .select('id, total_amount, transaction_count')
             .eq('employer_id', employerId)
             .eq('month', month.toIso8601String().split('T')[0])
             .eq('category', prdCate)
             .maybeSingle();
 
         if (existing != null) {
+          // Update existing record
           await client.from('expense_summaries').update({
             'total_amount': (existing['total_amount'] as num? ?? 0) + amount,
             'transaction_count': (existing['transaction_count'] as int? ?? 0) + 1,
           }).eq('id', existing['id']);
+        } else {
+          // Insert new record
+          await client.from('expense_summaries').insert({
+            'employer_id': employerId,
+            'helper_id': helperId,
+            'relation_id': relationId,
+            'month': month.toIso8601String().split('T')[0],
+            'category': prdCate,
+            'total_amount': amount,
+            'transaction_count': 1,
+          });
         }
       }
     } catch (e) {

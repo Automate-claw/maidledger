@@ -448,32 +448,45 @@ class _ScanScreenState extends ConsumerState<ScanScreen> {
     }
 
     // ── Phase 3: Write price_history for each item ──
-    final priceHistoryItems = parseResult.items.map((item) => {
-      'receipt_id': receiptId,
-      'item_name': item.itemName,
-      'item_raw_text': item.itemRawText,
-      'qty': item.qty,
-      'unit_price': item.unitPrice,
-      'actual_price': item.unitPrice,
-      'prd_cate': item.prdCate,
-      'line_total': item.lineTotal,
-    }).toList();
+    // Use master_product_id already bound to receipt_items in Phase 1
+    final receiptItems = await supabase
+        .from('receipt_items')
+        .select('id, item_name, master_product_id, unit_price, line_total')
+        .eq('receipt_id', receiptId);
 
-    for (final item in priceHistoryItems) {
-      final masterProductId = await _getMasterProductIdForItem(supabase, item);
-      if (masterProductId == null) continue;
+    for (final itemRow in receiptItems) {
+      final masterProductId = itemRow['master_product_id'] as String?;
+      if (masterProductId == null) {
+        debugPrint('Phase 3: receipt_item ${itemRow['id']} has no master_product_id, skipping price_history');
+        continue;
+      }
 
-      await supabase.from('price_history').insert({
-        'master_product_id': masterProductId,
-        'shop_id': shopId,
-        'location': parseResult.location,
-        'price': item['line_total'],
-        'original_price': item['unit_price'],
-        'total_paid': item['actual_price'],
-        'unit': '件',
-        'source_receipt_id': receiptId,
-        'recorded_at': DateTime.now().toIso8601String().split('T')[0],
-      });
+      final price = (itemRow['line_total'] as num?)?.toDouble();
+      if (price == null) {
+        debugPrint('Phase 3: receipt_item ${itemRow['id']} has no line_total, skipping price_history');
+        continue;
+      }
+
+      try {
+        await supabase.from('price_history').insert({
+          'master_product_id': masterProductId,
+          'shop_id': shopId,
+          'location': parseResult.location,
+          'price': price,
+          'original_price': itemRow['unit_price'],
+          'total_paid': itemRow['unit_price'],
+          'unit': '件',
+          'source_receipt_id': receiptId,
+          'recorded_at': DateTime.now().toIso8601String().split('T')[0],
+        });
+      } catch (e) {
+        debugPrint('Phase 3 price_history insert error: $e');
+        await _logAppError('price_history_insert', 'scan', e.toString(), {
+          'receipt_id': receiptId,
+          'receipt_item_id': itemRow['id'],
+          'master_product_id': masterProductId,
+        });
+      }
     }
 
     final empId = relations?['employer_id'];
@@ -1044,4 +1057,18 @@ Future<String?> _getMasterProductIdForItem(dynamic client, Map<String, dynamic> 
   }
 
   return null;
+}
+
+Future<void> _logAppError(String errorType, String source, String message, Map<String, dynamic> extra) async {
+  try {
+    await supabase.from('app_errors').insert({
+      'error_type': errorType,
+      'source': source,
+      'message': message,
+      'extra_data': extra,
+      'created_at': DateTime.now().toIso8601String(),
+    });
+  } catch (e) {
+    debugPrint('_logAppError failed: $e');
+  }
 }

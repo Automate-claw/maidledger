@@ -179,16 +179,22 @@ class ProductMatchingService {
       'brand': brand,
       'prd_cate': prdCate ?? 'other',
       'default_unit': defaultUnit,
-    }).select().single();
+    }).select();
+
+    if (mpResult.isEmpty) return null;
+    final first = mpResult.first;
 
     await _supabase.from('product_aliases').insert({
       'raw_name': rawName.trim(),
-      'master_product_id': mpResult['id'],
+      'master_product_id': first['id'],
       'source': 'ocr',
     });
 
     return MasterMatchResult(
-      masterProductId: mpResult['id'] as String,
+      masterProductId: first['id'] as String,
+      canonicalName: canonicalName,
+      brand: brand,
+      prdCate: prdCate ?? 'other',
       canonicalName: canonicalName,
       brand: brand,
       prdCate: prdCate ?? 'other',

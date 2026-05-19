@@ -126,10 +126,13 @@ class ShopMatchingService {
       'shop_type': shopType,
       'region': region,
       'district': district,
-    }).select().single();
+    }).select();
+
+    if (shopResult.isEmpty) return null;
+    final first = shopResult.first;
 
     return ShopMatchResult(
-      shopId: shopResult['id'] as String,
+      shopId: first['id'] as String,
       canonicalName: canonicalName,
       shopType: shopType,
       region: region,
