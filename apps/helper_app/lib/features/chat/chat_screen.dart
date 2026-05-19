@@ -481,8 +481,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
         // Phase 4: Match products and write price_history
         await _matchProductsAndWritePriceHistory(receiptId, items, matchedShopId, location);
       } else {
-        await client.from('receipt_items').insert({
-          'receipt_id': receiptId,
+        final singleItemMap = {
           'item_name': intent.items.isNotEmpty ? intent.items.first : intent.rawText,
           'item_raw_text': intent.rawText,
           'qty': 1,
@@ -492,11 +491,17 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
           'discount_note': null,
           'prd_cate': _mapToPrdCate(intent.category, intent.items.isNotEmpty ? intent.items.first : intent.rawText),
           'line_total': intent.amount,
+        };
+        await client.from('receipt_items').insert({
+          'receipt_id': receiptId,
+          ...singleItemMap,
           'created_at': DateTime.now().toIso8601String(),
         });
+        items = [singleItemMap];
       }
 
-      final allItems = items.isNotEmpty ? items : singleItem;
+      // Phase 4: Match products and write price_history
+      await _matchProductsAndWritePriceHistory(receiptId, items, matchedShopId, location);
 
       // Phase 5: Update expense summaries
       await _upsertExpenseSummary(employerId, helperId, relationId, transactionDate, allItems);
