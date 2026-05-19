@@ -440,20 +440,6 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
         matchedShopId = shopResult?.shopId;
       }
 
-      String? _extractShopNameFromRawText(String rawText) {
-        final patterns = [
-          RegExp(r'(街市|市場|market)', caseSensitive: false),
-          RegExp(r'(惠康|百佳|萬寧|屈臣氏|超市)', caseSensitive: false),
-          RegExp(r'(菜市場|魚市場|肉檔)', caseSensitive: false),
-          RegExp(r'(wet market|supermarket)', caseSensitive: false),
-        ];
-        for (final pattern in patterns) {
-          final match = pattern.firstMatch(rawText);
-          if (match != null) return match.group(0)!;
-        }
-        return null;
-      }
-
       await client.from('receipts').insert({
         'id': receiptId,
         'employer_id': employerId,
@@ -724,7 +710,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
         if (unitPrice == null && actualPrice == null) continue;
 
         // Match product (creates master_product + alias if not exists)
-        final result = await productService.matchProduct(
+        final result = await productService.matchItem(
           rawName: rawText,
           defaultUnit: '斤',
           prdCate: prdCate,
