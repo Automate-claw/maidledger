@@ -76,25 +76,20 @@ class ProductMatchingService {
 
   /// Step 2: ILIKE keyword match
   Future<MasterMatchResult?> _ilikeMatch(List<String> keywords, String? prdCate) async {
-    // Build ILIKE query: each keyword must appear in canonical_name
-    // Use text search for better performance
-    String? tsQuery;
-    try {
-      tsQuery = keywords.join(' & ');
-    } catch (_) {
-      tsQuery = keywords.join(' ');
-    }
+    if (keywords.isEmpty) return _multiLangFallbackMatch(keywords, prdCate);
 
+    // Build OR-based ILIKE: any keyword matching canonical_name
     var query = _supabase
         .from('master_products')
         .select('id, canonical_name, brand, prd_cate')
-        .textSearch('canonical_name', tsQuery, config: 'simple');
+        .or('canonical_name.ilike.%${keywords[0]}%,canonical_name.ilike.%${keywords.join('%'),canonical_name.ilike.%${keywords.last}%'})
+        .limit(20);
 
-    final filteredQuery = prdCate != null && prdCate.isNotEmpty && prdCate != 'other'
-        ? query.eq('prd_cate', prdCate)
-        : query;
+    if (prdCate != null && prdCate.isNotEmpty && prdCate != 'other') {
+      query = query.eq('prd_cate', prdCate);
+    }
 
-    final results = await filteredQuery.limit(5);
+    final results = await query;
     final rows = results as List;
 
     if (rows.isEmpty) {
@@ -145,7 +140,7 @@ class ProductMatchingService {
             final langResults = await _supabase
                 .from('master_products')
                 .select('id, canonical_name, brand, prd_cate')
-                .textSearch('canonical_name', englishKeyword, config: 'simple')
+                .ilike('canonical_name', '%$englishKeyword%')
                 .limit(3);
 
             final rows = langResults as List;

@@ -266,8 +266,16 @@ class _ScanScreenState extends ConsumerState<ScanScreen> {
       } else {
         _showError('已保存收據，但部分資料無法自動識別，請稍後手動補充');
       }
+      // Reset phase so user can return to camera
+      setState(() {
+        _isProcessing = false;
+        _scanPhase = ScanPhase.camera;
+      });
     } catch (e) {
-      setState(() => _isProcessing = false);
+      setState(() {
+        _isProcessing = false;
+        _scanPhase = ScanPhase.preview;
+      });
       final errStr = e.toString();
       if (errStr.contains('NO_ACTIVE_RELATION')) {
         _showRelationRequiredDialog();
@@ -396,7 +404,9 @@ class _ScanScreenState extends ConsumerState<ScanScreen> {
           } else {
             await productMatcher.createMasterProduct(rawName: item.itemName, prdCate: item.prdCate);
           }
-        } catch (_) {}
+        } catch (e) {
+          debugPrint('Product matching error for "${item.itemName}": $e');
+        }
       }
     }
 
