@@ -496,7 +496,13 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
         });
       }
 
-      await _matchProductsAndWritePriceHistory(receiptId, singleItem, matchedShopId, location);
+      final allItems = items.isNotEmpty ? items : singleItem;
+
+      // Phase 5: Update expense summaries
+      await _upsertExpenseSummary(employerId, helperId, relationId, transactionDate, allItems);
+
+      // Phase 6: Trigger price alert check
+      await _triggerPriceAlerts(receiptId, allItems);
 
       if (employerId != null) {
         try {
@@ -702,6 +708,9 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
           prdCate: prdCate,
         );
 
+        // Attach master_product_id to item for use by Phase 6
+        item['master_product_id'] = result.masterProductId;
+
         final priceToRecord = actualPrice ?? unitPrice!;
 
         // Write price_history
@@ -720,6 +729,77 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
       }
     } catch (e) {
       debugPrint('_matchProductsAndWritePriceHistory error: $e');
+    }
+  }
+
+  Future<void> _upsertExpenseSummary(
+    String? employerId,
+    String? helperId,
+    String? relationId,
+    DateTime transactionDate,
+    List<Map<String, dynamic>> items,
+  ) async {
+    if (employerId == null || items.isEmpty) return;
+
+    try {
+      final client = supabase;
+      final month = DateTime(transactionDate.year, transactionDate.month, 1);
+
+      for (final item in items) {
+        final prdCate = item['prd_cate'] as String? ?? 'other';
+        final amount = (item['line_total'] as num?)?.toDouble() ?? 0;
+        if (amount <= 0) continue;
+
+        await client.from('expense_summaries').upsert({
+          'employer_id': employerId,
+          'helper_id': helperId,
+          'relation_id': relationId,
+          'month': month.toIso8601String().split('T')[0],
+          'category': prdCate,
+        }, onConflict: 'employer_id,helper_id,month,category');
+
+        // Increment count and amount via RPC or separate update
+        final existing = await client
+            .from('expense_summaries')
+            .select()
+            .eq('employer_id', employerId)
+            .eq('month', month.toIso8601String().split('T')[0])
+            .eq('category', prdCate)
+            .maybeSingle();
+
+        if (existing != null) {
+          await client.from('expense_summaries').update({
+            'total_amount': (existing['total_amount'] as num? ?? 0) + amount,
+            'transaction_count': (existing['transaction_count'] as int? ?? 0) + 1,
+          }).eq('id', existing['id']);
+        }
+      }
+    } catch (e) {
+      debugPrint('_upsertExpenseSummary error: $e');
+    }
+  }
+
+  Future<void> _triggerPriceAlerts(
+    String receiptId,
+    List<Map<String, dynamic>> items,
+  ) async {
+    try {
+      final client = supabase;
+      for (final item in items) {
+        final masterProductId = item['master_product_id'] as String?;
+        final unitPrice = (item['unit_price'] as num?)?.toDouble();
+        if (masterProductId == null || unitPrice == null) continue;
+
+        await client.functions.invoke('price-alert-engine', body: {
+          'type': 'new_price',
+          'receipt_id': receiptId,
+          'master_product_id': masterProductId,
+          'new_price': unitPrice,
+          'unit': '斤',
+        });
+      }
+    } catch (e) {
+      debugPrint('_triggerPriceAlerts error: $e');
     }
   }
 
