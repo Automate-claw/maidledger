@@ -13,6 +13,7 @@ import '../../core/services/supabase_client_provider.dart';
 import '../../core/services/receipt_scanner_provider.dart';
 import '../../core/services/receipt_scanner_service.dart';
 import '../../core/services/product_matching_service.dart';
+import '../../core/services/shop_matching_service.dart';
 
 /// Camera scan screen for receipt scanning
 ///
@@ -402,12 +403,77 @@ class _ScanScreenState extends ConsumerState<ScanScreen> {
               await productMatcher.bindReceiptItem(itemRow['id'] as String, match.masterProductId);
             }
           } else {
-            await productMatcher.createMasterProduct(rawName: item.itemName, prdCate: item.prdCate);
+            // No match — create master product and update receipt_items
+            final created = await productMatcher.createMasterProduct(
+              rawName: item.itemName,  // use translated name as canonical
+              prdCate: item.prdCate,
+              defaultUnit: '件',
+            );
+            final itemRow = await supabase
+                .from('receipt_items')
+                .select('id')
+                .eq('receipt_id', receiptId)
+                .eq('item_name', item.itemName)
+                .maybeSingle();
+            if (itemRow != null) {
+              await productMatcher.bindReceiptItem(itemRow['id'] as String, created.masterProductId);
+            }
+            // Also create alias from raw text for future matching
+            if (item.itemRawText.isNotEmpty && item.itemRawText != item.itemName) {
+              await supabase.from('product_aliases').upsert({
+                'raw_name': item.itemRawText,
+                'master_product_id': created.masterProductId,
+                'source': 'scan',
+              });
+            }
           }
         } catch (e) {
           debugPrint('Product matching error for "${item.itemName}": $e');
         }
       }
+    }
+
+    // ── Phase 2: Shop matching ──
+    String? shopId;
+    if (parseResult.storeName != null && parseResult.storeName!.isNotEmpty) {
+      final shopService = ShopMatchingService(supabase);
+      final shopResult = await shopService.matchShop(
+        rawShopName: parseResult.storeName!,
+        shopType: parseResult.storeCate,
+      );
+      shopId = shopResult?.shopId;
+      if (shopResult != null && shopId != null) {
+        await supabase.from('receipts').update({'shop_id': shopId}).eq('id', receiptId);
+      }
+    }
+
+    // ── Phase 3: Write price_history for each item ──
+    final priceHistoryItems = parseResult.items.map((item) => {
+      'receipt_id': receiptId,
+      'item_name': item.itemName,
+      'item_raw_text': item.itemRawText,
+      'qty': item.qty,
+      'unit_price': item.unitPrice,
+      'actual_price': item.actualPrice,
+      'prd_cate': item.prdCate,
+      'line_total': item.lineTotal,
+    }).toList();
+
+    for (final item in priceHistoryItems) {
+      final masterProductId = await _getMasterProductIdForItem(supabase, item);
+      if (masterProductId == null) continue;
+
+      await supabase.from('price_history').insert({
+        'master_product_id': masterProductId,
+        'shop_id': shopId,
+        'location': parseResult.location,
+        'price': item['line_total'],
+        'original_price': item['unit_price'],
+        'total_paid': item['actual_price'],
+        'unit': '件',
+        'source_receipt_id': receiptId,
+        'recorded_at': DateTime.now().toIso8601String().split('T')[0],
+      });
     }
 
     final empId = relations?['employer_id'];
@@ -949,4 +1015,33 @@ class ParsedItem {
       'line_total': lineTotal,
     };
   }
+}
+Future<String?> _getMasterProductIdForItem(dynamic client, Map<String, dynamic> item) async {
+  final itemName = item['item_name'] as String? ?? '';
+  final rawText = item['item_raw_text'] as String? ?? itemName;
+  final prdCate = item['prd_cate'] as String? ?? 'other';
+
+  // Try to find existing master_product via product_aliases
+  final aliasMatch = await client
+      .from('product_aliases')
+      .select('master_product_id')
+      .eq('raw_name', rawText.isNotEmpty ? rawText : itemName)
+      .maybeSingle();
+
+  if (aliasMatch != null) {
+    return aliasMatch['master_product_id'] as String;
+  }
+
+  // Try exact match on master_products canonical_name
+  final mpMatch = await client
+      .from('master_products')
+      .select('id')
+      .eq('canonical_name', itemName)
+      .maybeSingle();
+
+  if (mpMatch != null) {
+    return mpMatch['id'] as String;
+  }
+
+  return null;
 }
