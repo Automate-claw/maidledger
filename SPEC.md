@@ -256,11 +256,27 @@ checkRelationStatus(userId)
 
 ---
 
+## 📦 Packages 目錄狀態
+
+```
+packages/
+├── receipt-parser/     ← ✅ 有用 (helper_app 在用)
+├── localization/       ← ✅ 有用 (helper_app + employer_app 在用)
+└── archive/            ← ⏳ 待清理（3 個月內冇相關 task → 刪除）
+    ├── ai-booking-agent/      ← 代碼在 helper_app/lib/core/services/
+    ├── receipt-scanner/       ← 代碼在 helper_app/lib/core/services/
+    └── price-alert-engine/    ← 從未 implement，空殼
+```
+
+---
+
 ## ⚠️ 待確認 / 進行中
 
 | 項目 | 狀態 | 備註 |
 |------|------|------|
+| packages/archive cleanup | ⏳ 待清理 | 3 個月內冇相關 task → 刪除 archive |
 | helper_app main flow | ✅ 完成 | Scan + Chat + History |
+| employer_app | ⬜ 未開始 | 需要 My Code + Receipt list |
 | OCR with ML Kit Chinese | ✅ 完成 | TextRecognitionScript.chinese |
 | Edge function receipt-parser | ✅ 完成 | OpenRouter DeepSeek V4 (paid) |
 | Edge function chat-parser | ✅ 完成 | 2-stage classification, all text via LLM |
