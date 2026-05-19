@@ -430,13 +430,13 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
         'raw_text': intent.rawText,
         'parsed_data': {
           'intent': intent.intent,
-          'category': intent.category,
+          'store_cate': intent.category,
           'amount': intent.amount,
           'items': intent.items,
           'store_name': intent.storeName,
         },
         'amount': intent.amount,
-        'category': intent.category,
+        'store_cate': intent.category,
         'location': location,
         'transaction_date': transactionDate?.toIso8601String().split('T')[0],
         'image_local_path': imageStorageUrl,
@@ -472,7 +472,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
           'actual_price': intent.amount,
           'is_discounted': false,
           'discount_note': null,
-          'prd_cate': intent.category ?? 'other',
+          'prd_cate': _mapToPrdCate(intent.category),  // store_cate → prd_cate fallback
           'line_total': intent.amount,
           'created_at': DateTime.now().toIso8601String(),
         });
