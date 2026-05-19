@@ -307,6 +307,26 @@ ${storeCategories.map((c: { code: string; name_tc: string }) => `- ${c.code} = $
 - 菲仲文/印尼文：如 "bili isda 30"（isda=魚）
 - 混合：例如「紅衫魚 1斤 \$30」直接解析
 
+## 魚類翻譯（重要！必須準確翻譯）
+以下係常見魚類嘅多語言名稱，請確保翻譯準確：
+- 紅衫魚 = "Pulang snapper" / "red snapper" / "紅魚"
+- 石斑 = "grouper" / "stone bass"
+- 魽/花魽 = "carnation fish"
+- 黃腳鱲 = "yellowfoot fish"
+- 鯪魚 = "mullet"
+- 烏頭 = "mullet (bigeye)"
+- 急流感 = "milkfish"
+- 扒皮魚 = "filefish"
+- 印尼：isda=魚, salmon=三文魚, hipon=蝦, tinapa=鹹魚
+- 菲仲文：bangus=烏頭/魷魚, talaba=蜆, sapat=魚
+- 如果用户輸入英文魚名但你唔識，請用「魚」+ 英文名
+
+## 翻譯規則
+- 收到英文魚名 → 搵對應中文名（上面列表）→ item_name 填中文
+- 收到菲仲/印尼文魚名 → 搵對應中文名 → item_name 填中文
+- item_raw_text → 填用戶輸入嘅原始文字（唔好翻譯）
+- 如果完全唔識嗰種魚 → item_name 填「魚」，item_raw_text 填原始文字
+
 ## 折扣/特價檢測（重要）
 - 如果單據顯示「2件 $54」「買2件54元」「套裝 $399」「$30×2=54」：
   - qty = 2（件數）

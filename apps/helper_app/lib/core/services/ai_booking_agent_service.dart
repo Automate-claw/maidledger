@@ -100,7 +100,7 @@ class AIBookingAgent {
         'Authorization': 'Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImhueWF6ZnJrenB4ZGppeWZ6ZW1tIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzg2NTUwMjcsImV4cCI6MjA5NDIzMTAyN30.lo2HAv0E9WK1CRHTtU3idlrq3xNogdUAbWfpXvz90J0',
       },
       body: bodyBytes,
-    ).timeout(const Duration(seconds: 20));
+    ).timeout(const Duration(seconds: 60));
 
     debugPrint('🤖 [AIBookingAgent] Edge response status: ${resp.statusCode}');
     debugPrint('🤖 [AIBookingAgent] Edge response body: ${resp.body}');
