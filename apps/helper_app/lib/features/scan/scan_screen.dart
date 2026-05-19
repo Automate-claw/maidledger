@@ -15,7 +15,13 @@ import '../../core/services/receipt_scanner_service.dart';
 import '../../core/services/product_matching_service.dart';
 
 /// Camera scan screen for receipt scanning
-/// Workflow: Photo → Compress → Upload to Storage → OCR → Edge LLM Parse → DB
+///
+/// Workflow:
+///   Phase 1 (Camera): Live preview → tap capture
+///   Phase 2 (Preview): Show image + OCR text → [Retake] / [Confirm]
+///   Phase 3 (Processing): Parallel compress+upload+LLM → Save → Result
+enum ScanPhase { camera, preview, processing }
+
 class ScanScreen extends ConsumerStatefulWidget {
   const ScanScreen({super.key});
 
@@ -27,9 +33,19 @@ class _ScanScreenState extends ConsumerState<ScanScreen> {
   CameraController? _cameraController;
   List<CameraDescription>? _cameras;
   bool _isInitialized = false;
+
+  // Phase state
+  ScanPhase _scanPhase = ScanPhase.camera;
+
+  // Preview state (Phase 2)
+  XFile? _capturedImage;
+  Uint8List? _compressedBytes;
+  String? _ocrRawText;
+  String? _ocrReconstructedText;
+  String? _imageUrl; // pre-uploaded URL, ready for confirm
+
+  // Processing state (Phase 3)
   bool _isProcessing = false;
-  String? _lastScannedText;
-  String? _lastImageUrl;
 
   @override
   void initState() {
@@ -100,57 +116,146 @@ class _ScanScreenState extends ConsumerState<ScanScreen> {
   }
 
   // ============================================================
-  // Core workflow: Photo → Compress → Upload → OCR → Edge LLM → DB
+  // PHASE 1 → PHASE 2: Capture → Show Preview + Run OCR + Compress in parallel
   // ============================================================
 
-  Future<void> _captureAndScan() async {
-    if (_cameraController == null || !_cameraController!.value.isInitialized) {
-      return;
-    }
-
+  Future<void> _onCapture() async {
+    if (_cameraController == null || !_cameraController!.value.isInitialized) return;
     if (_isProcessing) return;
-
-    setState(() => _isProcessing = true);
 
     try {
       // Step 1: Capture photo
       final XFile image = await _cameraController!.takePicture();
 
-      // Step 2: Compress image (target: ~500KB max)
-      _showSnackbar('壓縮圖片中...', isLoading: true);
-      final compressedBytes = await _compressImage(image);
+      setState(() {
+        _capturedImage = image;
+        _scanPhase = ScanPhase.preview;
+        _ocrRawText = null;
+        _ocrReconstructedText = null;
+        _compressedBytes = null;
+        _imageUrl = null;
+      });
 
-      // Step 3: Upload to Supabase Storage
-      _showSnackbar('上傳圖片...', isLoading: true);
-      final imageUrl = await _uploadToStorage(compressedBytes, image.path);
-      setState(() => _lastImageUrl = imageUrl);
+      // Step 2: Run OCR + Compress in parallel (background, non-blocking)
+      _runOcrAndCompressInBackground(image);
+    } catch (e) {
+      _showError('Capture failed: $e');
+    }
+  }
 
-      // Step 4: OCR - extract raw text + group by row
+  /// Run OCR + Compress in background after capture, before user confirms.
+  /// Results populate _ocrRawText, _ocrReconstructedText, _compressedBytes.
+  Future<void> _runOcrAndCompressInBackground(XFile image) async {
+    // Parallel: OCR + Compress
+    final results = await Future.wait([
+      _runOcr(image),
+      _compressImage(image),
+    ]);
+
+    final ocrResult = results[0] as OcrResult;
+    final compressedBytes = results[1] as Uint8List;
+
+    // After OCR completes, pre-upload to storage (background)
+    // This makes confirm phase faster
+    _uploadInBackground(compressedBytes, image.path);
+
+    if (mounted) {
+      setState(() {
+        _ocrRawText = ocrResult.rawText;
+        _ocrReconstructedText = ocrResult.reconstructedText;
+        _compressedBytes = compressedBytes;
+      });
+    }
+  }
+
+  Future<OcrResult> _runOcr(XFile image) async {
+    try {
       final scanner = ref.read(receiptScannerProvider);
-      final ocrResult = await scanner.scanFromFile(File(image.path));
+      final result = await scanner.scanFromFile(File(image.path));
+      return OcrResult(
+        rawText: result.rawText,
+        reconstructedText: result.reconstructedText,
+      );
+    } catch (e) {
+      return OcrResult(rawText: '', reconstructedText: '');
+    }
+  }
 
-      if (ocrResult.rawText.isEmpty) {
-        _showError('未能識別文字，請重試');
-        setState(() => _isProcessing = false);
+  Future<void> _uploadInBackground(Uint8List bytes, String path) async {
+    try {
+      final url = await _uploadToStorage(bytes, path);
+      if (mounted) {
+        setState(() => _imageUrl = url);
+      }
+    } catch (e) {
+      // Non-critical: upload can happen on confirm if not done yet
+      debugPrint('Background upload failed (will retry on confirm): $e');
+    }
+  }
+
+  // ============================================================
+  // PHASE 2: Preview → User decides Retake or Confirm
+  // ============================================================
+
+  Future<void> _onRetake() async {
+    if (_isProcessing) return;
+
+    setState(() {
+      _capturedImage = null;
+      _ocrRawText = null;
+      _ocrReconstructedText = null;
+      _compressedBytes = null;
+      _imageUrl = null;
+      _scanPhase = ScanPhase.camera;
+    });
+
+    // Re-initialize camera if needed
+    if (_cameraController == null || !_cameraController!.value.isInitialized) {
+      await _initCamera();
+    }
+  }
+
+  Future<void> _onConfirm() async {
+    if (_isProcessing) return;
+    if (_capturedImage == null) return;
+
+    setState(() {
+      _isProcessing = true;
+      _scanPhase = ScanPhase.processing;
+    });
+
+    try {
+      // Ensure we have compressed bytes (should be ready from background)
+      Uint8List? bytes = _compressedBytes;
+      String? imageUrl = _imageUrl;
+
+      // If background upload didn't complete, do it now (blocking)
+      if (bytes == null || imageUrl == null) {
+        _showSnackbar('準備圖片中...', isLoading: true);
+        bytes ??= await _compressImage(_capturedImage!);
+        imageUrl ??= await _uploadToStorage(bytes, _capturedImage!.path);
+      }
+
+      // Build enhanced text for LLM
+      final rawText = _ocrRawText ?? '';
+      final reconstructed = _ocrReconstructedText ?? '';
+      final enhancedText = '=== OCR Raw Text ===\n$rawText\n\n=== Row-Reconstructed (左|右 format) ===\n$reconstructed';
+
+      // If OCR was empty (no text found), warn user but allow proceed
+      if (rawText.isEmpty) {
+        _showError('未能識別文字，請重新拍攝或嘗試調整角度');
+        await _onRetake();
         return;
       }
 
-      // Build enhanced text: raw OCR + row-reconstructed structure
-      // This helps LLM understand left-right column layout
-      final ocrText = ocrResult.rawText;
-      final reconstructed = ocrResult.reconstructedText;
-      final enhancedText = '=== OCR Raw Text ===\n$ocrText\n\n=== Row-Reconstructed (左|右 format) ===\n$reconstructed';
-
-      setState(() => _lastScannedText = ocrResult.rawText);
-
-      // Step 5: LLM parse via Supabase Edge Function
+      // LLM parse
       _showSnackbar('正在解析收據...', isLoading: true);
       final parseResult = await _callEdgeLLM(enhancedText);
 
-      // Step 6: Save to DB (receipt header + items)
+      // Save to DB
       await _saveReceiptToDb(
         imageUrl: imageUrl,
-        rawText: ocrResult.rawText,
+        rawText: rawText,
         parseResult: parseResult,
       );
 
@@ -172,7 +277,10 @@ class _ScanScreenState extends ConsumerState<ScanScreen> {
     }
   }
 
-  /// Compress image to ~500KB max using flutter_image_compress
+  // ============================================================
+  // Core helpers
+  // ============================================================
+
   Future<Uint8List> _compressImage(XFile image) async {
     final result = await FlutterImageCompress.compressWithFile(
       image.path,
@@ -181,39 +289,21 @@ class _ScanScreenState extends ConsumerState<ScanScreen> {
       quality: 70,
       format: CompressFormat.jpeg,
     );
-
-    if (result == null) {
-      // Fallback: read original file
-      return File(image.path).readAsBytesSync();
-    }
-
+    if (result == null) return File(image.path).readAsBytesSync();
     return result;
   }
 
-  /// Upload compressed image to Supabase Storage, return public URL
   Future<String> _uploadToStorage(Uint8List bytes, String originalPath) async {
     final fileName = 'receipt_${DateTime.now().millisecondsSinceEpoch}.jpg';
     final filePath = 'receipts/$fileName';
-
-    try {
-      await supabase.storage
-          .from('receipts')
-          .uploadBinary(filePath, bytes);
-    } catch (e) {
-      throw Exception('Upload failed: $e');
-    }
-
-    // Return public URL
-    final url = supabase.storage.from('receipts').getPublicUrl(filePath);
-    return url;
+    await supabase.storage.from('receipts').uploadBinary(filePath, bytes);
+    return supabase.storage.from('receipts').getPublicUrl(filePath);
   }
 
-  /// Call Supabase Edge Function for LLM parsing
   Future<ReceiptParseResult> _callEdgeLLM(String rawText) async {
     final supabaseUrl = dotenv.env['SUPABASE_URL'] ?? '';
     final anonKey = dotenv.env['SUPABASE_ANON_KEY'] ?? '';
 
-    String responseBody;
     try {
       final response = await http.post(
         Uri.parse('$supabaseUrl/functions/v1/receipt-parser'),
@@ -224,21 +314,17 @@ class _ScanScreenState extends ConsumerState<ScanScreen> {
         },
         body: jsonEncode({'raw_text': rawText}),
       );
-      responseBody = response.body;
 
       if (response.statusCode != 200) {
-        // Try to parse error JSON
         try {
-          final errJson = jsonDecode(responseBody);
-          throw Exception('Edge function error: ${errJson['error'] ?? responseBody}');
+          final errJson = jsonDecode(response.body);
+          throw Exception('Edge function error: ${errJson['error'] ?? response.body}');
         } catch (_) {
-          throw Exception('Edge function error: $responseBody');
+          throw Exception('Edge function error: ${response.body}');
         }
       }
 
-      final json = jsonDecode(responseBody);
-
-      // Check for error field OR if critical fields are null (LLM parse failed)
+      final json = jsonDecode(response.body);
       if (json['error'] != null) {
         throw Exception('LLM parsing failed: ${json['error']}');
       }
@@ -250,7 +336,6 @@ class _ScanScreenState extends ConsumerState<ScanScreen> {
     }
   }
 
-  /// Save receipt header + items to Supabase DB
   Future<void> _saveReceiptToDb({
     required String imageUrl,
     required String rawText,
@@ -259,7 +344,6 @@ class _ScanScreenState extends ConsumerState<ScanScreen> {
     final user = supabase.auth.currentUser;
     if (user == null) throw Exception('Not logged in');
 
-    // Get active relation (nullable - helper can save without linking)
     final relations = await supabase
         .from('employer_helper_relations')
         .select('id, employer_id')
@@ -270,7 +354,6 @@ class _ScanScreenState extends ConsumerState<ScanScreen> {
     final receiptId = const Uuid().v4();
     final now = DateTime.now().millisecondsSinceEpoch;
 
-    // Insert receipt header (employer_id can be null)
     await supabase.from('receipts').insert({
       'id': receiptId,
       'employer_id': relations?['employer_id'],
@@ -288,16 +371,11 @@ class _ScanScreenState extends ConsumerState<ScanScreen> {
       'created_at': DateTime.now().toIso8601String(),
     });
 
-    // Insert receipt items
     final productMatcher = ProductMatchingService(supabase);
     if (parseResult.hasItems) {
-      final itemRows = parseResult.items
-          .map((item) => item.toMap(receiptId))
-          .toList();
-
+      final itemRows = parseResult.items.map((item) => item.toMap(receiptId)).toList();
       await supabase.from('receipt_items').insert(itemRows);
 
-      // Auto-match items to master_products (silent, no user intervention)
       for (var i = 0; i < parseResult.items.length; i++) {
         final item = parseResult.items[i];
         try {
@@ -306,7 +384,6 @@ class _ScanScreenState extends ConsumerState<ScanScreen> {
             prdCate: item.prdCate,
           );
           if (match != null) {
-            // Find the receipt_item by matching item_name + receipt_id
             final itemRow = await supabase
                 .from('receipt_items')
                 .select('id')
@@ -317,19 +394,12 @@ class _ScanScreenState extends ConsumerState<ScanScreen> {
               await productMatcher.bindReceiptItem(itemRow['id'] as String, match.masterProductId);
             }
           } else {
-            // No confident match — create new master product silently
-            await productMatcher.createMasterProduct(
-              rawName: item.itemName,
-              prdCate: item.prdCate,
-            );
+            await productMatcher.createMasterProduct(rawName: item.itemName, prdCate: item.prdCate);
           }
-        } catch (_) {
-          // Matching errors should not break the save flow
-        }
+        } catch (_) {}
       }
     }
 
-    // Trigger notification broadcast to employer via Edge Function (only if linked)
     final empId = relations?['employer_id'];
     if (empId != null) {
       try {
@@ -347,7 +417,6 @@ class _ScanScreenState extends ConsumerState<ScanScreen> {
           },
         });
       } catch (e) {
-        // Notification is non-critical, don't fail the save
         debugPrint('Notification broadcast failed: $e');
       }
     }
@@ -359,9 +428,7 @@ class _ScanScreenState extends ConsumerState<ScanScreen> {
       barrierDismissible: true,
       builder: (context) => AlertDialog(
         title: const Text('🔗 需要連接僱主'),
-        content: const Text(
-          '請先連接僱主才能保存收據。\n如果你已有代碼，請在上一個畫面輸入。',
-        ),
+        content: const Text('請先連接僱主才能保存收據。\n如果你已有代碼，請在上一個畫面輸入。'),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context),
@@ -398,10 +465,7 @@ class _ScanScreenState extends ConsumerState<ScanScreen> {
                   ),
                 ),
               ),
-              const Text(
-                '✅ 收據已保存',
-                style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
-              ),
+              const Text('✅ 收據已保存', style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold)),
               const SizedBox(height: 16),
               if (result.storeName != null) _infoRow('店舖', result.storeName!),
               _infoRow('類別', result.storeCate),
@@ -409,10 +473,7 @@ class _ScanScreenState extends ConsumerState<ScanScreen> {
               if (result.totalAmount != null)
                 _infoRow('總金額', '\$${result.totalAmount!.toStringAsFixed(2)}'),
               const SizedBox(height: 16),
-              Text(
-                '📦 已識別 ${result.items.length} 件貨品',
-                style: const TextStyle(fontWeight: FontWeight.bold),
-              ),
+              Text('📦 已識別 ${result.items.length} 件貨品', style: const TextStyle(fontWeight: FontWeight.bold)),
               const SizedBox(height: 8),
               ...result.items.map((item) => Padding(
                     padding: const EdgeInsets.symmetric(vertical: 4),
@@ -431,7 +492,7 @@ class _ScanScreenState extends ConsumerState<ScanScreen> {
                     child: OutlinedButton.icon(
                       onPressed: () {
                         Navigator.pop(context);
-                        _captureAndScan();
+                        _onRetake();
                       },
                       icon: const Icon(Icons.refresh),
                       label: const Text('再掃'),
@@ -477,96 +538,307 @@ class _ScanScreenState extends ConsumerState<ScanScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Scan Receipt'),
+        title: Text(_getTitle()),
         centerTitle: true,
-        actions: [
-          if (_lastScannedText != null)
-            IconButton(
-              icon: const Icon(Icons.history),
-              onPressed: () {},
-            ),
-        ],
       ),
-      body: _isInitialized
-          ? Stack(
-              children: [
-                SizedBox.expand(
-                  child: CameraPreview(_cameraController!),
-                ),
-                Positioned.fill(
-                  child: IgnorePointer(
-                    child: Container(
-                      decoration: BoxDecoration(
-                        border: Border.all(
-                          color: Colors.green.withValues(alpha: 0.5),
-                          width: 2,
-                        ),
-                      ),
-                      margin: const EdgeInsets.all(32),
-                      child: const Center(
-                        child: Text(
-                          'Align receipt within frame',
-                          style: TextStyle(
-                            color: Colors.white,
-                            fontSize: 16,
-                            shadows: [
-                              Shadow(
-                                offset: Offset(1, 1),
-                                blurRadius: 4,
-                                color: Colors.black54,
-                              ),
-                            ],
-                          ),
-                        ),
-                      ),
-                    ),
+      body: _buildBody(),
+    );
+  }
+
+  String _getTitle() {
+    switch (_scanPhase) {
+      case ScanPhase.camera:
+        return 'Scan Receipt';
+      case ScanPhase.preview:
+        return '確認照片';
+      case ScanPhase.processing:
+        return '處理中';
+    }
+  }
+
+  Widget _buildBody() {
+    switch (_scanPhase) {
+      case ScanPhase.camera:
+        return _buildCameraBody();
+      case ScanPhase.preview:
+        return _buildPreviewBody();
+      case ScanPhase.processing:
+        return _buildProcessingBody();
+    }
+  }
+
+  // ============================================================
+  // PHASE 1: Camera Live Preview
+  // ============================================================
+
+  Widget _buildCameraBody() {
+    if (!_isInitialized) {
+      return const Center(
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(Icons.camera_alt, size: 80, color: Colors.grey),
+            SizedBox(height: 16),
+            Text('Initializing camera...'),
+            SizedBox(height: 8),
+            CircularProgressIndicator(),
+          ],
+        ),
+      );
+    }
+
+    return Stack(
+      children: [
+        SizedBox.expand(child: CameraPreview(_cameraController!)),
+        // Receipt alignment guide
+        Positioned.fill(
+          child: IgnorePointer(
+            child: Container(
+              decoration: BoxDecoration(
+                border: Border.all(color: Colors.green.withValues(alpha: 0.5), width: 2),
+              ),
+              margin: const EdgeInsets.all(32),
+              child: const Center(
+                child: Text(
+                  'Align receipt within frame',
+                  style: TextStyle(
+                    color: Colors.white,
+                    fontSize: 16,
+                    shadows: [Shadow(offset: Offset(1, 1), blurRadius: 4, color: Colors.black54)],
                   ),
                 ),
-                if (_isProcessing)
-                  Container(
-                    color: Colors.black54,
-                    child: const Center(
-                      child: Column(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          CircularProgressIndicator(color: Colors.white),
-                          SizedBox(height: 16),
-                          Text(
-                            'Processing...',
-                            style: TextStyle(color: Colors.white),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ),
-              ],
-            )
-          : const Center(
-              child: Column(
-                mainAxisAlignment: MainAxisAlignment.center,
+              ),
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+
+  // ============================================================
+  // PHASE 2: Preview with OCR Text + Retake / Confirm buttons
+  // ============================================================
+
+  Widget _buildPreviewBody() {
+    if (_capturedImage == null) {
+      return const Center(child: CircularProgressIndicator());
+    }
+
+    final imageBytes = File(_capturedImage!.path).readAsBytesSync();
+
+    return Column(
+      children: [
+        // Image preview (tappable to zoom)
+        Expanded(
+          flex: 3,
+          child: GestureDetector(
+            onTap: () => _showImageFullScreen(imageBytes),
+            child: Container(
+              margin: const EdgeInsets.all(16),
+              decoration: BoxDecoration(
+                borderRadius: BorderRadius.circular(12),
+                image: DecorationImage(
+                  image: MemoryImage(imageBytes),
+                  fit: BoxFit.contain,
+                ),
+              ),
+              child: Stack(
                 children: [
-                  Icon(Icons.camera_alt, size: 80, color: Colors.grey),
-                  SizedBox(height: 16),
-                  Text('Initializing camera...'),
-                  SizedBox(height: 8),
-                  CircularProgressIndicator(),
+                  // Quality indicator badge
+                  Positioned(
+                    top: 12,
+                    right: 12,
+                    child: _buildQualityBadge(),
+                  ),
                 ],
               ),
             ),
-      floatingActionButton: _isInitialized && !_isProcessing
-          ? FloatingActionButton.large(
-              onPressed: _captureAndScan,
-              child: const Icon(Icons.camera_alt, size: 36),
-            )
-          : null,
-      floatingActionButtonLocation: FloatingActionButtonLocation.centerFloat,
+          ),
+        ),
+
+        // OCR Text section
+        Expanded(
+          flex: 2,
+          child: Container(
+            margin: const EdgeInsets.symmetric(horizontal: 16),
+            padding: const EdgeInsets.all(12),
+            decoration: BoxDecoration(
+              color: Colors.grey[100],
+              borderRadius: BorderRadius.circular(12),
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    const Icon(Icons.text_fields, size: 16, color: Colors.grey),
+                    const SizedBox(width: 6),
+                    Text(
+                      '📝 識別文字',
+                      style: TextStyle(
+                        fontSize: 13,
+                        fontWeight: FontWeight.w600,
+                        color: Colors.grey[700],
+                      ),
+                    ),
+                    const Spacer(),
+                    if (_ocrRawText == null)
+                      const SizedBox(
+                        width: 14,
+                        height: 14,
+                        child: CircularProgressIndicator(strokeWidth: 2),
+                      )
+                    else if (_ocrRawText!.isEmpty)
+                      Text(
+                        '⚠️ 未識別到文字',
+                        style: TextStyle(fontSize: 12, color: Colors.orange[700]),
+                      )
+                    else
+                      Text(
+                        '✓ 已識別',
+                        style: TextStyle(fontSize: 12, color: Colors.green[700]),
+                      ),
+                  ],
+                ),
+                const SizedBox(height: 8),
+                Expanded(
+                  child: _ocrRawText != null
+                      ? SingleChildScrollView(
+                          child: Text(
+                            _ocrRawText!.isEmpty
+                                ? '（未能識別文字，請嘗試重新拍攝）'
+                                : _ocrRawText!,
+                            style: TextStyle(
+                              fontSize: 12,
+                              color: _ocrRawText!.isEmpty ? Colors.grey : Colors.black87,
+                              fontFamily: 'monospace',
+                            ),
+                          ),
+                        )
+                      : const Center(child: Text('正在識別文字...', style: TextStyle(color: Colors.grey))),
+                ),
+              ],
+            ),
+          ),
+        ),
+
+        // Action buttons
+        Padding(
+          padding: const EdgeInsets.all(16),
+          child: Row(
+            children: [
+              Expanded(
+                child: OutlinedButton.icon(
+                  onPressed: _isProcessing ? null : _onRetake,
+                  icon: const Icon(Icons.refresh),
+                  label: const Text('重新拍攝'),
+                  style: OutlinedButton.styleFrom(
+                    padding: const EdgeInsets.symmetric(vertical: 14),
+                  ),
+                ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: FilledButton.icon(
+                  onPressed: (_isProcessing || _ocrRawText == null) ? null : _onConfirm,
+                  icon: const Icon(Icons.check),
+                  label: const Text('確認送出'),
+                  style: FilledButton.styleFrom(
+                    padding: const EdgeInsets.symmetric(vertical: 14),
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildQualityBadge() {
+    // Show "Clear" / "Blurry" based on OCR confidence
+    final hasText = _ocrRawText != null && _ocrRawText!.isNotEmpty;
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+      decoration: BoxDecoration(
+        color: hasText ? Colors.green : Colors.orange,
+        borderRadius: BorderRadius.circular(8),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(hasText ? Icons.check_circle : Icons.warning, size: 12, color: Colors.white),
+          const SizedBox(width: 4),
+          Text(
+            hasText ? '清晰' : '模糊',
+            style: const TextStyle(color: Colors.white, fontSize: 11, fontWeight: FontWeight.bold),
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _showImageFullScreen(Uint8List imageBytes) {
+    showDialog(
+      context: context,
+      builder: (context) => Dialog(
+        backgroundColor: Colors.black,
+        insetPadding: EdgeInsets.zero,
+        child: Stack(
+          fit: StackFit.expand,
+          children: [
+            InteractiveViewer(
+              child: Image.memory(imageBytes, fit: BoxFit.contain),
+            ),
+            Positioned(
+              top: 16,
+              right: 16,
+              child: IconButton(
+                icon: const Icon(Icons.close, color: Colors.white),
+                onPressed: () => Navigator.pop(context),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  // ============================================================
+  // PHASE 3: Processing indicator
+  // ============================================================
+
+  Widget _buildProcessingBody() {
+    return Center(
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          const CircularProgressIndicator(),
+          const SizedBox(height: 24),
+          const Text(
+            '正在處理...',
+            style: TextStyle(fontSize: 18, fontWeight: FontWeight.w500),
+          ),
+          const SizedBox(height: 8),
+          Text(
+            '壓縮 → 上傳 → AI 分析',
+            style: TextStyle(fontSize: 14, color: Colors.grey[600]),
+          ),
+        ],
+      ),
     );
   }
 }
 
 // ============================================================
-// ReceiptParseResult (matches edge function JSON response)
+// Local data classes
 // ============================================================
+
+class OcrResult {
+  final String rawText;
+  final String reconstructedText;
+  OcrResult({required this.rawText, required this.reconstructedText});
+}
 
 class ReceiptParseResult {
   final String? storeName;
@@ -641,8 +913,7 @@ class ParsedItem {
     );
   }
 
-  double? get lineTotal =>
-      (unitPrice != null && qty > 0) ? unitPrice! * qty : null;
+  double? get lineTotal => (unitPrice != null && qty > 0) ? unitPrice! * qty : null;
 
   Map<String, dynamic> toMap(String receiptId) => {
         'receipt_id': receiptId,
