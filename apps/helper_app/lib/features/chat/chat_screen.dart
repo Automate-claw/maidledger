@@ -742,6 +742,12 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
         // Attach master_product_id to item for use by Phase 6
         item['master_product_id'] = result.masterProductId;
 
+        // Also bind receipt_items.master_product_id
+        await client.from('receipt_items')
+            .update({'master_product_id': result.masterProductId})
+            .eq('receipt_id', receiptId)
+            .eq('item_name', itemName);
+
         final priceToRecord = actualPrice ?? unitPrice!;
 
         // Write price_history
