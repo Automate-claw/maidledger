@@ -542,6 +542,13 @@ class _ScanScreenState extends ConsumerState<ScanScreen> {
         centerTitle: true,
       ),
       body: _buildBody(),
+      floatingActionButton: _scanPhase == ScanPhase.camera && _isInitialized && !_isProcessing
+          ? FloatingActionButton.large(
+              onPressed: _onCapture,
+              child: const Icon(Icons.camera_alt, size: 36),
+            )
+          : null,
+      floatingActionButtonLocation: FloatingActionButtonLocation.centerFloat,
     );
   }
 
