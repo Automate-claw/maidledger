@@ -711,8 +711,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
 
         // Match product (creates master_product + alias if not exists)
         final result = await productService.matchItem(
-          rawName: rawText,
-          defaultUnit: '斤',
+          itemName: rawText,
           prdCate: prdCate,
         );
 
