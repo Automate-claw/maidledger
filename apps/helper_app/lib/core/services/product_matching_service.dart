@@ -3,7 +3,6 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 /// ILIKE-based product matching service
 /// Phase 1 MVP: no pgvector dependency
 class ProductMatchingService {
-  // Multi-language keyword dictionaries (moved inside class as static const)
   static const Map<String, List<String>> _multiLangFish = {
     'fish': ['魚', '魚類', '紅衫魚', '石斑', 'isda', 'ikan', 'fish', 'iping', 'bangus'],
   };
@@ -27,7 +26,6 @@ class ProductMatchingService {
   ProductMatchingService(this._supabase);
 
   /// Match a raw item name to a master_product_id
-  /// Returns matched master_product_id or null if no confident match
   Future<MasterMatchResult?> matchItem({
     required String itemName,
     String? prdCate,
@@ -45,13 +43,12 @@ class ProductMatchingService {
     if (keywords.isNotEmpty) {
       final ilikeMatch = await _ilikeMatch(keywords, prdCate);
       if (ilikeMatch != null) {
-        // Auto-create alias for next time
         await _createAlias(ilikeMatch.masterProductId, cleanName, 'ocr');
         return ilikeMatch;
       }
     }
 
-    // Step 3: no confident match — return null (caller can choose to create new master)
+    // Step 3: no confident match — return null
     return null;
   }
 
@@ -69,20 +66,23 @@ class ProductMatchingService {
     return MasterMatchResult(
       masterProductId: result['master_product_id'] as String,
       canonicalName: mp?['canonical_name'] as String? ?? '',
-      confidence: 1.0, // exact match = 100%
+      confidence: 1.0,
       matchedVia: MatchedVia.exactAlias,
     );
   }
 
   /// Step 2: ILIKE keyword match
   Future<MasterMatchResult?> _ilikeMatch(List<String> keywords, String? prdCate) async {
-    if (keywords.isEmpty) return _multiLangFallbackMatch(keywords, prdCate);
+    if (keywords.isEmpty) return null;
 
-    // Build OR-based ILIKE: any keyword matching canonical_name
+    // Build OR filter: canonical_name ilike any keyword
+    final orParts = keywords.map((kw) => 'canonical_name.ilike.%${_escapeIlike(kw)}%').join(',');
+    final orFilter = 'or=($orParts)';
+
     var query = _supabase
         .from('master_products')
         .select('id, canonical_name, brand, prd_cate')
-        .or('canonical_name.ilike.%${keywords[0]}%,canonical_name.ilike.%${keywords.join('%'),canonical_name.ilike.%${keywords.last}%'})
+        .filter('canonical_name', 'ilike', '%${_escapeIlike(keywords[0])}%')
         .limit(20);
 
     if (prdCate != null && prdCate.isNotEmpty && prdCate != 'other') {
@@ -120,13 +120,14 @@ class ProductMatchingService {
       }
     }
 
-    // Require at least 50% keyword match confidence
     if (best != null && best.confidence >= 0.5) {
       return best;
     }
 
     return _multiLangFallbackMatch(keywords, prdCate);
   }
+
+  String _escapeIlike(String s) => s.replaceAll('%', '\\%').replaceAll('_', '\\_');
 
   Future<MasterMatchResult?> _multiLangFallbackMatch(List<String> keywords, String? prdCate) async {
     final allLangDicts = [_multiLangFish, _multiLangMeat, _multiLangVeg, _multiLangRice];
@@ -171,7 +172,6 @@ class ProductMatchingService {
   }) async {
     final canonicalName = rawName.trim();
 
-    // Insert master product
     final mpResult = await _supabase.from('master_products').insert({
       'canonical_name': canonicalName,
       'brand': brand,
@@ -179,7 +179,6 @@ class ProductMatchingService {
       'default_unit': defaultUnit,
     }).select().single();
 
-    // Create self-referencing alias
     await _supabase.from('product_aliases').insert({
       'raw_name': rawName.trim(),
       'master_product_id': mpResult['id'],
@@ -202,30 +201,21 @@ class ProductMatchingService {
         'raw_name': rawName.trim(),
         'master_product_id': masterProductId,
         'source': source,
-      }, onConflict: 'raw_name');
-    } catch (_) {
-      // Alias already exists or error — ignore
+      });
+    } catch (e) {
+      debugPrint('createAlias error: $e');
     }
   }
 
-  /// Extract searchable keywords from item name
   List<String> _extractKeywords(String text) {
-    // Remove common noise, keep meaningful tokens
     final noise = [' ', '  ', '1', '2', '件', '個', '包', '支', '罐', '盒', '斤', '兩', '克', 'kg', 'g', 'ml', 'l'];
     String cleaned = text;
     for (final n in noise) {
       cleaned = cleaned.replaceAll(n, ' ');
     }
-
-    final tokens = cleaned
-        .split(RegExp(r'\s+'))
-        .where((t) => t.length > 1)
-        .toList();
-
-    return tokens;
+    return cleaned.split(RegExp(r'\s+')).where((t) => t.length > 1).toList();
   }
 
-  /// Bind an existing master_product_id to a receipt_item
   Future<void> bindReceiptItem(String receiptItemId, String masterProductId) async {
     await _supabase.from('receipt_items').update({
       'master_product_id': masterProductId,
@@ -240,7 +230,7 @@ class MasterMatchResult {
   final String canonicalName;
   final String? brand;
   final String? prdCate;
-  final double confidence; // 0.0 - 1.0
+  final double confidence;
   final MatchedVia matchedVia;
 
   MasterMatchResult({
