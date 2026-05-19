@@ -932,13 +932,21 @@ class ParsedItem {
 
   double? get lineTotal => (unitPrice != null && qty > 0) ? unitPrice! * qty : null;
 
-  Map<String, dynamic> toMap(String receiptId) => {
-        'receipt_id': receiptId,
-        'item_name': itemName,
-        'item_raw_text': itemRawText,
-        'qty': qty,
-        'unit_price': unitPrice,
-        'prd_cate': prdCate,
-        'line_total': lineTotal,
-      };
+  static const _validCategories = {
+    'fish', 'pork', 'beef', 'chicken', 'vegetables', 'rice',
+    'oil', 'seasoning', 'snack', 'drink', 'daily', 'other',
+  };
+
+  Map<String, dynamic> toMap(String receiptId) {
+    final safeCate = _validCategories.contains(prdCate) ? prdCate : 'other';
+    return {
+      'receipt_id': receiptId,
+      'item_name': itemName,
+      'item_raw_text': itemRawText,
+      'qty': qty,
+      'unit_price': unitPrice,
+      'prd_cate': safeCate,
+      'line_total': lineTotal,
+    };
+  }
 }
