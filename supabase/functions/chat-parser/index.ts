@@ -292,10 +292,10 @@ serve(async (req) => {
 }
 
 ## 有效產品類別：
-${prdCategories.map((c: { code: string; name_tc: string }) => `- ${c.code} = ${c.name}`).join("\n")}
+${prdCategories.map((c: { code: string; name_tc: string }) => `- ${c.code} = ${c.name_tc}`).join("\n")}
 
 ## 有效商店類別：
-${storeCategories.map((c: { code: string; name_tc: string }) => `- ${c.code} = ${c.name}`).join("\n")}
+${storeCategories.map((c: { code: string; name_tc: string }) => `- ${c.code} = ${c.name_tc}`).join("\n")}
 
 ## 金額處理（重要）
 - raw_amount（用戶明確輸入的金額）: ${rawAmount !== null ? rawAmount : 'null'}
@@ -354,7 +354,12 @@ ${storeCategories.map((c: { code: string; name_tc: string }) => `- ${c.code} = $
 - 街市名稱放 location 欄（如：聯和墟街市）
 - 如果完全無法識別，location = null（唔好自己填）
 - 模糊地點：可以填「九龍」或「港島」等區域名稱作為 fallback
-- **唔好自己加地址**，用戶寫咩就記咩`;
+- **唔好自己加地址**，用戶寫咩就記咩
+
+## 【本次用戶輸入】
+以下係用戶今次輸入的完整文字（請直接分析呢段文字）：
+${text}
+`;
 
     // Call OpenRouter API
     const models = [

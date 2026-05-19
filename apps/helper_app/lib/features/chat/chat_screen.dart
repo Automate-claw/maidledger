@@ -727,7 +727,11 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
             );
             // Also create alias from original raw text
             if (rawText != itemName) {
-              await productService.createAlias(result.masterProductId, rawText, 'chat');
+              await client.from('product_aliases').upsert({
+                'raw_name': rawText.trim(),
+                'master_product_id': result.masterProductId,
+                'source': 'chat',
+              });
             }
           } catch (e) {
             debugPrint('createMasterProduct error: $e');
