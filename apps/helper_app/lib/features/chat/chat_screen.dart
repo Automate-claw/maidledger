@@ -701,6 +701,8 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
 
       // For each item, match to master_product + write price_history
       for (final item in items) {
+        // Use LLM-translated item_name for matching (not rawText which has price/unit)
+        // rawText preserved in item_raw_text for audit
         final itemName = item['item_name'] as String? ?? '';
         final rawText = item['item_raw_text'] as String? ?? itemName;
         final unitPrice = (item['unit_price'] as num?)?.toDouble();
@@ -710,11 +712,28 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
         if (unitPrice == null && actualPrice == null) continue;
 
         // Match product (creates master_product + alias if not exists)
-        final result = await productService.matchItem(
-          itemName: rawText,
+        var result = await productService.matchItem(
+          itemName: itemName,  // use translated name for better matching
           prdCate: prdCate,
         );
-        if (result == null) continue;
+
+        // If no match, create new master product using translated name
+        if (result == null) {
+          try {
+            result = await productService.createMasterProduct(
+              rawName: itemName,  // canonical = translated name
+              prdCate: prdCate,
+              defaultUnit: '斤',
+            );
+            // Also create alias from original raw text
+            if (rawText != itemName) {
+              await productService.createAlias(result.masterProductId, rawText, 'chat');
+            }
+          } catch (e) {
+            debugPrint('createMasterProduct error: $e');
+            continue;
+          }
+        }
 
         // Attach master_product_id to item for use by Phase 6
         item['master_product_id'] = result.masterProductId;
