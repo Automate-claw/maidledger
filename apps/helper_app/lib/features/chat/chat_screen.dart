@@ -556,19 +556,23 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
   List<Map<String, dynamic>> _buildItemsFromIntent(ExpenseIntent intent) {
     if (intent.items.isEmpty) return [];
 
-    return intent.items.map((itemName) {
+    return List.generate(intent.items.length, (i) {
+      final itemName = intent.items[i];
+      final itemRawText = i < intent.itemRawTexts.length && intent.itemRawTexts[i].isNotEmpty
+          ? intent.itemRawTexts[i]
+          : intent.rawText;
       final price = _extractPriceForItem(intent.rawText, itemName);
       final prdCate = _mapToPrdCate(intent.category, itemName);
 
       return {
-        'item_name': itemName,
-        'item_raw_text': intent.rawText,  // preserve full raw input for audit
+        'item_name': itemName,         // LLM-translated Chinese name
+        'item_raw_text': itemRawText,  // original raw input for audit
         'qty': 1,
         'unit_price': price,
         'prd_cate': prdCate,
         'line_total': price,
       };
-    }).toList();
+    });
   }
 
   double? _extractPriceForItem(String rawText, String itemName) {

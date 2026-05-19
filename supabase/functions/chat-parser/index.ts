@@ -276,7 +276,8 @@ serve(async (req) => {
   "total_amount": 總金額（數字）或null,
   "items": [
     {
-      "item_name": "產品名稱",
+      "item_name": "產品名稱（必須翻譯成繁體中文）",
+      "item_raw_text": "用戶輸入的原始文字（唔好翻譯，直接複製）",
       "qty": 數量（預設1）,
       "unit_price": 單價或null,
       "prd_cate": "fish|pork|beef|chicken|vegetables|rice|oil|seasoning|snack|drink|daily|takeaway|other"

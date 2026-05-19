@@ -49,9 +49,13 @@ class AIBookingAgent {
     }
 
     // Stage 3: Map successful parse to ExpenseIntent
-    final items = (response['items'] as List? ?? [])
+    final itemsList = response['items'] as List? ?? [];
+    final items = itemsList
         .map((item) => item['item_name'] as String? ?? '')
         .where((name) => name.isNotEmpty)
+        .toList();
+    final itemRawTexts = itemsList
+        .map((item) => item['item_raw_text'] as String? ?? '')
         .toList();
 
     // Workaround: the LLM sometimes ignores user-provided amounts (e.g. says 30
@@ -77,6 +81,7 @@ class AIBookingAgent {
       amount: amount,
       confidence: (response['parse_confidence'] as num?)?.toDouble() ?? 0.5,
       items: items,
+      itemRawTexts: itemRawTexts,
       note: response['reason'] as String?,
       fallback: completeness == 'partial',
       storeName: response['store_name'] as String?,
@@ -187,7 +192,8 @@ class ExpenseIntent {
   final String? category;
   final double? amount;
   final double confidence;
-  final List<String> items;
+  final List<String> items;  // item_name list (ideally translated by LLM)
+  final List<String> itemRawTexts;  // per-item raw text from LLM
   final String? note;
   final bool fallback;
   final bool isRejected;
@@ -201,6 +207,7 @@ class ExpenseIntent {
     this.amount,
     required this.confidence,
     this.items = const [],
+    this.itemRawTexts = const [],
     this.note,
     this.fallback = false,
     this.isRejected = false,
