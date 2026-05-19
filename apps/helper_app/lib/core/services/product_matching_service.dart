@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 /// ILIKE-based product matching service
@@ -82,15 +83,16 @@ class ProductMatchingService {
     var query = _supabase
         .from('master_products')
         .select('id, canonical_name, brand, prd_cate')
-        .filter('canonical_name', 'ilike', '%${_escapeIlike(keywords[0])}%')
+        .ilike('canonical_name', '%${_escapeIlike(keywords[0])}%')
         .limit(20);
 
-    if (prdCate != null && prdCate.isNotEmpty && prdCate != 'other') {
-      query = query.eq('prd_cate', prdCate);
-    }
-
     final results = await query;
-    final rows = results as List;
+    var rows = (results as List).where((row) {
+      if (prdCate != null && prdCate.isNotEmpty && prdCate != 'other') {
+        return row['prd_cate'] == prdCate;
+      }
+      return true;
+    }).toList();
 
     if (rows.isEmpty) {
       return _multiLangFallbackMatch(keywords, prdCate);
