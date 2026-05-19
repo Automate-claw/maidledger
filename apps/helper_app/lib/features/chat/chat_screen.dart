@@ -9,6 +9,7 @@ import 'package:maidledger_localization/maidledger_localization.dart';
 import '../../core/services/supabase_client_provider.dart';
 import '../../core/services/ai_booking_agent_service.dart';
 import '../../core/services/shop_matching_service.dart';
+import '../../core/services/product_matching_service.dart';
 import '../../core/services/location_service.dart';
 import '../../core/services/receipt_scanner_service.dart';
 
@@ -400,19 +401,36 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
 
       final employerId = relations?['employer_id'];
       final relationId = relations?['id'];
+      final helperId = userId;
 
       String? imageStorageUrl;
       if (image != null) {
         imageStorageUrl = await _uploadImage(image, userId, base64: imageBase64);
       }
 
-      final items = _buildItemsFromIntent(intent);
+      var items = _buildItemsFromIntent(intent);
       final transactionDate = _parseTransactionDate(intent.rawText) ?? DateTime.now();
 
       final receiptId = Uuid().v4();
 
+      // Local helper function — must be declared before use
+      String? _extractShopNameFromRawText(String rawText) {
+        final patterns = [
+          RegExp(r'(街市|市場|market)', caseSensitive: false),
+          RegExp(r'(惠康|百佳|萬寧|屈臣氏|超市)', caseSensitive: false),
+          RegExp(r'(菜市場|魚市場|肉檔)', caseSensitive: false),
+          RegExp(r'(wet market|supermarket)', caseSensitive: false),
+        ];
+        for (final pattern in patterns) {
+          final match = pattern.firstMatch(rawText);
+          if (match != null) return match.group(0)!;
+        }
+        return null;
+      }
+
       String? matchedShopId;
       final storeName = intent.storeName ?? _extractShopNameFromRawText(intent.rawText);
+
       if (storeName != null && storeName.isNotEmpty) {
         final shopService = ShopMatchingService(supabase);
         final shopResult = await shopService.matchShop(
@@ -423,12 +441,11 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
       }
 
       String? _extractShopNameFromRawText(String rawText) {
-        // Try to extract shop-like keywords from rawText
         final patterns = [
-          RegExp(r'(街市|市場|market)', CaseInsensitive: true),
-          RegExp(r'(惠康|百佳|萬寧|屈臣氏|超市)', CaseInsensitive: true),
-          RegExp(r'(菜市場|魚市場|肉檔)', CaseInsensitive: true),
-          RegExp(r'(wet market|supermarket)', CaseInsensitive: true),
+          RegExp(r'(街市|市場|market)', caseSensitive: false),
+          RegExp(r'(惠康|百佳|萬寧|屈臣氏|超市)', caseSensitive: false),
+          RegExp(r'(菜市場|魚市場|肉檔)', caseSensitive: false),
+          RegExp(r'(wet market|supermarket)', caseSensitive: false),
         ];
         for (final pattern in patterns) {
           final match = pattern.firstMatch(rawText);
@@ -504,10 +521,10 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
       await _matchProductsAndWritePriceHistory(receiptId, items, matchedShopId, location);
 
       // Phase 5: Update expense summaries
-      await _upsertExpenseSummary(employerId, helperId, relationId, transactionDate, allItems);
+      await _upsertExpenseSummary(employerId, helperId, relationId, transactionDate, items);
 
       // Phase 6: Trigger price alert check
-      await _triggerPriceAlerts(receiptId, allItems);
+      await _triggerPriceAlerts(receiptId, items);
 
       if (employerId != null) {
         try {
