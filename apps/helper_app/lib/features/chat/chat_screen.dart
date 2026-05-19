@@ -532,15 +532,15 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
 
       try {
         final storage = client.storage.from('receipts');
+        final filePath = 'receipts/$fileName';
         
         await storage.uploadBinary(
-          fileName, 
+          filePath, 
           bytes,
         );
 
         // Use createSignedUrl for access (bucket requires auth - not public)
-        // Token-based URL: /storage/v1/object/sign/receipts/filename?token=...
-        final signedUrl = await storage.createSignedUrl(fileName, 60 * 60 * 24 * 365); // 1 year expiry
+        final signedUrl = await storage.createSignedUrl(filePath, 60 * 60 * 24 * 365); // 1 year expiry
 
         debugPrint('_uploadImage: success, signedUrl=$signedUrl');
         return signedUrl;
