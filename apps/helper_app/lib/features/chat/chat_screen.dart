@@ -714,6 +714,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
           itemName: rawText,
           prdCate: prdCate,
         );
+        if (result == null) continue;
 
         // Attach master_product_id to item for use by Phase 6
         item['master_product_id'] = result.masterProductId;
