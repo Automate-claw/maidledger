@@ -59,6 +59,10 @@ class ShopMatchingService {
     );
   }
 
+  String _escapeIlike(String input) {
+    return input.replaceAll('\\', '\\\\').replaceAll('%', '\\%').replaceAll('_', '\\_');
+  }
+
   Future<ShopMatchResult?> _ilikeMatch(String rawName, String? shopType) async {
     final keywords = _extractKeywords(rawName);
     if (keywords.isEmpty) return null;
@@ -144,7 +148,9 @@ class ShopMatchingService {
       'district': district,
     }).select();
 
-    if (shopResult.isEmpty) return null;
+    if (shopResult.isEmpty) {
+      throw Exception('Failed to create shop: no result returned');
+    }
     final first = shopResult.first;
 
     return ShopMatchResult(

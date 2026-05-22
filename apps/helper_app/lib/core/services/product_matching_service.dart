@@ -181,7 +181,9 @@ class ProductMatchingService {
       'default_unit': defaultUnit,
     }).select();
 
-    if (mpResult.isEmpty) return null;
+    if (mpResult.isEmpty) {
+      throw Exception('Failed to create master product: no result returned');
+    }
     final first = mpResult.first;
 
     await _supabase.from('product_aliases').insert({
