@@ -1,0 +1,450 @@
+<!DOCTYPE html>
+<html lang="zh-HK">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>MaidLedger Schema & Data Flow</title>
+<style>
+  :root {
+    --bg: #0f1419;
+    --surface: #1a2332;
+    --border: #2d3a4d;
+    --text: #e6edf3;
+    --muted: #8b949e;
+    --accent: #58a6ff;
+    --green: #3fb950;
+    --yellow: #d29922;
+    --red: #f85149;
+    --purple: #a371f7;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: var(--bg); color: var(--text); padding: 2rem; line-height: 1.6; }
+  h1 { font-size: 1.8rem; margin-bottom: 0.5rem; color: var(--accent); }
+  h2 { font-size: 1.3rem; margin: 1.5rem 0 0.75rem; color: var(--green); border-bottom: 1px solid var(--border); padding-bottom: 0.25rem; }
+  h3 { font-size: 1.1rem; margin: 1rem 0 0.5rem; color: var(--purple); }
+  .meta { color: var(--muted); font-size: 0.85rem; margin-bottom: 1.5rem; }
+  .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 1rem; margin-bottom: 1.5rem; }
+  .card { background: var(--surface); border: 1px solid var(--border); border-radius: 8px; padding: 1rem; }
+  .card h3 { margin-top: 0; display: flex; align-items: center; gap: 0.5rem; }
+  table { width: 100%; border-collapse: collapse; font-size: 0.85rem; margin-bottom: 1rem; }
+  th { background: var(--border); text-align: left; padding: 0.4rem 0.6rem; }
+  td { padding: 0.4rem 0.6rem; border-bottom: 1px solid var(--border); }
+  .pk { color: var(--yellow); font-weight: bold; }
+  .fk { color: var(--accent); }
+  .type { color: var(--muted); font-size: 0.8em; }
+  code { background: #1a2632; padding: 0.1rem 0.3rem; border-radius: 3px; font-size: 0.85em; }
+  .flow { background: var(--surface); border: 1px solid var(--border); border-radius: 8px; padding: 1.5rem; margin: 1rem 0; overflow-x: auto; }
+  .flow-node { display: inline-block; background: var(--border); padding: 0.5rem 1rem; border-radius: 6px; margin: 0.25rem; font-size: 0.85rem; white-space: nowrap; }
+  .flow-arrow { color: var(--muted); font-size: 1.2rem; vertical-align: middle; margin: 0 0.25rem; }
+  .tag { display: inline-block; padding: 0.1rem 0.5rem; border-radius: 12px; font-size: 0.7rem; font-weight: bold; }
+  .tag-pk { background: var(--yellow); color: #000; }
+  .tag-fk { background: var(--accent); color: #000; }
+  .tag-index { background: var(--purple); color: #fff; }
+  .tag-rls { background: var(--red); color: #fff; }
+  .tag-trigger { background: var(--green); color: #000; }
+  ul { padding-left: 1.5rem; }
+  li { margin: 0.25rem 0; }
+  .section { border: 1px solid var(--border); border-radius: 8px; padding: 1rem; margin-bottom: 1rem; }
+  .subsection { margin: 1rem 0; padding: 0.75rem; background: rgba(255,255,255,0.03); border-radius: 6px; }
+  .highlight { color: var(--green); }
+  .warning { color: var(--yellow); }
+  .error { color: var(--red); }
+  .note { background: rgba(88,166,255,0.1); border-left: 3px solid var(--accent); padding: 0.5rem 1rem; margin: 0.5rem 0; border-radius: 0 4px 4px 0; font-size: 0.9rem; }
+  .two-col { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; }
+  @media (max-width: 768px) { .two-col { grid-template-columns: 1fr; } }
+  .entity-diagram { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 1rem; }
+</style>
+</head>
+<body>
+
+<h1>🧹 MaidLedger — Database Schema & Data Flow</h1>
+<p class="meta">Last updated: 2026-05-22 | Source: supabase/migrations/</p>
+
+<div class="note">
+  <strong>🎯 Unified Schema Goal:</strong> Chat and Scan write to the <strong>exact same tables</strong> — only input method differs. All receipt entries flow through: <code>receipts</code> → <code>receipt_items</code> → <code>master_products</code> + <code>product_aliases</code>, with <code>shops</code> + <code>shop_aliases</code> and <code>price_history</code> updated in parallel.
+</div>
+
+<h2>📊 Entity Overview</h2>
+<div class="entity-diagram">
+
+<div class="card">
+<h3>👤 user_profiles</h3>
+<table>
+<tr><td class="pk">id</td><td>UUID PK</td><td>→ auth.users</td></tr>
+<tr><td></td><td>TEXT</td><td>role: employer|helper</td></tr>
+<tr><td></td><td>TEXT</td><td>name, phone</td></tr>
+<tr><td></td><td>VARCHAR(20)</td><td>short_code (unique)</td></tr>
+</table>
+<p class="type">System identity + employer invite code</p>
+</div>
+
+<div class="card">
+<h3>🔗 employer_helper_relations</h3>
+<table>
+<tr><td class="pk">id</td><td>UUID PK</td><td></td></tr>
+<tr><td class="fk">employer_id</td><td>UUID FK</td><td>→ user_profiles</td></tr>
+<tr><td class="fk">helper_id</td><td>UUID FK</td><td>→ user_profiles</td></tr>
+<tr><td></td><td>TEXT</td><td>status: active|inactive|pending</td></tr>
+</table>
+<p class="type">Links employer ↔ helper. UNIQUE(employer_id, helper_id)</p>
+</div>
+
+<div class="card">
+<h3>🧾 receipts</h3>
+<table>
+<tr><td class="pk">id</td><td>UUID PK</td><td></td></tr>
+<tr><td class="fk">employer_id</td><td>UUID FK</td><td>→ user_profiles</td></tr>
+<tr><td class="fk">helper_id</td><td>UUID FK</td><td>→ user_profiles</td></tr>
+<tr><td class="fk">relation_id</td><td>UUID FK</td><td>→ employer_helper_relations</td></tr>
+<tr><td class="fk">shop_id</td><td>UUID FK</td><td>→ shops (nullable)</td></tr>
+<tr><td></td><td>TEXT</td><td>store_name, store_cate, location</td></tr>
+<tr><td></td><td>DATE</td><td>transaction_date</td></tr>
+<tr><td></td><td>TEXT</td><td>raw_text (full OCR/chat text)</td></tr>
+<tr><td></td><td>DECIMAL</td><td>amount (total)</td></tr>
+<tr><td></td><td>TEXT</td><td>sync_status: pending|synced</td></tr>
+<tr><td></td><td>BIGINT</td><td>local_timestamp</td></tr>
+<tr><td></td><td>TEXT</td><td>image_local_path (local path, not uploaded)</td></tr>
+</table>
+<p class="type">Header table. chat + scan write identical columns</p>
+</div>
+
+<div class="card">
+<h3>📦 receipt_items</h3>
+<table>
+<tr><td class="pk">id</td><td>UUID PK</td><td></td></tr>
+<tr><td class="fk">receipt_id</td><td>UUID FK</td><td>→ receipts ON DELETE CASCADE</td></tr>
+<tr><td class="fk">master_product_id</td><td>UUID FK</td><td>→ master_products (nullable)</td></tr>
+<tr><td></td><td>TEXT</td><td>item_name (LLM-translated Chinese)</td></tr>
+<tr><td></td><td>TEXT</td><td>item_raw_text (original OCR/chat)</td></tr>
+<tr><td></td><td>DECIMAL</td><td>qty, unit_price, line_total</td></tr>
+<tr><td></td><td>TEXT</td><td>prd_cate: fish|pork|beef|chicken|vegetables|...</td></tr>
+</table>
+<p class="type">Line items (1:N from receipts). LLM translates item_name to Chinese.</p>
+</div>
+
+<div class="card">
+<h3>🏪 shops</h3>
+<table>
+<tr><td class="pk">id</td><td>UUID PK</td><td></td></tr>
+<tr><td></td><td>TEXT</td><td>canonical_name (standardized)</td></tr>
+<tr><td></td><td>TEXT</td><td>shop_type: supermarket|wet_market|pharmacy|...</td></tr>
+<tr><td></td><td>TEXT</td><td>region, district</td></tr>
+</table>
+<p class="type">Canonical shop names. Scraper creates from crawler. Helper creates via OCR shop name.</p>
+</div>
+
+<div class="card">
+<h3>🏷️ shop_aliases</h3>
+<table>
+<tr><td class="pk">id</td><td>UUID PK</td><td></td></tr>
+<tr><td></td><td>TEXT UNIQUE</td><td>raw_name (original seen name)</td></tr>
+<tr><td class="fk">shop_id</td><td>UUID FK</td><td>→ shops ON DELETE CASCADE</td></tr>
+<tr><td></td><td>TEXT</td><td>source: ocr|crawler|manual|seed</td></tr>
+</table>
+<p class="type">Maps all raw shop names → canonical shops. Enables ILIKE matching.</p>
+</div>
+
+<div class="card">
+<h3>🛒 master_products</h3>
+<table>
+<tr><td class="pk">id</td><td>UUID PK</td><td></td></tr>
+<tr><td></td><td>TEXT</td><td>canonical_name</td></tr>
+<tr><td></td><td>TEXT</td><td>brand, prd_cate, default_unit</td></tr>
+<tr><td></td><td>TEXT[]</td><td>search_keywords (for ILIKE matching)</td></tr>
+</table>
+<p class="type">Canonical product definitions. Shared between scraper and helper.</p>
+</div>
+
+<div class="card">
+<h3>🏷️ product_aliases</h3>
+<table>
+<tr><td class="pk">id</td><td>UUID PK</td><td></td></tr>
+<tr><td></td><td>TEXT UNIQUE</td><td>raw_name (original OCR/crawler/chat text)</td></tr>
+<tr><td class="fk">master_product_id</td><td>UUID FK</td><td>→ master_products ON DELETE CASCADE</td></tr>
+<tr><td></td><td>TEXT</td><td>source: ocr|crawler|manual|seed</td></tr>
+</table>
+<p class="type">Maps all raw product names → canonical master_products. ILIKE matching layer.</p>
+</div>
+
+<div class="card">
+<h3>💰 price_history</h3>
+<table>
+<tr><td class="pk">id</td><td>UUID PK</td><td></td></tr>
+<tr><td class="fk">master_product_id</td><td>UUID FK</td><td>→ master_products ON DELETE CASCADE</td></tr>
+<tr><td class="fk">shop_id</td><td>UUID FK</td><td>→ shops ON DELETE SET NULL</td></tr>
+<tr><td></td><td>TEXT</td><td>location, region</td></tr>
+<tr><td></td><td>DECIMAL</td><td>price, unit</td></tr>
+<tr><td class="fk">source_receipt_id</td><td>UUID FK</td><td>→ receipts ON DELETE SET NULL</td></tr>
+<tr><td></td><td>DATE</td><td>recorded_at (default: CURRENT_DATE)</td></tr>
+<tr><td></td><td>TEXT</td><td>source_type: receipt|scraper</td></tr>
+</table>
+<p class="type">Unified price log. Both scraper + helper write here for comparison.</p>
+</div>
+
+</div>
+
+<h2>🔗 Table Relationships</h2>
+
+<pre class="flow" style="font-family: monospace; font-size: 0.9rem;">
+<a href="#user_profiles">user_profiles</a> ──┐
+                        │
+                        ▼ (1:N)
+        employer_helper_relations
+                        │
+                        ▼ (links employer ↔ helper)
+                        │
+          ┌─────────────┴─────────────┐
+          │                           │
+          ▼ (employer_id)        ▼ (helper_id)
+     <a href="#receipts">receipts</a> ◄─────────────► <a href="#receipts">receipts</a>
+
+receipts ──┬──► receipt_items ──► master_products
+           │                            ▲
+           │                            │
+           └──► shops ◄──────┼──────────┘
+                              │
+                              ▼
+                        shop_aliases
+                        product_aliases
+                              │
+                              ▼
+                        price_history
+</pre>
+
+<div class="two-col">
+
+<div class="subsection">
+<h3>📥 Helper Input Flow (Chat)</h3>
+<ol>
+<li>User types: "魚 30蚊"</li>
+<li>→ <code>chat-parser</code> edge function (LLM)</li>
+<li>→ <code>receipts</code> (insert)</li>
+<li>→ <code>receipt_items</code> (insert)</li>
+<li>→ <code>ShopMatchingService.matchShop()</code> → <code>shops</code> + <code>shop_aliases</code></li>
+<li>→ <code>ProductMatchingService.matchItem()</code> → <code>master_products</code> + <code>product_aliases</code></li>
+<li>→ <code>price_history</code> (insert, source_type='receipt')</li>
+<li>→ <code>notification-broadcast</code> → Realtime to employer</li>
+</ol>
+</div>
+
+<div class="subsection">
+<h3>📷 Helper Input Flow (Scan)</h3>
+<ol>
+<li>User captures image → ML Kit OCR</li>
+<li>→ <code>receipt-parser</code> edge function (LLM)</li>
+<li>→ <code>receipts</code> (insert)</li>
+<li>→ <code>receipt_items</code> (insert)</li>
+<li>→ <code>ShopMatchingService.matchShop()</code> → <code>shops</code> + <code>shop_aliases</code></li>
+<li>→ <code>ProductMatchingService.matchItem()</code> → <code>master_products</code> + <code>product_aliases</code></li>
+<li>→ <code>price_history</code> (insert, source_type='receipt')</li>
+<li>→ <code>notification-broadcast</code> → Realtime to employer</li>
+</ol>
+</div>
+
+<div class="subsection">
+<h3>🕷️ Scraper Flow</h3>
+<ol>
+<li>Python + Playwright crawl HKTVmall/Wellcome/ParknShop</li>
+<li>→ <code>ShopMatchingService</code> → <code>shops</code> + <code>shop_aliases</code> (source='crawler')</li>
+<li>→ <code>ProductMatchingService</code> → <code>master_products</code> + <code>product_aliases</code> (source='crawler')</li>
+<li>→ <code>price_history</code> (insert, source_type='scraper')</li>
+<li>→ <code>price-alert-engine</code> can now compare (scraper vs receipt)</li>
+</ol>
+</div>
+
+</div>
+
+<h2>🏗️ Core Tables Detail</h2>
+
+<div class="section">
+
+<h3 id="receipts">receipts</h3>
+<table>
+<tr><th>Column</th><th>Type</th><th>Constraints</th><th>Notes</th></tr>
+<tr><td class="pk">id</td><td>UUID</td><td>PK, default gen_uuid()</td><td></td></tr>
+<tr><td class="fk">employer_id</td><td>UUID</td><td>FK → user_profiles</td><td></td></tr>
+<tr><td class="fk">helper_id</td><td>UUID</td><td>FK → user_profiles</td><td></td></tr>
+<tr><td class="fk">relation_id</td><td>UUID</td><td>FK → employer_helper_relations</td><td></td></tr>
+<tr><td class="fk">shop_id</td><td>UUID</td><td>FK → shops</td><td>Matched via ShopMatchingService</td></tr>
+<tr><td></td><td>TEXT</td><td></td><td>store_name, store_cate, location</td></tr>
+<tr><td></td><td>DATE</td><td></td><td>transaction_date</td></tr>
+<tr><td></td><td>TEXT NOT NULL</td><td></td><td>raw_text — full OCR text or chat input</td></tr>
+<tr><td></td><td>DECIMAL(10,2)</td><td></td><td>amount — total</td></tr>
+<tr><td></td><td>TEXT</td><td></td><td>sync_status: pending|synced</td></tr>
+<tr><td></td><td>BIGINT NOT NULL</td><td></td><td>local_timestamp (offline-first)</td></tr>
+<tr><td></td><td>TIMESTAMPTZ</td><td></td><td>created_at, updated_at (trigger)</td></tr>
+</table>
+<span class="tag tag-rls">RLS</span> <span class="tag tag-trigger">updated_at trigger</span>
+
+<h3 id="receipt_items">receipt_items</h3>
+<table>
+<tr><th>Column</th><th>Type</th><th>Constraints</th><th>Notes</th></tr>
+<tr><td class="pk">id</td><td>UUID</td><td>PK</td><td></td></tr>
+<tr><td class="fk">receipt_id</td><td>UUID</td><td>FK → receipts ON DELETE CASCADE</td><td></td></tr>
+<tr><td class="fk">master_product_id</td><td>UUID</td><td>FK → master_products</td><td>Bound after product matching</td></tr>
+<tr><td></td><td>TEXT NOT NULL</td><td></td><td>item_name (LLM-translated Chinese)</td></tr>
+<tr><td></td><td>TEXT</td><td></td><td>item_raw_text (original)</td></tr>
+<tr><td></td><td>DECIMAL(10,3)</td><td>DEFAULT 1</td><td>qty</td></tr>
+<tr><td></td><td>DECIMAL(10,2)</td><td></td><td>unit_price</td></tr>
+<tr><td></td><td>DECIMAL(10,2)</td><td></td><td>line_total</td></tr>
+<tr><td></td><td>TEXT</td><td>CHECK (prd_cate)</td><td>fish|pork|beef|chicken|vegetables|...</td></tr>
+</table>
+<span class="tag tag-rls">RLS</span> <span class="tag tag-index">idx_receipt_items_receipt_id</span> <span class="tag tag-index">idx_receipt_items_category</span>
+
+</div>
+
+<div class="section">
+
+<h3 id="shops">shops</h3>
+<table>
+<tr><th>Column</th><th>Type</th><th>Constraints</th><th>Notes</th></tr>
+<tr><td class="pk">id</td><td>UUID PK</td><td></td><td></td></tr>
+<tr><td></td><td>TEXT NOT NULL</td><td></td><td>canonical_name (standardized)</td></tr>
+<tr><td></td><td>TEXT</td><td>CHECK (shop_type)</td><td>supermarket|wet_market|pharmacy|convenience|online|...</td></tr>
+<tr><td></td><td>TEXT</td><td></td><td>region, district</td></tr>
+</table>
+<span class="tag tag-rls">RLS</span>
+
+<h3 id="shop_aliases">shop_aliases</h3>
+<table>
+<tr><th>Column</th><th>Type</th><th>Constraints</th><th>Notes</th></tr>
+<tr><td class="pk">id</td><td>UUID PK</td><td></td><td></td></tr>
+<tr><td></td><td>TEXT UNIQUE NOT NULL</td><td></td><td>raw_name (as seen)</td></tr>
+<tr><td class="fk">shop_id</td><td>UUID</td><td>FK → shops ON DELETE CASCADE</td><td></td></tr>
+<tr><td></td><td>TEXT</td><td>CHECK (source)</td><td>ocr|crawler|manual|seed</td></tr>
+</table>
+<span class="tag tag-rls">RLS</span>
+
+<h3 id="master_products">master_products</h3>
+<table>
+<tr><th>Column</th><th>Type</th><th>Constraints</th><th>Notes</th></tr>
+<tr><td class="pk">id</td><td>UUID PK</td><td></td><td></td></tr>
+<tr><td></td><td>TEXT NOT NULL</td><td></td><td>canonical_name</td></tr>
+<tr><td></td><td>TEXT</td><td></td><td>brand, prd_cate, default_unit</td></tr>
+<tr><td></td><td>TEXT[]</td><td></td><td>search_keywords (GIN index for ILIKE)</td></tr>
+</table>
+<span class="tag tag-rls">RLS</span> <span class="tag tag-index">idx_master_products_keywords (GIN)</span>
+
+<h3 id="product_aliases">product_aliases</h3>
+<table>
+<tr><th>Column</th><th>Type</th><th>Constraints</th><th>Notes</th></tr>
+<tr><td class="pk">id</td><td>UUID PK</td><td></td><td></td></tr>
+<tr><td></td><td>TEXT UNIQUE NOT NULL</td><td></td><td>raw_name</td></tr>
+<tr><td class="fk">master_product_id</td><td>UUID</td><td>FK → master_products ON DELETE CASCADE</td><td></td></tr>
+<tr><td></td><td>TEXT</td><td>CHECK (source)</td><td>ocr|crawler|manual|seed</td></tr>
+</table>
+<span class="tag tag-rls">RLS</span>
+
+</div>
+
+<div class="section">
+
+<h3 id="price_history">price_history</h3>
+<table>
+<tr><th>Column</th><th>Type</th><th>Constraints</th><th>Notes</th></tr>
+<tr><td class="pk">id</td><td>UUID PK</td><td></td><td></td></tr>
+<tr><td class="fk">master_product_id</td><td>UUID</td><td>FK → master_products ON DELETE CASCADE</td><td></td></tr>
+<tr><td class="fk">shop_id</td><td>UUID</td><td>FK → shops ON DELETE SET NULL</td><td></td></tr>
+<tr><td></td><td>TEXT</td><td></td><td>location, region</td></tr>
+<tr><td></td><td>DECIMAL(10,2) NOT NULL</td><td></td><td>price</td></tr>
+<tr><td></td><td>TEXT</td><td></td><td>unit</td></tr>
+<tr><td class="fk">source_receipt_id</td><td>UUID</td><td>FK → receipts ON DELETE SET NULL</td><td>NULL for scraper entries</td></tr>
+<tr><td></td><td>DATE</td><td>DEFAULT CURRENT_DATE</td><td>recorded_at</td></tr>
+<tr><td></td><td>TEXT</td><td>CHECK (source_type)</td><td>receipt|scraper</td></tr>
+</table>
+<span class="tag tag-rls">RLS</span> <span class="tag tag-index">idx_price_history_product_date</span> <span class="tag tag-index">idx_price_history_region</span> <span class="tag tag-index">idx_price_history_shop</span>
+
+<p class="note" style="margin-top: 0.5rem;"><strong>🔑 Unification key:</strong> Both <code>source_type='receipt'</code> (from helper) and <code>source_type='scraper'</code> (from scraper) write here. <code>price-alert-engine</code> queries this table to compare helper purchase price vs HK avg price.</p>
+
+</div>
+
+<h2>🔄 Price Alert Workflow</h2>
+
+<div class="flow">
+<div style="font-family: monospace; font-size: 0.85rem; line-height: 1.8;">
+
+<pre>
+Helper buys "🐟 紅衫魚 $40"
+
+Step 1: receipt saved → receipt_items.master_product_id = [matched fish id]
+Step 2: price_history.insert (source_type='receipt')
+Step 3: price-alert-engine queries:
+  SELECT AVG(price), MIN, MAX
+  FROM price_history
+  WHERE master_product_id = [fish]
+    AND recorded_at > NOW() - 7 days
+    AND source_type = 'scraper'  ← only HK market prices
+
+Result:
+  avg=$35, min=$28, max=$45
+  helper paid $40 → 14% above avg → ⚠️ YELLOW alert
+</pre>
+</div>
+</div>
+
+<h2>🔧 RLS Policies Summary</h2>
+
+<table>
+<tr><th>Table</th><th>SELECT</th><th>INSERT</th><th>UPDATE</th><th>Notes</th></tr>
+<tr><td>user_profiles</td><td>owner only</td><td>service_role</td><td>owner only</td><td></td></tr>
+<tr><td>employer_helper_relations</td><td>employer + helper</td><td>employer</td><td>employer</td><td></td></tr>
+<tr><td>receipts</td><td>employer + helper</td><td>helper (with relation check)</td><td>helper own</td><td></td></tr>
+<tr><td>receipt_items</td><td>via receipts policy</td><td>helper (with relation check)</td><td>helper own</td><td></td></tr>
+<tr><td>shops</td><td>public (true)</td><td>service_role</td><td>service_role</td><td></td></tr>
+<tr><td>shop_aliases</td><td>public</td><td>service_role</td><td>service_role</td><td></td></tr>
+<tr><td>master_products</td><td>public</td><td>service_role</td><td>service_role</td><td>needed for matching</td></tr>
+<tr><td>product_aliases</td><td>public</td><td>service_role</td><td>service_role</td><td></td></tr>
+<tr><td>price_history</td><td>public</td><td>service_role + authenticated</td><td>—</td><td>unified price log</td></tr>
+</table>
+
+<h2>📁 Migration Files</h2>
+
+<table>
+<tr><th>#</th><th>File</th><th>Description</th></tr>
+<tr><td>001</td><td>price_alert.sql</td><td>Initial price_alerts table</td></tr>
+<tr><td>002</td><td>full_schema.sql</td><td>user_profiles, relations, receipts, price_data, price_alerts, expense_summaries</td></tr>
+<tr><td>003</td><td>receipt_items.sql</td><td>receipt_items table + new receipts columns (store, location, image)</td></tr>
+<tr><td>004</td><td>categories.sql</td><td>store_categories + prd_categories master tables</td></tr>
+<tr><td>005</td><td>auto_create_profile.sql</td><td>Trigger: auto-create profile on auth.users signup</td></tr>
+<tr><td>006</td><td>add_short_code.sql</td><td>short_code column on user_profiles</td></tr>
+<tr><td>007</td><td>enable_realtime.sql</td><td>Enable Supabase Realtime for notifications</td></tr>
+<tr><td>008</td><td>fix_trigger_search_path.sql</td><td>Set search_path in triggers</td></tr>
+<tr><td>009</td><td>allow_no_relation_receipts.sql</td><td>Receipts can be inserted without relation</td></tr>
+<tr><td>010</td><td>chat_logs.sql</td><td>chat_logs table for LLM call audit</td></tr>
+<tr><td>011</td><td>fix_receipt_items_insert.sql</td><td>Fix receipt_items RLS insert policy</td></tr>
+<tr><td>012</td><td>master_products_and_aliases.sql</td><td>master_products + product_aliases tables</td></tr>
+<tr><td>013</td><td>shops_and_aliases.sql</td><td>shops + shop_aliases tables</td></tr>
+<tr><td>013b</td><td>product_aliases_language_origin.sql</td><td>Add language_origin to product_aliases</td></tr>
+<tr><td>014</td><td>price_history.sql</td><td>price_history table (unified price log)</td></tr>
+<tr><td>015</td><td>price_alerts_enhanced.sql</td><td>Enhanced price_alerts with receipt link</td></tr>
+<tr><td>016</td><td>receipt_items_discount.sql</td><td>Add is_discounted, discount_note to receipt_items</td></tr>
+<tr><td>017</td><td>storage_bucket.sql</td><td>Create receipts storage bucket</td></tr>
+<tr><td>018</td><td>allow_authenticated_insert_master_products.sql</td><td>Allow authenticated to insert master_products</td></tr>
+<tr><td>019</td><td>drop_receipts_category_column.sql</td><td>Remove receipts.category (moved to receipt_items.prd_cate)</td></tr>
+<tr><td>020</td><td>shops_and_aliases_rls.sql</td><td>Add RLS policies for shops and shop_aliases</td></tr>
+<tr><td>021</td><td>app_errors_table.sql</td><td>app_errors table for client-side error logging</td></tr>
+</table>
+
+<h2>⚠️ Current Issues (TODO)</h2>
+
+<div class="section">
+<table>
+<tr><th>#</th><th>Issue</th><th>Impact</th><th>Status</th></tr>
+<tr><td>1</td><td><code>ProductMatchingService.createMasterProduct</code> — double canonicalName param (compile error)</td><td class="error">🔴 Compile fails</td><td>TODO</td></tr>
+<tr><td>2</td><td>API key hardcoded in <code>ai_booking_agent_service.dart</code></td><td class="error">🔴 Security</td><td>TODO</td></tr>
+<tr><td>3</td><td><code>price_history</code> written twice in <code>chat_screen._saveExpense</code></td><td class="error">🔴 Data duplication</td><td>TODO</td></tr>
+<tr><td>4</td><td><code>textSearch</code> without try-catch (crash on error)</td><td class="warning">🟡 Runtime crash</td><td>TODO</td></tr>
+<tr><td>5</td><td>Timeout detection too broad (any "timeout" in error string)</td><td class="warning">🟡 Misleading error</td><td>TODO</td></tr>
+<tr><td>6</td><td><code>_uploadImage</code> fallback has no flag (silent failure)</td><td class="warning">🟡 Debug difficulty</td><td>TODO</td></tr>
+<tr><td>7</td><td><code>_buildItemsFromIntent</code> price extraction uses first match, not max</td><td class="warning">🟡 Wrong amount</td><td>TODO</td></tr>
+<tr><td>8</td><td>Location picker button does nothing (returns null)</td><td class="warning">🟡 UX broken</td><td>TODO</td></tr>
+<tr><td>9</td><td>No network connectivity check before HTTP requests</td><td class="warning">🟡 UX</td><td>TODO</td></tr>
+<tr><td>10</td><td><code>maidledger_localization</code> package potentially missing</td><td class="warning">🟡 Runtime crash</td><td>TODO</td></tr>
+<tr><td>11</td><td>Product matching duplicated in chat_screen vs scan_screen (two implementations)</td><td class="warning">🟡 Inconsistency</td><td>TODO</td></tr>
+<tr><td>12</td><td>Top-level functions <code>_getMasterProductIdForItem</code> and <code>_logAppError</code> outside class</td><td class="warning">🟡 Code style</td><td>TODO</td></tr>
+<tr><td>13</td><td>ScanScreen processing phase error leaves stale preview state</td><td class="warning">🟡 UX</td><td>TODO</td></tr>
+</table>
+</div>
+
+</body>
+</html>

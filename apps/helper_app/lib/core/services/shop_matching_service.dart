@@ -70,17 +70,33 @@ class ShopMatchingService {
       tsQuery = keywords.join(' ');
     }
 
-    var query = _supabase
-        .from('shops')
-        .select('id, canonical_name, shop_type, region, district')
-        .textSearch('canonical_name', tsQuery, config: 'simple');
+    List<dynamic> rows = [];
+    try {
+      var query = _supabase
+          .from('shops')
+          .select('id, canonical_name, shop_type, region, district')
+          .textSearch('canonical_name', tsQuery, config: 'simple');
 
-    if (shopType != null && shopType.isNotEmpty && shopType != 'other') {
-      query = query.eq('shop_type', shopType);
+      if (shopType != null && shopType.isNotEmpty && shopType != 'other') {
+        query = query.eq('shop_type', shopType);
+      }
+
+      final results = await query.limit(20);
+      rows = results as List;
+    } catch (_) {
+      for (final kw in keywords) {
+        final fallbackResults = await _supabase
+            .from('shops')
+            .select('id, canonical_name, shop_type, region, district')
+            .ilike('canonical_name', '%${_escapeIlike(kw)}%')
+            .limit(10);
+        final fallbackRows = fallbackResults as List;
+        if (fallbackRows.isNotEmpty) {
+          rows = fallbackRows;
+          break;
+        }
+      }
     }
-
-    final results = await query.limit(5);
-    final rows = results as List;
 
     if (rows.isEmpty) return null;
 

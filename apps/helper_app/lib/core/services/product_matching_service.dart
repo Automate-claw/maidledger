@@ -195,9 +195,6 @@ class ProductMatchingService {
       canonicalName: canonicalName,
       brand: brand,
       prdCate: prdCate ?? 'other',
-      canonicalName: canonicalName,
-      brand: brand,
-      prdCate: prdCate ?? 'other',
       confidence: 1.0,
       matchedVia: MatchedVia.newProduct,
     );

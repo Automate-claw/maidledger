@@ -1,5 +1,6 @@
 import 'dart:convert';
 import 'package:flutter/foundation.dart';
+import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:http/http.dart' as http;
 
 /// AI Booking Agent
@@ -93,11 +94,12 @@ class AIBookingAgent {
 
     final bodyBytes = utf8.encode(jsonEncode({'text': text, 'user_id': userId ?? 'anonymous'}));
 
+    final anonKey = dotenv.env['SUPABASE_ANON_KEY'] ?? '';
     final resp = await http.post(
       Uri.parse(_edgeUrl),
       headers: {
         'Content-Type': 'application/json; charset=utf-8',
-        'Authorization': 'Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImhueWF6ZnJrenB4ZGppeWZ6ZW1tIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzg2NTUwMjcsImV4cCI6MjA5NDIzMTAyN30.lo2HAv0E9WK1CRHTtU3idlrq3xNogdUAbWfpXvz90J0',
+        'Authorization': 'Bearer $anonKey',
       },
       body: bodyBytes,
     ).timeout(const Duration(seconds: 60));

@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 import 'package:uuid/uuid.dart';
@@ -38,6 +39,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
   XFile? _pendingImage;
   String? _pendingLocation;
   String? _pendingImageBase64;
+  bool _imageUsedFallback = false;
 
   late final AIBookingAgent _agent;
   final _locationService = LocationService();
@@ -307,7 +309,9 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
     } catch (e) {
       final locale = ref.read(localeProvider);
       String errorMsg;
-      if (e.toString().contains('timeout')) {
+      if (e is TimeoutException) {
+        errorMsg = AppStrings.timeout(locale);
+      } else if (e.toString().contains('timeout') && e.toString().contains('AI timeout')) {
         errorMsg = AppStrings.timeout(locale);
       } else if (e.toString().contains('rate_limit') || e.toString().contains('rate_limited')) {
         errorMsg = AppStrings.rateLimited(locale);
@@ -503,9 +507,6 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
         items = [singleItemMap];
       }
 
-      // Phase 4: Match products and write price_history
-      await _matchProductsAndWritePriceHistory(receiptId, items, matchedShopId, location);
-
       // Phase 5: Update expense summaries
       await _upsertExpenseSummary(employerId, helperId, relationId, transactionDate, items);
 
@@ -574,9 +575,11 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
         // Use getPublicUrl like scan_screen does (bucket is public)
         final publicUrl = storage.getPublicUrl(filePath);
         debugPrint('_uploadImage: success, publicUrl=$publicUrl');
+        _imageUsedFallback = false;
         return publicUrl;
       } catch (storageError) {
         debugPrint('_uploadImage: storage failed, falling back to base64, error=$storageError');
+        _imageUsedFallback = true;
         return base64;
       }
     } catch (e) {
@@ -618,16 +621,21 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
       r'(\d+(?:\.\d{1,2})?)\s*[Jj]in',       // "40 jin" (斤)
     ];
 
+    double? maxPrice;
     for (final patternStr in pricePatterns) {
       final regex = RegExp(patternStr, caseSensitive: false);
-      final match = regex.firstMatch(rawText);
-      if (match != null) {
+      final matches = regex.allMatches(rawText);
+      for (final match in matches) {
         final result = double.tryParse(match.group(1)!);
-        if (result != null && result > 0) return result;
+        if (result != null && result > 0) {
+          if (maxPrice == null || result > maxPrice) {
+            maxPrice = result;
+          }
+        }
       }
     }
 
-    return null;
+    return maxPrice;
   }
 
   String _mapToPrdCate(String? storeCate, String itemName) {
