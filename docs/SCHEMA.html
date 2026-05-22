@@ -24,11 +24,12 @@
   h3 { font-size: 1.1rem; margin: 1rem 0 0.5rem; color: var(--purple); }
   .meta { color: var(--muted); font-size: 0.85rem; margin-bottom: 1.5rem; }
   .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 1rem; margin-bottom: 1.5rem; }
-  .card { background: var(--surface); border: 1px solid var(--border); border-radius: 8px; padding: 1rem; }
-  .card h3 { margin-top: 0; display: flex; align-items: center; gap: 0.5rem; }
-  table { width: 100%; border-collapse: collapse; font-size: 0.85rem; margin-bottom: 1rem; }
-  th { background: var(--border); text-align: left; padding: 0.4rem 0.6rem; }
-  td { padding: 0.4rem 0.6rem; border-bottom: 1px solid var(--border); }
+  .card { background: var(--surface); border: 1px solid var(--border); border-radius: 8px; padding: 0.75rem; overflow: hidden; word-break: break-word; }
+  .card h3 { margin-top: 0; display: flex; align-items: center; gap: 0.5rem; flex-wrap: wrap; }
+  .card table { font-size: 0.78rem; margin-bottom: 0.5rem; }
+  .card td, .card th { padding: 0.3rem 0.5rem; vertical-align: top; }
+  .card p { font-size: 0.8rem; color: var(--muted); margin-top: 0.25rem; }
+  .card .type { font-size: 0.75rem; }
   .pk { color: var(--yellow); font-weight: bold; }
   .fk { color: var(--accent); }
   .type { color: var(--muted); font-size: 0.8em; }
@@ -44,7 +45,9 @@
   .tag-trigger { background: var(--green); color: #000; }
   ul { padding-left: 1.5rem; }
   li { margin: 0.25rem 0; }
-  .section { border: 1px solid var(--border); border-radius: 8px; padding: 1rem; margin-bottom: 1rem; }
+  .section table { width: 100%; border-collapse: collapse; font-size: 0.82rem; margin-bottom: 1rem; }
+  .section th { background: var(--border); text-align: left; padding: 0.3rem 0.5rem; }
+  .section td { padding: 0.3rem 0.5rem; border-bottom: 1px solid var(--border); vertical-align: top; word-break: break-word; max-width: 200px; overflow: hidden; text-overflow: ellipsis; }
   .subsection { margin: 1rem 0; padding: 0.75rem; background: rgba(255,255,255,0.03); border-radius: 6px; }
   .highlight { color: var(--green); }
   .warning { color: var(--yellow); }
@@ -52,7 +55,7 @@
   .note { background: rgba(88,166,255,0.1); border-left: 3px solid var(--accent); padding: 0.5rem 1rem; margin: 0.5rem 0; border-radius: 0 4px 4px 0; font-size: 0.9rem; }
   .two-col { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; }
   @media (max-width: 768px) { .two-col { grid-template-columns: 1fr; } }
-  .entity-diagram { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 1rem; }
+  .entity-diagram { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 1rem; }
 </style>
 </head>
 <body>
