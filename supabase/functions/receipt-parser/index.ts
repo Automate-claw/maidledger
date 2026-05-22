@@ -67,7 +67,7 @@ serve(async (req) => {
   }
 
   try {
-    const { raw_text } = await req.json();
+    const { raw_text, reconstructed_text } = await req.json();
 
     if (!raw_text || raw_text.trim().length === 0) {
       return new Response(
@@ -92,10 +92,10 @@ serve(async (req) => {
     const STORE_CATEGORIES = cats.storeCategories;
     const PRD_CATEGORIES = cats.prdCategories;
 
-    // Parse the enhanced text to extract both sections
-    const sections = raw_text.split("=== Row-Reconstructed");
-    const rawOcrText = sections[0].replace("=== OCR Raw Text ===", "").trim();
-    const reconstructedText = sections.length > 1 ? sections[1].replace("(左|右 format) ===", "").trim() : "";
+    // raw_text = OCR raw text
+    // reconstructed_text = Row-Reconstructed text (left|right format)
+    const rawOcrText = raw_text.trim();
+    const reconstructedText = (reconstructed_text || "").trim();
 
     // Build prompt with dynamic category lists
     const prompt = `你係一個香港收據分析助手。請分析以下OCR文字，提取結構化資料。

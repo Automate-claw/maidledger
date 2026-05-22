@@ -232,70 +232,93 @@ class _ScanScreenState extends ConsumerState<ScanScreen> {
 
     if (!await _checkConnectivity()) return;
 
-    setState(() {
-      _isProcessing = true;
-      _scanPhase = ScanPhase.processing;
-    });
-
+    // Fire-and-forget: save receipt immediately, return to camera < 1s
+    // LLM parse + matching runs in background via receipt-processor cron
     try {
       // Ensure we have compressed bytes (should be ready from background)
       Uint8List? bytes = _compressedBytes;
       String? imageUrl = _imageUrl;
 
-      // If background upload didn't complete, do it now (blocking)
+      // If background upload didn't complete, do it now (blocking but fast)
       if (bytes == null || imageUrl == null) {
-        _showSnackbar('準備圖片中...', isLoading: true);
         bytes ??= await _compressImage(_capturedImage!);
         imageUrl ??= await _uploadToStorage(bytes, _capturedImage!.path);
       }
 
-      // Build enhanced text for LLM
       final rawText = _ocrRawText ?? '';
       final reconstructed = _ocrReconstructedText ?? '';
 
-      // If OCR was empty (no text found), warn user but allow proceed
       if (rawText.isEmpty) {
-        _showError('未能識別文字，請重新拍攝或嘗試調整角度');
+        _showError('未能識別文字，請重新拍攝');
         await _onRetake();
         return;
       }
 
-      // LLM parse
-      _showSnackbar('正在解析收據...', isLoading: true);
-      final parseResult = await _callEdgeLLM(rawText, reconstructed);
-
-      // Save to DB
-      await _saveReceiptToDb(
+      // Immediate save: parse_status=pending, background job does LLM later
+      await _saveReceiptImmediate(
         imageUrl: imageUrl,
         rawText: rawText,
-        parseResult: parseResult,
+        reconstructedText: reconstructed,
       );
 
-      setState(() => _isProcessing = false);
-
-      if (parseResult.isSuccess && parseResult.hasItems) {
-        _showSuccessWithResult(parseResult);
-      } else {
-        _showError('已保存收據，但部分資料無法自動識別，請稍後手動補充');
-      }
-      // Reset phase so user can return to camera
+      // Instant return to camera - user can continue scanning
       setState(() {
-        _isProcessing = false;
-        _scanPhase = ScanPhase.camera;
-      });
-    } catch (e) {
-      setState(() {
-        _isProcessing = false;
         _capturedImage = null;
+        _ocrRawText = null;
+        _ocrReconstructedText = null;
+        _compressedBytes = null;
+        _imageUrl = null;
         _scanPhase = ScanPhase.camera;
+        _isProcessing = false;
       });
+
+      _showSnackbar('已保存，後台處理緊...', isLoading: false);
+    } catch (e) {
+      setState(() => _isProcessing = false);
       final errStr = e.toString();
       if (errStr.contains('NO_ACTIVE_RELATION')) {
         _showRelationRequiredDialog();
       } else {
-        _showError('Scan failed: $e');
+        _showError('儲存失敗: $e');
       }
     }
+  }
+
+  /// Fire-and-forget: save receipt raw data + image immediately.
+  /// LLM parse + product matching done by receipt-processor background job.
+  Future<void> _saveReceiptImmediate({
+    required String imageUrl,
+    required String rawText,
+    required String reconstructedText,
+  }) async {
+    final user = supabase.auth.currentUser;
+    if (user == null) throw Exception('Not logged in');
+
+    final relations = await supabase
+        .from('employer_helper_relations')
+        .select('id, employer_id')
+        .eq('helper_id', user.id)
+        .eq('status', 'active')
+        .maybeSingle();
+
+    final receiptId = const Uuid().v4();
+    final now = DateTime.now().millisecondsSinceEpoch;
+
+    // Immediate write: only raw data + image, parse_status = pending
+    await supabase.from('receipts').insert({
+      'id': receiptId,
+      'employer_id': relations?['employer_id'],
+      'helper_id': user.id,
+      'relation_id': relations?['id'],
+      'raw_text': rawText,
+      'ocr_raw_text': rawText,
+      'ocr_reconstructed': reconstructedText,
+      'image_local_path': imageUrl,
+      'sync_status': 'pending',
+      'local_timestamp': now,
+      'parse_status': 'pending',
+      'created_at': DateTime.now().toIso8601String(),
+    });
   }
 
   // ============================================================
