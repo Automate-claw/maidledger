@@ -252,7 +252,6 @@ class _ScanScreenState extends ConsumerState<ScanScreen> {
       // Build enhanced text for LLM
       final rawText = _ocrRawText ?? '';
       final reconstructed = _ocrReconstructedText ?? '';
-      final enhancedText = '=== OCR Raw Text ===\n$rawText\n\n=== Row-Reconstructed (左|右 format) ===\n$reconstructed';
 
       // If OCR was empty (no text found), warn user but allow proceed
       if (rawText.isEmpty) {
@@ -263,7 +262,7 @@ class _ScanScreenState extends ConsumerState<ScanScreen> {
 
       // LLM parse
       _showSnackbar('正在解析收據...', isLoading: true);
-      final parseResult = await _callEdgeLLM(enhancedText);
+      final parseResult = await _callEdgeLLM(rawText, reconstructed);
 
       // Save to DB
       await _saveReceiptToDb(
@@ -322,7 +321,7 @@ class _ScanScreenState extends ConsumerState<ScanScreen> {
     return supabase.storage.from('receipts').getPublicUrl(filePath);
   }
 
-  Future<ReceiptParseResult> _callEdgeLLM(String rawText) async {
+  Future<ReceiptParseResult> _callEdgeLLM(String rawText, String reconstructedText) async {
     final supabaseUrl = dotenv.env['SUPABASE_URL'] ?? '';
     final anonKey = dotenv.env['SUPABASE_ANON_KEY'] ?? '';
 
@@ -334,7 +333,10 @@ class _ScanScreenState extends ConsumerState<ScanScreen> {
           'apikey': anonKey,
           'Authorization': 'Bearer $anonKey',
         },
-        body: jsonEncode({'raw_text': rawText}),
+        body: jsonEncode({
+          'raw_text': rawText,
+          'reconstructed_text': reconstructedText,
+        }),
       );
 
       if (response.statusCode != 200) {
