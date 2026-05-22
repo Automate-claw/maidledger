@@ -2,6 +2,7 @@ import 'dart:convert';
 import 'dart:io';
 import 'dart:typed_data';
 import 'package:camera/camera.dart';
+import 'package:connectivity_plus/connectivity_plus.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -89,6 +90,15 @@ class _ScanScreenState extends ConsumerState<ScanScreen> {
         SnackBar(content: Text(message), backgroundColor: Colors.red),
       );
     }
+  }
+
+  Future<bool> _checkConnectivity() async {
+    final connectivityResult = await Connectivity().checkConnectivity();
+    if (connectivityResult.contains(ConnectivityResult.none)) {
+      _showError('無網絡連接');
+      return false;
+    }
+    return true;
   }
 
   void _showSnackbar(String message, {bool isLoading = false}) {
@@ -220,6 +230,8 @@ class _ScanScreenState extends ConsumerState<ScanScreen> {
     if (_isProcessing) return;
     if (_capturedImage == null) return;
 
+    if (!await _checkConnectivity()) return;
+
     setState(() {
       _isProcessing = true;
       _scanPhase = ScanPhase.processing;
@@ -275,7 +287,8 @@ class _ScanScreenState extends ConsumerState<ScanScreen> {
     } catch (e) {
       setState(() {
         _isProcessing = false;
-        _scanPhase = ScanPhase.preview;
+        _capturedImage = null;
+        _scanPhase = ScanPhase.camera;
       });
       final errStr = e.toString();
       if (errStr.contains('NO_ACTIVE_RELATION')) {
@@ -615,6 +628,20 @@ class _ScanScreenState extends ConsumerState<ScanScreen> {
         ],
       ),
     );
+  }
+
+  Future<void> _logAppError(String errorType, String source, String message, Map<String, dynamic> extra) async {
+    try {
+      await supabase.from('app_errors').insert({
+        'error_type': errorType,
+        'source': source,
+        'message': message,
+        'extra_data': extra,
+        'created_at': DateTime.now().toIso8601String(),
+      });
+    } catch (e) {
+      debugPrint('_logAppError failed: $e');
+    }
   }
 
   @override
@@ -1027,48 +1054,5 @@ class ParsedItem {
       'prd_cate': safeCate,
       'line_total': lineTotal,
     };
-  }
-}
-Future<String?> _getMasterProductIdForItem(dynamic client, Map<String, dynamic> item) async {
-  final itemName = item['item_name'] as String? ?? '';
-  final rawText = item['item_raw_text'] as String? ?? itemName;
-  final prdCate = item['prd_cate'] as String? ?? 'other';
-
-  // Try to find existing master_product via product_aliases
-  final aliasMatch = await client
-      .from('product_aliases')
-      .select('master_product_id')
-      .eq('raw_name', rawText.isNotEmpty ? rawText : itemName)
-      .maybeSingle();
-
-  if (aliasMatch != null) {
-    return aliasMatch['master_product_id'] as String;
-  }
-
-  // Try exact match on master_products canonical_name
-  final mpMatch = await client
-      .from('master_products')
-      .select('id')
-      .eq('canonical_name', itemName)
-      .maybeSingle();
-
-  if (mpMatch != null) {
-    return mpMatch['id'] as String;
-  }
-
-  return null;
-}
-
-Future<void> _logAppError(String errorType, String source, String message, Map<String, dynamic> extra) async {
-  try {
-    await supabase.from('app_errors').insert({
-      'error_type': errorType,
-      'source': source,
-      'message': message,
-      'extra_data': extra,
-      'created_at': DateTime.now().toIso8601String(),
-    });
-  } catch (e) {
-    debugPrint('_logAppError failed: $e');
   }
 }

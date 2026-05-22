@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
+import 'package:connectivity_plus/connectivity_plus.dart';
 import 'package:uuid/uuid.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -145,7 +146,13 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
             child: const Text('❌ 不是'),
           ),
           TextButton(
-            onPressed: () => Navigator.pop(context, null),
+            onPressed: () async {
+              Navigator.pop(context);
+              final result = await _showLocationPickerDialog(context);
+              if (result != null) {
+                Navigator.pop(context, result);
+              }
+            },
             child: const Text('📍 手動選擇'),
           ),
         ],
@@ -240,6 +247,24 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
     }
   }
 
+  Future<bool> _checkConnectivity() async {
+    final locale = ref.read(localeProvider);
+    final connectivityResult = await Connectivity().checkConnectivity();
+    if (connectivityResult.contains(ConnectivityResult.none)) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('無網絡連接'),
+            backgroundColor: Colors.orange,
+          ),
+        );
+      }
+      setState(() => _isTyping = false);
+      return false;
+    }
+    return true;
+  }
+
   void _removeAttachment() {
     setState(() {
       _attachedImage = null;
@@ -278,6 +303,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
     _scrollToBottom();
 
     try {
+      if (!await _checkConnectivity()) return;
       debugPrint('🔵 [_sendMessage] Sending message: $text');
       final userId = supabase.auth.currentUser?.id;
       debugPrint('🔵 [_sendMessage] userId: $userId');
