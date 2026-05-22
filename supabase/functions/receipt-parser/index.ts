@@ -67,7 +67,7 @@ serve(async (req) => {
   }
 
   try {
-    const { raw_text, reconstructed_text } = await req.json();
+    const { raw_text } = await req.json();
 
     if (!raw_text || raw_text.trim().length === 0) {
       return new Response(
@@ -92,15 +92,10 @@ serve(async (req) => {
     const STORE_CATEGORIES = cats.storeCategories;
     const PRD_CATEGORIES = cats.prdCategories;
 
-    const rawOcrText = raw_text;
-    // Support both new format (reconstructed_text field) and old format (embedded === markers)
-    let reconstructedText = reconstructed_text ?? '';
-    if (!reconstructedText) {
-      const sections = raw_text.split("=== Row-Reconstructed");
-      if (sections.length > 1) {
-        reconstructedText = sections[1].replace("(左|右 format) ===", "").trim();
-      }
-    }
+    // Parse the enhanced text to extract both sections
+    const sections = raw_text.split("=== Row-Reconstructed");
+    const rawOcrText = sections[0].replace("=== OCR Raw Text ===", "").trim();
+    const reconstructedText = sections.length > 1 ? sections[1].replace("(左|右 format) ===", "").trim() : "";
 
     // Build prompt with dynamic category lists
     const prompt = `你係一個香港收據分析助手。請分析以下OCR文字，提取結構化資料。
@@ -114,31 +109,6 @@ ${reconstructedText ? `## 行內重構文字（同一行以「 | 」分隔左右
 呢個係重構後嘅結構，每一行嘅「 | 」左邊係項目名稱，右邊係價格。請特別注意呢個格式黎配對 item 同 price！
 ${reconstructedText}
 ` : ""}
-
-## ⚠️ 必須注意的超市場據格式
-好多香港超市收據會將商品名稱同單價分開兩行，但實際上佢哋係同一件貨品：
-```
-日清果實穀物麥片500G
-              34.50
-維他高,脫脂牛奶946ML
-              32.00
-```
-上面例子中「日清...34.50」係同一件貨品，「維他...32.00」係同一件貨品。
-
-配對方法：
-1. 如果 item_name 行下面連住一行係純數字，嗰行就係佢嘅單價
-2. 如果一行包含「 | 」分隔，左邊係名稱，右邊係單價
-3. 避免重複計價：每件貨品只配對一次
-
-## 配對規則總結
-1. 「Row-Reconstructed」格式：以「 | 」分隔，左邊 item_name，右邊 unit_price
-2. 分行格式：item 行下面如果連住一行純數字，就係 unit_price
-3. 如果同一行有多於2個 block（如 item | qty | price）， interpret accordingly
-4. 如果 OCR 碎片化導致 item 同 price 分離，嘗試：
-   a. 找「TOTAL」附近明確的價格（呢個係 total_amount）
-   b. 如果 item_raw_text 有明確數量（如「雞脾 x2」），從 item 名稱推斷
-   c. 如果實在無法配對，unit_price 設為 null，item_raw_text 填寫完整行文字
-5. unit_price 必須係有效數字，無法確認時設為 null（唔好乱填）
 
 ## 有效商店類別（請從以下選擇 store_cate）：
 ${STORE_CATEGORIES.map((c) => `- ${c.code} = ${c.name}`).join("\n")}
