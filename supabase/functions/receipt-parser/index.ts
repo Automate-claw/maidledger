@@ -53,7 +53,15 @@ async function getCategories(supabaseUrl: string, supabaseKey: string) {
   return categoriesCache;
 }
 
+// Health check endpoint (for cron warmer)
 serve(async (req) => {
+  if (req.method === "GET" && new URL(req.url).pathname.endsWith("health")) {
+    return new Response(
+      JSON.stringify({ status: "ok", timestamp: Date.now() }),
+      { headers: { ...corsHeaders, "Content-Type": "application/json" } }
+    );
+  }
+
   if (req.method === "OPTIONS") {
     return new Response("ok", { headers: corsHeaders });
   }
