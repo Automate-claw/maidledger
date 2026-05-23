@@ -67,6 +67,83 @@ serve(async (req) => {
       }
     }
 
+    // ── createFromChat ───────────────────────────────────────────────────
+    // Creates a new receipt from chat input.
+    // Looks up employer relation to get employer_id, then inserts receipt.
+    if (action === "createFromChat") {
+      if (!body.user_id || !body.raw_text) {
+        return new Response(JSON.stringify({ error: "user_id and raw_text required" }), {
+          status: 400,
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
+
+      // Look up user's employer relationship to get employer_id
+      const helperRes = await fetch(
+        `${supabaseUrl}/rest/v1/employer_helper_relations?select=id,employer_id&helper_id=eq.${body.user_id}&status=eq.active&limit=1`,
+        { headers: { apikey: supabaseKey, Authorization: `Bearer ${supabaseKey}` } }
+      );
+      const helperRelations = await helperRes.json();
+      const relation = helperRelations?.[0];
+      const employerId = relation?.employer_id;
+      const relationId = relation?.id;
+
+      if (!employerId) {
+        return new Response(JSON.stringify({ success: false, error: "no active employer relation found" }), {
+          status: 400,
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
+
+      const receiptRes = await fetch(`${supabaseUrl}/rest/v1/receipts`, {
+        method: "POST",
+        headers: {
+          apikey: supabaseKey,
+          Authorization: `Bearer ${supabaseKey}`,
+          "Content-Type": "application/json",
+          Prefer: "return=representation",
+        },
+        body: JSON.stringify({
+          employer_id: employerId,
+          helper_id: body.user_id,
+          relation_id: relationId,
+          raw_text: body.raw_text,
+          ocr_raw_text: body.ocr_raw_text ?? null,
+          ocr_reconstructed: body.ocr_reconstructed ?? null,
+          location: body.location ?? null,
+          amount: body.amount ?? null,
+          transaction_date: body.transaction_date ?? null,
+          store_name: body.store_name ?? "未知商戶",
+          store_cate: body.store_cate ?? "other",
+          parse_status: "parsed",
+          parse_confidence: 0.8,
+          needs_review: false,
+          local_timestamp: Math.floor(Date.now() / 1000),
+        }),
+      });
+
+      if (!receiptRes.ok) {
+        const err = await receiptRes.text();
+        return new Response(JSON.stringify({ success: false, error: `receipt insert failed (${receiptRes.status}): ${err}` }), {
+          status: 500,
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
+
+      const inserted = await receiptRes.json();
+      const receiptId = inserted[0]?.id ?? inserted?.id;
+      if (!receiptId) {
+        return new Response(JSON.stringify({ success: false, error: "receipt insert returned no id" }), {
+          status: 500,
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
+
+      return new Response(JSON.stringify({ success: true, receipt_id: receiptId }), {
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
     // ── writeReceipt ─────────────────────────────────────────────────────
     if (action === "writeReceipt") {
       if (!body.receipt_id || !body.parse_result) {
@@ -109,6 +186,57 @@ serve(async (req) => {
 
       return new Response(JSON.stringify({
         success: resp.ok,
+        errors: errors.length > 0 ? errors : undefined,
+      }), {
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
+    // ── writeItemsFromChat ─────────────────────────────────────────────────
+    // Handles items from chat-parser (simpler format, no extracted_* fields)
+    if (action === "writeItemsFromChat") {
+      if (!body.receipt_id || !Array.isArray(body.items)) {
+        return new Response(JSON.stringify({ error: "receipt_id and items[] required" }), {
+          status: 400,
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
+
+      const validPrdCodes: string[] = body.validPrdCodes ?? [];
+      const itemRows = body.items.map((item: any) => ({
+        receipt_id: body.receipt_id,
+        item_name: item.item_name ?? item.item_raw_text ?? "",
+        extracted_brand: null,
+        extracted_name: item.item_name ?? item.item_raw_text ?? "",
+        extracted_spec: null,
+        item_raw_text: item.item_raw_text ?? item.item_name ?? "",
+        qty: item.qty ?? 1,
+        unit_price: item.unit_price ?? null,
+        line_total: item.actual_price ?? (item.unit_price != null && item.qty != null ? item.unit_price * item.qty : null),
+        prd_cate: validPrdCodes.includes(item.prd_cate) ? item.prd_cate : "other",
+      }));
+
+      const resp = await fetch(`${supabaseUrl}/rest/v1/receipt_items`, {
+        method: "POST",
+        headers: {
+          apikey: supabaseKey,
+          Authorization: `Bearer ${supabaseKey}`,
+          "Content-Type": "application/json",
+          Prefer: "return=representation",
+        },
+        body: JSON.stringify(itemRows),
+      });
+
+      if (!resp.ok) {
+        const err = await resp.text();
+        errors.push(`receipt_items insert failed (${resp.status}): ${err}`);
+      }
+
+
+      const inserted = resp.ok ? await resp.json() : [];
+      return new Response(JSON.stringify({
+        success: resp.ok,
+        count: inserted.length ?? 0,
         errors: errors.length > 0 ? errors : undefined,
       }), {
         headers: { ...corsHeaders, "Content-Type": "application/json" },
