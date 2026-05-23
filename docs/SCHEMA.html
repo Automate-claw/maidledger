@@ -223,13 +223,14 @@ receipts ──┬──► receipt_items ──► master_products
 <h3>📥 幫手 App 輸入流程（Chat）</h3>
 <ol>
 <li>用戶輸入：「魚 30蚊」</li>
-<li>→ <code>chat-parser</code> Edge Function（LLM）</li>
-<li>→ <code>receipts</code>（寫入）</li>
-<li>→ <code>receipt_items</code>（寫入）</li>
-<li>→ <code>ShopMatchingService.matchShop()</code> → <code>shops</code> + <code>shop_aliases</code></li>
-<li>→ <code>ProductMatchingService.matchItem()</code> → <code>master_products</code> + <code>product_aliases</code></li>
-<li>→ <code>price_history</code>（寫入，source_type='receipt'）</li>
-<li>→ <code>notification-broadcast</code> → Realtime 通知僱主</li>
+<li>→ <code>chat-parser</code> Edge Function（LLM 解析）</li>
+<li>→ <code>chat-orchestrate</code> Edge Function（協調者）</li>
+<li>→ <code>receipt-writer</code> <code>createFromChat</code> → <code>receipts</code></li>
+<li>→ <code>receipt-writer</code> <code>writeItemsFromChat</code> → <code>receipt_items</code></li>
+<li>→ <code>shop-manager</code> <code>upsert</code> → <code>shops</code> + <code>shop_aliases</code>（僅當用戶提供店名）</li>
+<li>→ <code>receipt-writer</code> <code>writeShopLink</code>（僅當店名匹配成功）</li>
+<li>→ <code>product-manager</code> <code>upsert</code> → <code>master_products</code> + <code>product_aliases</code></li>
+<li>→ <code>receipt-writer</code> <code>writePriceHistory</code> → <code>price_history</code></li>
 </ol>
 </div>
 
@@ -237,13 +238,13 @@ receipts ──┬──► receipt_items ──► master_products
 <h3>📷 幫手 App 輸入流程（Scan）</h3>
 <ol>
 <li>用戶拍攝圖片 → ML Kit OCR</li>
-<li>→ <code>receipt-processor</code> Edge Function（LLM）</li>
-<li>→ <code>receipts</code>（寫入）</li>
-<li>→ <code>receipt_items</code>（寫入，含 extracted_brand/name/spec）</li>
-<li>→ <code>ShopMatchingService.matchShop()</code> → <code>shops</code> + <code>shop_aliases</code></li>
-<li>→ <code>ProductMatchingService.matchItem()</code> → <code>master_products</code> + <code>product_aliases</code></li>
-<li>→ <code>price_history</code>（寫入，source_type='receipt'）</li>
-<li>→ <code>notification-broadcast</code> → Realtime 通知僱主</li>
+<li>→ <code>receipt-parse</code> Edge Function（LLM 解析）</li>
+<li>→ DB Trigger → <code>receipt-orchestrate</code>（協調者）</li>
+<li>→ <code>receipt-writer</code> → <code>receipts</code> + <code>receipt_items</code></li>
+<li>→ <code>shop-manager</code> → <code>shops</code> + <code>shop_aliases</code></li>
+<li>→ <code>product-manager</code> → <code>master_products</code> + <code>product_aliases</code></li>
+<li>→ <code>receipt-writer</code> <code>writePriceHistory</code> → <code>price_history</code></li>
+<li>→ Supabase Realtime → 通知僱主</li>
 </ol>
 </div>
 
@@ -314,7 +315,7 @@ receipts ──┬──► receipt_items ──► master_products
 <tr><td>020</td><td>shops_and_aliases_rls.sql</td><td>shops 和 shop_aliases 加 RLS policies</td></tr>
 <tr><td>021</td><td>app_errors_table.sql</td><td>app_errors 表（客戶端錯誤記錄）</td></tr>
 <tr><td>022</td><td>receipt_parse_queue.sql</td><td>parse_status + needs_review 欄位</td></tr>
-<tr><td>023</td><td>receipt_webhook_trigger.sql</td><td>DB Trigger（pg_net）觸發 receipt-processor</td></tr>
+<tr><td>023</td><td>receipt_webhook_trigger.sql</td><td>DB Trigger（pg_net）觸發 receipt-orchestrate</td></tr>
 <tr><td>024</td><td>receipt_items_brand_spec.sql</td><td>B2B 擴展：extracted_brand/name/spec 欄位</td></tr>
 </table>
 </div>
@@ -341,28 +342,28 @@ receipts ──┬──► receipt_items ──► master_products
 </table>
 </div>
 
-<h2>🔄 receipt-processor 資料處理流程（Event-Driven + Fallback）</h2>
+<h2>🔄 receipt-orchestrate 資料處理流程（OCR/Scan — Event-Driven + Fallback）</h2>
 
 <div class="note">
-  <strong>🎯 雙觸發模式：</strong>Helper 確認收據後，DB Trigger 即時通知 <code>receipt-processor</code> 處理；若 webhook 失敗，則由 Fallback Cron（每 5 分鐘）接手。
+  <strong>🎯 雙觸發模式（OCR）：</strong>Helper 確認收據後，DB Trigger 即時通知 <code>receipt-orchestrate</code> 處理；若 webhook 失敗，則由 Fallback Cron（每 5 分鐘）接手。
 </div>
 
 <div class="flow" style="font-family: monospace; font-size: 0.85rem; white-space: pre-wrap;">
-Helper 確認收據
+Helper 確認收據（Scan）
     ↓
 DB INSERT receipts (parse_status=pending)
     ↓
 ┌─────────────────────────────────────────────────────┐
 │  Supabase DB Trigger（pg_net webhook）               │
-│  → POST /functions/v1/receipt-processor             │
+│  → POST /functions/v1/receipt-orchestrate          │
 │     { receipt_id: "uuid" }                          │
 │                                                        │
 │  同時：Fallback Cron（每 5 分鐘）                     │
-│  → GET /functions/v1/receipt-processor              │
+│  → GET /functions/v1/receipt-orchestrate              │
 │     撈取 created_at > 2 分鐘前 的 pending 記錄     │
 └─────────────────────────────────────────────────────┘
     ↓
-tryProcessReceipt(receiptId)
+processReceipt(receiptId)
     ↓
 ┌─ Step 1: Atomic Lock（Mutex）──────────────────────┐
 │  UPDATE receipts                                    │
@@ -375,7 +376,7 @@ tryProcessReceipt(receiptId)
 │  ▸ 如果 parse_status 已是 'parsed' → 跳過             │
 └─────────────────────────────────────────────────────┘
     ↓
-┌─ Step 2: LLM Parse（callLLMParse）────────────────┐
+┌─ Step 2: LLM Parse（llmParse）────────────────┐
 │  把 ocr_raw_text + ocr_reconstructed 送去 OpenRouter │
 │                                                        │
 │  ▸ 成功 → 取得 parseResult JSON                      │
@@ -483,7 +484,7 @@ Shop matching：
 <tr><th>#</th><th>問題</th><th>位置</th><th>狀態</th></tr>
 <tr><td>1</td><td>Product matching loop exception 向上傳播，中斷 shop matching</td><td>Step 5 try-catch 不足</td><td>✅ 已修復（Shop matching 移至 Step 3b，每個 item 獨立 try/catch）</td></tr>
 <tr><td>2</td><td>product_aliases UNIQUE constraint 導致 409 Conflict 崩潰</td><td>upsertProductAlias</td><td>✅ 已修復（新增 UPSERT helper，明確 treat 409 為成功）</td></tr>
-<tr><td>3</td><td>LLM 輸出店鋪特異名字，污染 master_products</td><td>callLLMParse prompt</td><td>✅ 已修復（prompt 返回 extracted_brand/name/spec 三欄位）</td></tr>
+<tr><td>3</td><td>LLM 輸出店鋪特異名字，污染 master_products</td><td>llmParse prompt</td><td>✅ 已修復（prompt 返回 extracted_brand/name/spec 三欄位）</td></tr>
 <tr><td>4</td><td>Shop matching 在 Step 5 後執行，product matching 失敗時跳過</td><td>tryProcessReceipt 架構</td><td>✅ 已修復（Shop matching 移至 Step 3b）</td></tr>
 <tr><td>14</td><td>receipts.shop_id PATCH 返回 200 但值未寫入</td><td>PATCH succeeds but value stays null</td><td>🔍 調查中</td></tr>
 </table>
