@@ -45,10 +45,10 @@ class _HistoryScreenState extends ConsumerState<HistoryScreen> {
       final cutoff = DateTime.now().subtract(const Duration(days: 365));
       final receiptsRes = await supabase
           .from('receipts')
-          .select('id, amount, created_at, store_name, store_cate, parse_status, relation_id')
+          .select('id, amount, transaction_date, created_at, store_name, store_cate, parse_status, relation_id')
           .eq('helper_id', userId)
-          .gte('created_at', cutoff.toIso8601String())
-          .order('created_at', ascending: false);
+          .gte('transaction_date', cutoff.toIso8601String().split('T')[0])
+          .order('transaction_date', ascending: false);
 
       final receipts = List<Map<String, dynamic>>.from(receiptsRes as List);
 
@@ -87,7 +87,7 @@ class _HistoryScreenState extends ConsumerState<HistoryScreen> {
       final byDay = <DateTime, List<ReceiptDayItem>>{};
       double totalExpense = 0;
       for (final r in receipts) {
-        final dateStr = r['created_at'] as String;
+        final dateStr = r['transaction_date'] as String? ?? (r['created_at'] as String).split('T')[0];
         if (dateStr == null) continue;
         final date = DateTime.parse(dateStr);
         final dayKey = DateTime(date.year, date.month, date.day);
