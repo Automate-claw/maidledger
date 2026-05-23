@@ -388,7 +388,7 @@ class _HistoryScreenState extends ConsumerState<HistoryScreen> {
       child: ListTile(
         leading: CircleAvatar(
           backgroundColor: Colors.amber[100],
-          child: const Icon(Icons.payments, color: Colors.amber[700], size: 20),
+          child: Icon(Icons.payments, color: Colors.amber[700], size: 20),
         ),
         title: Text(
           '+\$${p.amount.toStringAsFixed(0)}',

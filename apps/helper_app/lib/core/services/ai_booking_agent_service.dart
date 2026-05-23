@@ -16,7 +16,7 @@ class AIBookingAgent {
   /// Parse user input into structured expense
   /// [userId] is passed for rate limiting
   Future<ExpenseIntent> parseExpense(String text, {String? userId}) async {
-    final response = await _callChatParser(text, userId: userId);
+    final response = await _callChatParser(text, userId);
 
     // Stage 1: Check if it's even an expense
     final isExpense = response['is_expense'] as bool? ?? false;
