@@ -62,27 +62,25 @@ class _HistoryScreenState extends ConsumerState<HistoryScreen> {
       final relationId = relations?['id'] as String?;
       final employerId = relations?['employer_id'] as String?;
 
-      // Load payments (only for active relation)
+      // Load payments (load ALL for this helper — relation_id may be null for unlinked helpers)
       List<PaymentRecord> payments = [];
       double totalIncome = 0;
-      if (relationId != null) {
-        final paymentsRes = await supabase
-            .from('employer_payments')
-            .select('id, amount, payment_date, note, employer_id')
-            .eq('relation_id', relationId)
-            .order('payment_date', ascending: false);
-        final paymentsList = List<Map<String, dynamic>>.from(paymentsRes as List);
-        for (final p in paymentsList) {
-          final amount = (p['amount'] as num).toDouble();
-          totalIncome += amount;
-          payments.add(PaymentRecord(
-            id: p['id'] as String,
-            amount: amount,
-            date: DateTime.parse(p['payment_date'] as String),
-            note: p['note'] as String?,
-            isEmployer: p['employer_id'] == employerId,
-          ));
-        }
+      final paymentsRes = await supabase
+          .from('employer_payments')
+          .select('id, amount, payment_date, note, employer_id')
+          .eq('helper_id', userId)
+          .order('payment_date', ascending: false);
+      final paymentsList = List<Map<String, dynamic>>.from(paymentsRes as List);
+      for (final p in paymentsList) {
+        final amount = (p['amount'] as num).toDouble();
+        totalIncome += amount;
+        payments.add(PaymentRecord(
+          id: p['id'] as String,
+          amount: amount,
+          date: DateTime.parse(p['payment_date'] as String),
+          note: p['note'] as String?,
+          isEmployer: p['employer_id'] == employerId,
+        ));
       }
 
       // Group receipts by day
