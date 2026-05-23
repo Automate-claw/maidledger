@@ -14,8 +14,9 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
 };
 
-function escapeIlike(str: string) {
-  return str.replace(/[%_\\]/g, "\\$&");
+// Escape single quotes for PostgreSQL LIKE/ILIKE patterns (used in REST API URLs)
+function escapeLike(str: string): string {
+  return str.replace(/'/g, "''");
 }
 
 // Infer district/region from a location string using HK area knowledge
@@ -80,23 +81,38 @@ function inferDistrict(location?: string): { region: string | null; district: st
 }
 
 async function matchShop(supabaseUrl: string, supabaseKey: string, rawShopName: string): Promise<string | null> {
-  // 1. Try exact alias match
+  const normalized = normalizeShopName(rawShopName);
+  const lower = normalized.toLowerCase();
+
+  // 1. Fetch all aliases and match in JS (bypasses ILIKE single-quote URL-encoding issues)
   const aliasResp = await fetch(
-    `${supabaseUrl}/rest/v1/shop_aliases?select=shop_id&raw_name.ilike.${encodeURIComponent(rawShopName)}&limit=1`,
+    `${supabaseUrl}/rest/v1/shop_aliases?select=shop_id,raw_name&limit=200`,
     { headers: { apikey: supabaseKey, Authorization: `Bearer ${supabaseKey}` } }
   );
-  const aliasShops = await aliasResp.json();
-  if (aliasShops?.length > 0) return aliasShops[0].shop_id;
+  const aliases: Array<{ shop_id: string; raw_name: string }> = await aliasResp.json();
+  // Exact match on normalized name
+  const exactMatch = aliases.find((a) => normalizeShopName(a.raw_name).toLowerCase() === lower);
+  if (exactMatch) return exactMatch.shop_id;
 
   // 2. Try canonical name match
   const nameResp = await fetch(
-    `${supabaseUrl}/rest/v1/shops?select=id&canonical_name.ilike.${escapeIlike(rawShopName)}&limit=1`,
+    `${supabaseUrl}/rest/v1/shops?select=id,canonical_name&limit=200`,
     { headers: { apikey: supabaseKey, Authorization: `Bearer ${supabaseKey}` } }
   );
-  const nameShops = await nameResp.json();
-  if (nameShops?.length > 0) return nameShops[0].id;
+  const shops: Array<{ id: string; canonical_name: string }> = await nameResp.json();
+  const nameMatch = shops.find((s) => normalizeShopName(s.canonical_name).toLowerCase() === lower);
+  if (nameMatch) return nameMatch.id;
 
   return null;
+}
+
+// Strip branch numbers like " (199)" from shop names for canonical matching
+function normalizeShopName(name: string): string {
+  return name
+    .replace(/\s*\(\d+\)\s*$/, "")  // remove trailing " (199)"
+    .replace(/\s*#\d+\s*$/, "")      // remove trailing " #199"
+    .replace(/\s+/g, " ")
+    .trim();
 }
 
 async function createShop(supabaseUrl: string, supabaseKey: string, rawShopName: string, shopType?: string, location?: string): Promise<string> {
@@ -122,7 +138,7 @@ async function createShop(supabaseUrl: string, supabaseKey: string, rawShopName:
       Prefer: "return=representation",
     },
     body: JSON.stringify({
-      canonical_name: rawShopName.trim(),
+      canonical_name: normalizeShopName(rawShopName.trim()),
       shop_type: mappedType,
       region: region ?? null,
       district: district ?? null,
