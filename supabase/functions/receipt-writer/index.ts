@@ -78,21 +78,20 @@ serve(async (req) => {
         });
       }
 
-      // Look up user's employer relationship to get employer_id
-      const helperRes = await fetch(
-        `${supabaseUrl}/rest/v1/employer_helper_relations?select=id,employer_id&helper_id=eq.${body.user_id}&status=eq.active&limit=1`,
-        { headers: { apikey: supabaseKey, Authorization: `Bearer ${supabaseKey}` } }
-      );
-      const helperRelations = await helperRes.json();
-      const relation = helperRelations?.[0];
-      const employerId = relation?.employer_id;
-      const relationId = relation?.id;
-
-      if (!employerId) {
-        return new Response(JSON.stringify({ success: false, error: "no active employer relation found" }), {
-          status: 400,
-          headers: { ...corsHeaders, "Content-Type": "application/json" },
-        });
+      // Look up user's employer relationship to get employer_id (optional — helper may not have linked employer)
+      let employerId: string | null = null;
+      let relationId: string | null = null;
+      try {
+        const helperRes = await fetch(
+          `${supabaseUrl}/rest/v1/employer_helper_relations?select=id,employer_id&helper_id=eq.${body.user_id}&status=eq.active&limit=1`,
+          { headers: { apikey: supabaseKey, Authorization: `Bearer ${supabaseKey}` } }
+        );
+        const helperRelations = await helperRes.json();
+        const relation = helperRelations?.[0];
+        employerId = relation?.employer_id ?? null;
+        relationId = relation?.id ?? null;
+      } catch (e) {
+        // Relation lookup failed — continue without employer link (helper may be unlinked)
       }
 
       const receiptRes = await fetch(`${supabaseUrl}/rest/v1/receipts`, {
