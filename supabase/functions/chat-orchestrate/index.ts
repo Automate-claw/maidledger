@@ -18,6 +18,12 @@ const corsHeaders = {
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL") ?? "";
 const SUPABASE_SERVICE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? Deno.env.get("SUPABASE_ANON_KEY") ?? "";
 
+// Returns today's date in HK timezone (YYYY-MM-DD)
+function hkDate(): string {
+  const hk = new Date().toLocaleString("en-US", { timeZone: "Asia/Hong_Kong" });
+  return new Date(hk).toISOString().split("T")[0];
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 // Internal function caller
 // ─────────────────────────────────────────────────────────────────────────────
@@ -125,7 +131,7 @@ async function processChatInput(
       store_cate: storeCodes.includes(parseResult.store_cate) ? parseResult.store_cate : "other",
       location: location ?? parseResult.location ?? null,
       amount: totalAmount,
-      transaction_date: new Date().toISOString().split("T")[0],
+      transaction_date: parseResult.transaction_date ?? hkDate(),
       ocr_raw_text: text,
       ocr_reconstructed: null,
       attached_image_base64: attachedImageBase64 ?? null,
@@ -204,6 +210,7 @@ async function processChatInput(
         const pmResult = await callFunction("product-manager", {
           action: "upsert",
           item_name: matchName,
+          brand: item.extracted_brand ?? null,
           prd_cate: item.prd_cate || "other",
         });
 
@@ -237,6 +244,7 @@ async function processChatInput(
             item,
             parse_result: parseResult,
             receipt_id: receiptId,
+            shop_id: shopId,
           });
           if (!phResult.ok || !phResult.data?.success) {
             allErrors.push(`receipt-writer (writePriceHistory) warning for "${matchName}": ${JSON.stringify(phResult.data)}`);

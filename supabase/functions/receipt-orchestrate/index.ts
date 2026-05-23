@@ -217,6 +217,7 @@ async function processReceipt(receiptId: string): Promise<{ success: boolean; re
         const pmResult = await callFunction("product-manager", {
           action: "upsert",
           item_name: matchName,
+          brand: item.extracted_brand ?? null,
           prd_cate: item.prd_cate || "other",
         });
 
@@ -251,6 +252,7 @@ async function processReceipt(receiptId: string): Promise<{ success: boolean; re
           item,
           parse_result: parseResult,
           receipt_id: receiptId,
+          shop_id: shopId,
         });
         if (!phResult.ok || !phResult.data?.success) {
           allErrors.push(`receipt-writer (writePriceHistory) error for item "${matchName}": ${JSON.stringify(phResult.data)}`);

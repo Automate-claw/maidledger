@@ -5,7 +5,7 @@
 // Actions:
 //   writeReceipt     : { action:"writeReceipt", receipt_id, parse_result, validPrdCodes }
 //   writeItems       : { action:"writeItems", receipt_id, items[], validPrdCodes }
-//   writePriceHistory: { action:"writePriceHistory", master_product_id, item, parse_result, receipt_id }
+//   writePriceHistory: { action:"writePriceHistory", master_product_id, item, parse_result, receipt_id, shop_id? }
 //   writeShopLink    : { action:"writeShopLink", receipt_id, shop_id }
 // ══════════════════════════════════════════════════════════════════════════════
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
@@ -322,6 +322,7 @@ serve(async (req) => {
           original_price: item.unit_price,
           unit: item.extracted_spec ?? "件",
           source_receipt_id: receipt_id,
+          shop_id: body.shop_id ?? null,
           recorded_at: parse_result?.transaction_date ?? new Date().toISOString().split("T")[0],
         }),
       });
