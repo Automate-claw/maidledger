@@ -87,6 +87,7 @@ async function createMasterProduct(supabaseUrl: string, supabaseKey: string, nam
     },
     body: JSON.stringify({
       canonical_name: name.trim(),
+      brand: brand?.trim() || null,
       prd_cate: prdCate || "other",
       default_unit: "件",
     }),

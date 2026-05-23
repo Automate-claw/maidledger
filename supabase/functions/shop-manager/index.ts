@@ -18,6 +18,67 @@ function escapeIlike(str: string) {
   return str.replace(/[%_\\]/g, "\\$&");
 }
 
+// Infer district/region from a location string using HK area knowledge
+function inferDistrict(location?: string): { region: string | null; district: string | null } {
+  if (!location) return { region: null, district: null };
+
+  const text = location.trim();
+
+  // Direct region mappings
+  const regionMap: Record<string, string> = {
+    "東區": "東區", "中西區": "中西區", "南區": "南區", "灣仔": "灣仔",
+    "九龍城": "九龍城", "黃大仙": "黃大仙", "觀塘": "觀塘", "油尖旺": "油尖旺",
+    "深水埗": "深水埗", "沙田": "沙田", "大埔": "大埔", "北區": "北區",
+    "西貢": "西貢", "荃灣": "荃灣", "屯門": "屯門", "元朗": "元朗",
+    "葵青": "葵青", "離島": "離島",
+  };
+
+  // District → Region mappings
+  const districtToRegion: Record<string, string> = {
+    // Eastern
+    "筲箕灣": "東區", "柴灣": "東區", "北角": "東區", "西灣河": "東區",
+    "愛蝶灣": "東區", "鯉景灣": "東區", "太古城": "東區",
+    // Southern
+    "薄扶林": "南區", "香港仔": "南區", "鴨脷洲": "南區", "赤柱": "南區",
+    "淺水灣": "南區", "舂坎角": "南區",
+    // Wan Chai
+    "灣仔": "灣仔", "銅鑼灣": "灣仔", "跑馬地": "灣仔",
+    // Central & Western
+    "中環": "中西區", "上環": "中西區", "西環": "中西區", "堅尼地城": "中西區",
+    // Kowloon City
+    "九龍城": "九龍城", "何文田": "九龍城", "紅磡": "九龍城", "土瓜灣": "九龍城",
+    "九龍塘": "九龍城",
+    // Yau Tsim Mong
+    "油麻地": "油尖旺", "旺角": "油尖旺", "尖沙咀": "油尖旺",
+    // Sham Shui Po
+    "深水埗": "深水埗", "長沙灣": "深水埗", "荔枝角": "深水埗",
+    // Wong Tai Sin / Kwun Tong
+    "黃大仙": "黃大仙", "慈雲山": "黃大仙", "彩虹": "黃大仙",
+    "觀塘": "觀塘", "牛頭角": "觀塘", "九龍灣": "觀塘", "油塘": "觀塘",
+    // New Territories
+    "沙田": "沙田", "大圍": "沙田", "馬鞍山": "沙田", "火炭": "沙田",
+    "大埔": "大埔", "上水": "北區", "粉嶺": "北區", "坪輋": "北區",
+    "將軍澳": "西貢", "坑口": "西貢", "西貢市": "西貢",
+    "荃灣": "荃灣", "梨木樹": "荃灣",
+    "屯門": "屯門", "良景": "屯門", "建生": "屯門",
+    "元朗": "元朗", "天水圍": "元朗", "屏山": "元朗", "洪水橋": "元朗",
+    "葵涌": "葵青", "荔景": "葵青", "青衣": "葵青",
+    "東涌": "離島", "大嶼山": "離島", "愉景灣": "離島",
+  };
+
+  // 1. Check direct region mentions
+  for (const [key, region] of Object.entries(regionMap)) {
+    if (text.includes(key)) return { region, district: key };
+  }
+
+  // 2. Check district keywords
+  for (const [district, region] of Object.entries(districtToRegion)) {
+    if (text.includes(district)) return { region, district };
+  }
+
+  return { region: null, district: null };
+}
+
 async function matchShop(supabaseUrl: string, supabaseKey: string, rawShopName: string): Promise<string | null> {
   // 1. Try exact alias match
   const aliasResp = await fetch(
@@ -49,6 +110,9 @@ async function createShop(supabaseUrl: string, supabaseKey: string, rawShopName:
   };
   const mappedType = shopType && shopTypeMap[shopType] ? shopTypeMap[shopType] : "other";
 
+  // Infer district from location string using common HK area knowledge
+  const { region, district } = inferDistrict(location);
+
   const shopResp = await fetch(`${supabaseUrl}/rest/v1/shops`, {
     method: "POST",
     headers: {
@@ -60,7 +124,8 @@ async function createShop(supabaseUrl: string, supabaseKey: string, rawShopName:
     body: JSON.stringify({
       canonical_name: rawShopName.trim(),
       shop_type: mappedType,
-      region: location ?? null,
+      region: region ?? null,
+      district: district ?? null,
     }),
   });
 
