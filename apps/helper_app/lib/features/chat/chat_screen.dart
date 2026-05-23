@@ -413,150 +413,36 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
   }
 
   // ─────────────────────────────────────────────
-  // Save expense
+  // Save expense — all business logic in chat-orchestrate Edge Function
   // ─────────────────────────────────────────────
   Future<void> _saveExpense(ExpenseIntent intent, XFile? image, String? location, {String? imageBase64}) async {
     final locale = ref.read(localeProvider);
     try {
       final client = supabase;
-      final now = DateTime.now().millisecondsSinceEpoch;
       final userId = client.auth.currentSession?.user.id;
       if (userId == null) throw Exception('Not logged in');
-      final relations = await client
-          .from('employer_helper_relations')
-          .select('employer_id, id')
-          .eq('helper_id', userId)
-          .eq('status', 'active')
-          .maybeSingle();
 
-      final employerId = relations?['employer_id'];
-      final relationId = relations?['id'];
-      final helperId = userId;
-
-      String? imageStorageUrl;
+      // Upload image if provided (audit trail only, not used by business logic)
       if (image != null) {
-        imageStorageUrl = await _uploadImage(image, userId, base64: imageBase64);
+        await _uploadImage(image, userId, base64: imageBase64);
       }
 
-      var items = _buildItemsFromIntent(intent);
-      final transactionDate = _parseTransactionDate(intent.rawText) ?? DateTime.now();
+      // All business logic now in chat-orchestrate:
+      // - receipt-writer createFromChat (employer lookup + receipt insert)
+      // - shop-manager upsert + receipt-writer writeShopLink (if store name)
+      // - receipt-writer writeItemsFromChat
+      // - product-manager upsert loop + price_history writes
+      final aiAgent = AIBookingAgent();
+      final result = await aiAgent.saveExpense(intent.rawText, userId, location: location);
 
-      final receiptId = Uuid().v4();
-
-      // Local helper function — must be declared before use
-      String? _extractShopNameFromRawText(String rawText) {
-        final patterns = [
-          RegExp(r'(街市|市場|market)', caseSensitive: false),
-          RegExp(r'(惠康|百佳|萬寧|屈臣氏|超市)', caseSensitive: false),
-          RegExp(r'(菜市場|魚市場|肉檔)', caseSensitive: false),
-          RegExp(r'(wet market|supermarket)', caseSensitive: false),
-        ];
-        for (final pattern in patterns) {
-          final match = pattern.firstMatch(rawText);
-          if (match != null) return match.group(0)!;
+      if (result['success'] != true) {
+        final errors = (result['errors'] as List?)?.join('; ') ?? AppStrings.expenseSaveFailed(locale);
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text(errors), backgroundColor: Colors.red),
+          );
         }
-        return null;
-      }
-
-      String? matchedShopId;
-      final storeName = intent.storeName ?? _extractShopNameFromRawText(intent.rawText);
-
-      if (storeName != null && storeName.isNotEmpty) {
-        final shopService = ShopMatchingService(supabase);
-        final shopResult = await shopService.matchShop(
-          rawShopName: storeName,
-          shopType: intent.category,
-        );
-        matchedShopId = shopResult?.shopId;
-      }
-
-      await client.from('receipts').insert({
-        'id': receiptId,
-        'employer_id': employerId,
-        'helper_id': userId,
-        'relation_id': relationId,
-        'raw_text': intent.rawText,
-        'parsed_data': {
-          'intent': intent.intent,
-          'store_cate': intent.category,
-          'amount': intent.amount,
-          'items': intent.items,
-          'store_name': intent.storeName,
-        },
-        'amount': intent.amount,
-        'store_cate': intent.category,
-        'location': location,
-        'transaction_date': transactionDate?.toIso8601String().split('T')[0],
-        'image_local_path': imageStorageUrl,
-        'shop_id': matchedShopId,
-        'sync_status': 'synced',
-        'local_timestamp': now,
-        'created_at': DateTime.now().toIso8601String(),
-      });
-
-      if (items.isNotEmpty) {
-        await client.from('receipt_items').insert(
-          items.map((item) => {
-            'receipt_id': receiptId,
-            'item_name': item['item_name'],
-            'item_raw_text': item['item_raw_text'],
-            'qty': item['qty'],
-            'unit_price': item['unit_price'],
-            'actual_price': item['actual_price'],
-            'is_discounted': item['is_discounted'],
-            'discount_note': item['discount_note'],
-            'prd_cate': item['prd_cate'],
-            'line_total': item['line_total'],
-            'created_at': DateTime.now().toIso8601String(),
-          }).toList(),
-        );
-
-        // Phase 4: Match products and write price_history
-        await _matchProductsAndWritePriceHistory(receiptId, items, matchedShopId, location);
-      } else {
-        final singleItemMap = {
-          'item_name': intent.items.isNotEmpty ? intent.items.first : intent.rawText,
-          'item_raw_text': intent.rawText,
-          'qty': 1,
-          'unit_price': intent.amount,
-          'actual_price': intent.amount,
-          'is_discounted': false,
-          'discount_note': null,
-          'prd_cate': _mapToPrdCate(intent.category, intent.items.isNotEmpty ? intent.items.first : intent.rawText),
-          'line_total': intent.amount,
-        };
-        await client.from('receipt_items').insert({
-          'receipt_id': receiptId,
-          ...singleItemMap,
-          'created_at': DateTime.now().toIso8601String(),
-        });
-        items = [singleItemMap];
-      }
-
-      // Phase 5: Update expense summaries
-      await _upsertExpenseSummary(employerId, helperId, relationId, transactionDate, items);
-
-      // Phase 6: Trigger price alert check
-      await _triggerPriceAlerts(receiptId, items);
-
-      if (employerId != null) {
-        try {
-          await client.functions.invoke('notification-broadcast', body: {
-            'type': 'INSERT',
-            'table': 'receipts',
-            'record': {
-              'id': receiptId,
-              'employer_id': employerId,
-              'helper_id': userId,
-              'relation_id': relationId,
-              'store_name': null,
-              'amount': intent.amount,
-              'created_at': DateTime.now().toIso8601String(),
-            },
-          });
-        } catch (e) {
-          debugPrint('Notification broadcast failed: $e');
-        }
+        return;
       }
 
       if (mounted) {
@@ -568,6 +454,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
         );
       }
     } catch (e) {
+      debugPrint('_saveExpense error: $e');
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(

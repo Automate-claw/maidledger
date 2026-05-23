@@ -9,21 +9,18 @@ import 'package:http/http.dart' as http;
 /// Strict 2-stage classification: is_expense check + completeness assessment
 class AIBookingAgent {
   static const _edgeUrl =
+      'https://hnyazfrkzpxdjiyfzemm.supabase.co/functions/v1/chat-orchestrate';
+  static const _chatParserUrl =
       'https://hnyazfrkzpxdjiyfzemm.supabase.co/functions/v1/chat-parser';
 
   /// Parse user input into structured expense
   /// [userId] is passed for rate limiting
   Future<ExpenseIntent> parseExpense(String text, {String? userId}) async {
-    final response = await _callEdgeLLM(text, userId: userId);
-
-    if (response['error'] != null) {
-      throw Exception(response['error']);
-    }
+    final response = await _callChatParser(text, userId: userId);
 
     // Stage 1: Check if it's even an expense
     final isExpense = response['is_expense'] as bool? ?? false;
     if (!isExpense) {
-      // Use friendly response_message from edge function (never show error)
       final responseMsg = response['response_message'] as String?;
       if (responseMsg != null) {
         return ExpenseIntent(
@@ -89,27 +86,60 @@ class AIBookingAgent {
     );
   }
 
-  Future<Map<String, dynamic>> _callEdgeLLM(String text, {String? userId}) async {
-    debugPrint('🤖 [AIBookingAgent] Calling edge function with text: $text');
-
-    final bodyBytes = utf8.encode(jsonEncode({'text': text, 'user_id': userId ?? 'anonymous'}));
+  Future<Map<String, dynamic>> _callChatParser(String text, String? userId) async {
+    debugPrint('🤖 [AIBookingAgent] Calling chat-parser with text: $text');
 
     final anonKey = dotenv.env['SUPABASE_ANON_KEY'] ?? '';
+    final bodyBytes = utf8.encode(jsonEncode({
+      'text': text,
+      'user_id': userId ?? 'anonymous',
+    }));
+
     final resp = await http.post(
-      Uri.parse(_edgeUrl),
+      Uri.parse(_chatParserUrl),
       headers: {
         'Content-Type': 'application/json; charset=utf-8',
-        'Authorization': 'Bearer $anonKey',
+        'Authorization': anonKey,
       },
       body: bodyBytes,
     ).timeout(const Duration(seconds: 60));
 
-    debugPrint('🤖 [AIBookingAgent] Edge response status: ${resp.statusCode}');
-    debugPrint('🤖 [AIBookingAgent] Edge response body: ${resp.body}');
+    debugPrint('🤖 [AIBookingAgent] chat-parser status: ${resp.statusCode}');
+    debugPrint('🤖 [AIBookingAgent] chat-parser body: ${resp.body}');
 
     if (resp.statusCode != 200) {
       debugPrint('🤖 [AIBookingAgent] Error response code: ${resp.statusCode}');
-      throw Exception('Edge function error: ${resp.body}');
+      throw Exception('Chat parser error: ${resp.body}');
+    }
+
+    return jsonDecode(resp.body) as Map<String, dynamic>;
+  }
+
+  /// Call chat-orchestrate to save expense (all business logic in Edge Function)
+  Future<Map<String, dynamic>> saveExpense(String text, String userId, {String? location}) async {
+    debugPrint('🤖 [AIBookingAgent] Calling chat-orchestrate to save: $text');
+
+    final anonKey = dotenv.env['SUPABASE_ANON_KEY'] ?? '';
+    final bodyBytes = utf8.encode(jsonEncode({
+      'text': text,
+      'user_id': userId,
+      'location': location,
+    }));
+
+    final resp = await http.post(
+      Uri.parse(_edgeUrl),
+      headers: {
+        'Content-Type': 'application/json; charset=utf-8',
+        'Authorization': anonKey,
+      },
+      body: bodyBytes,
+    ).timeout(const Duration(seconds: 60));
+
+    debugPrint('🤖 [AIBookingAgent] chat-orchestrate status: ${resp.statusCode}');
+    debugPrint('🤖 [AIBookingAgent] chat-orchestrate body: ${resp.body}');
+
+    if (resp.statusCode != 200) {
+      throw Exception('chat-orchestrate error: ${resp.body}');
     }
 
     return jsonDecode(resp.body) as Map<String, dynamic>;
