@@ -40,59 +40,58 @@ class _HistoryScreenState extends ConsumerState<HistoryScreen> {
       final userId = supabase.auth.currentSession?.user.id;
       if (userId == null) throw Exception('Not logged in');
 
-      // Get active relation
+      // Load ALL receipts for this helper (not just filtered by relation)
+      // This ensures we show receipts even if relation_id is null or different
+      final cutoff = DateTime.now().subtract(const Duration(days: 365));
+      final receiptsRes = await supabase
+          .from('receipts')
+          .select('id, amount, created_at, store_name, store_cate, parse_status, relation_id')
+          .eq('helper_id', userId)
+          .gte('created_at', cutoff.toIso8601String())
+          .order('created_at', ascending: false);
+
+      final receipts = List<Map<String, dynamic>>.from(receiptsRes as List);
+
+      // Get active relation for balance calculation
       final relations = await supabase
           .from('employer_helper_relations')
           .select('id, employer_id')
           .eq('helper_id', userId)
           .eq('status', 'active')
           .maybeSingle();
-      if (relations == null) {
-        setState(() { _isLoading = false; });
-        return;
-      }
-      final relationId = relations['id'] as String;
-      final employerId = relations['employer_id'] as String;
+      final relationId = relations?['id'] as String?;
+      final employerId = relations?['employer_id'] as String?;
 
-      // Load all receipts for this relation (last 12 months)
-      final cutoff = DateTime.now().subtract(const Duration(days: 365));
-      final receiptsRes = await supabase
-          .from('receipts')
-          .select('id, amount, created_at, store_name, store_cate, parse_status')
-          .eq('relation_id', relationId)
-          .gte('created_at', cutoff.toIso8601String())
-          .order('created_at', ascending: false);
-
-      final receipts = List<Map<String, dynamic>>.from(receiptsRes as List);
-
-      // Load payments
-      final paymentsRes = await supabase
-          .from('employer_payments')
-          .select('id, amount, payment_date, note, employer_id')
-          .eq('relation_id', relationId)
-          .order('payment_date', ascending: false);
-      final paymentsList = List<Map<String, dynamic>>.from(paymentsRes as List);
-
-      // Build payment records
-      final payments = <PaymentRecord>[];
+      // Load payments (only for active relation)
+      List<PaymentRecord> payments = [];
       double totalIncome = 0;
-      for (final p in paymentsList) {
-        final amount = (p['amount'] as num).toDouble();
-        totalIncome += amount;
-        payments.add(PaymentRecord(
-          id: p['id'] as String,
-          amount: amount,
-          date: DateTime.parse(p['payment_date'] as String),
-          note: p['note'] as String?,
-          isEmployer: p['employer_id'] == employerId,
-        ));
+      if (relationId != null) {
+        final paymentsRes = await supabase
+            .from('employer_payments')
+            .select('id, amount, payment_date, note, employer_id')
+            .eq('relation_id', relationId)
+            .order('payment_date', ascending: false);
+        final paymentsList = List<Map<String, dynamic>>.from(paymentsRes as List);
+        for (final p in paymentsList) {
+          final amount = (p['amount'] as num).toDouble();
+          totalIncome += amount;
+          payments.add(PaymentRecord(
+            id: p['id'] as String,
+            amount: amount,
+            date: DateTime.parse(p['payment_date'] as String),
+            note: p['note'] as String?,
+            isEmployer: p['employer_id'] == employerId,
+          ));
+        }
       }
 
       // Group receipts by day
       final byDay = <DateTime, List<ReceiptDayItem>>{};
       double totalExpense = 0;
       for (final r in receipts) {
-        final date = DateTime.parse(r['created_at'] as String);
+        final dateStr = r['created_at'] as String;
+        if (dateStr == null) continue;
+        final date = DateTime.parse(dateStr);
         final dayKey = DateTime(date.year, date.month, date.day);
         final amount = (r['amount'] as num?)?.toDouble() ?? 0;
         totalExpense += amount;

@@ -53,18 +53,21 @@ class _RecordPaymentScreenState extends ConsumerState<RecordPaymentScreen> {
       final userId = supabase.auth.currentSession?.user.id;
       if (userId == null) throw Exception('Not logged in');
 
-      // Get active relation
+      String? relationId;
+      String? employerId;
+
+      // Try to find active relation (optional — helper can record even without one)
       final relations = await supabase
           .from('employer_helper_relations')
           .select('id, employer_id')
           .eq('helper_id', userId)
           .eq('status', 'active')
           .maybeSingle();
-      if (relations == null) throw Exception('找不到有效關係');
+      relationId = relations?['id'] as String?;
+      employerId = relations?['employer_id'] as String?;
 
-      final relationId = relations['id'] as String;
-      final employerId = relations['employer_id'] as String;
-
+      // Insert payment — relation_id / employer_id can be null for unlinked helpers
+      // RLS policy allows helper to insert with just helper_id
       await supabase.from('employer_payments').insert({
         'relation_id': relationId,
         'employer_id': employerId,
