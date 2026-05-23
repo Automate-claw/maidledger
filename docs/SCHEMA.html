@@ -334,5 +334,183 @@ receipts ──┬──► receipt_items ──► master_products
 </table>
 </div>
 
+<h2>🔄 receipt-processor 資料處理流程（Event-Driven + Fallback）</h2>
+
+<div class="note">
+  <strong>🎯 雙觸發模式：</strong>Helper 確認收據後，DB Trigger 即時通知 <code>receipt-processor</code> 處理；若 webhook 失敗，則由 Fallback Cron（每 5 分鐘）接手。
+</div>
+
+<div class="flow" style="font-family: monospace; font-size: 0.85rem; white-space: pre-wrap;">
+Helper 確認收據
+    ↓
+DB INSERT receipts (parse_status=pending)
+    ↓
+┌─────────────────────────────────────────────────────┐
+│  Supabase DB Trigger（pg_net webhook）               │
+│  → POST /functions/v1/receipt-processor             │
+│     { receipt_id: "uuid" }                          │
+│                                                        │
+│  同時：Fallback Cron（每 5 分鐘）                     │
+│  → GET /functions/v1/receipt-processor              │
+│     撈取 created_at > 2 分鐘前 的 pending 記錄     │
+└─────────────────────────────────────────────────────┘
+    ↓
+tryProcessReceipt(receiptId)
+    ↓
+┌─ Step 1: Atomic Lock（Mutex）──────────────────────┐
+│  UPDATE receipts                                    │
+│  SET parse_status = 'processing'                    │
+│  WHERE id = receiptId AND parse_status = 'pending' │
+│  RETURNING *                                         │
+│                                                        │
+│  ▸ 如果拿到回傳 → 取得 lock，繼續處理                │
+│  ▸ 如果係 empty → 已被其他 process 搶走，跳過        │
+│  ▸ 如果 parse_status 已是 'parsed' → 跳過             │
+└─────────────────────────────────────────────────────┘
+    ↓
+┌─ Step 2: LLM Parse（callLLMParse）────────────────┐
+│  把 ocr_raw_text + ocr_reconstructed 送去 OpenRouter │
+│                                                        │
+│  ▸ 成功 → 取得 parseResult JSON                      │
+│  ▸ 失敗 → SET parse_status='failed' → return        │
+│           （留待下次 cron 重試）                     │
+│                                                        │
+│  parseResult 包含：                                  │
+│  { store_name, store_cate, location, total_amount,  │
+│    transaction_date, items[], parse_confidence }    │
+└─────────────────────────────────────────────────────┘
+    ↓
+┌─ Step 3: Update receipts───────────────────────────┐
+│  PATCH receipts SET                                 │
+│    store_name, store_cate, location, amount,        │
+│    transaction_date, parsed_data (JSON),           │
+│    parse_confidence, needs_review,                  │
+│    parse_status = 'parsed'                          │
+│  WHERE id = receiptId                               │
+└─────────────────────────────────────────────────────┘
+    ↓
+┌─ Step 4: Insert receipt_items──────────────────────┐
+│  POST receipt_items[]（batch insert）                │
+│                                                        │
+│  receipt_items 結構：                                 │
+│  { receipt_id, item_name, item_raw_text, qty,      │
+│    unit_price, line_total, prd_cate }               │
+└─────────────────────────────────────────────────────┘
+    ↓
+┌─ Step 5: Product Matching（per item）───────────────┐
+│                                                        │
+│  for each item in parseResult.items:                  │
+│                                                        │
+│  5a. 嘗試 Exact Match（product_aliases）               │
+│      POST /rest/v1/product_aliases                    │
+│      WHERE raw_name = item_name                       │
+│      ▸ 有結果 → 直接取得 master_product_id           │
+│      ▸ 無結果 → 繼續 5b                              │
+│                                                        │
+│  5b. 嘗試 ILIKE Keyword Match（master_products）       │
+│      把 item_name 拆成 keywords（最多 3 個）           │
+│      POST /rest/v1/master_products                   │
+│      WHERE canonical_name ILIKE '%keyword%'         │
+│            AND prd_cate = item.prd_cate（如果有）    │
+│      ▸ 有結果 → 建立 product_alias（raw_name→id）    │
+│                 回傳 master_product_id              │
+│      ▸ 無結果 → 繼續 5c                              │
+│                                                        │
+│  5c. 建立新的 master_product（createMasterProduct）  │
+│      POST /rest/v1/master_products                   │
+│      { canonical_name: item_name,                    │
+│        prd_cate: item.prd_cate || 'other',          │
+│        default_unit: '件' }                          │
+│      ▸ 成功 → 建立 product_alias → 回傳 id           │
+│      ▸ 失敗 → 回傳 null，呢個 item 唔建立           │
+│                                                        │
+│  5d. Bind 到 receipt_item                            │
+│      GET receipt_items                               │
+│      WHERE receipt_id = X AND item_name = Y          │
+│      ORDER BY id DESC LIMIT 1                        │
+│      PATCH SET master_product_id = 取得的id          │
+│                                                        │
+│  5e. 寫入 price_history（如有 unit_price）          │
+│      POST /rest/v1/price_history                    │
+│      { master_product_id, price, original_price,    │
+│        qty, unit, source_receipt_id, recorded_at }  │
+└─────────────────────────────────────────────────────┘
+    ↓
+┌─ Step 6: Shop Matching─────────────────────────────┐
+│                                                        │
+│  6a. 嘗試 Exact Match（shop_aliases）                 │
+│      GET /rest/v1/shops?select=id&                     │
+│          shop_aliases(raw_name ILIKE '%shopName%')   │
+│      ▸ 有結果 → 回傳 shop_id                         │
+│      ▸ 無結果 → 繼續 6b                              │
+│                                                        │
+│  6b. 嘗試 ILIKE Match（shops）                        │
+│      GET /rest/v1/shops?select=id&                    │
+│          canonical_name ILIKE '%shopName%'            │
+│      ▸ 有結果 → 回傳 shop_id                         │
+│      ▸ 無結果 → 繼續 6c                              │
+│                                                        │
+│  6c. 建立新的 shop（createShop）                      │
+│      POST /rest/v1/shops                              │
+│      { canonical_name: shopName,                     │
+│        shop_type: store_cate, region }               │
+│      + 建立 shop_aliases                             │
+│                                                        │
+│  6d. Update receipts                                  │
+│      PATCH receipts SET shop_id = 取得的id           │
+└─────────────────────────────────────────────────────┘
+    ↓
+完成
+</div>
+
+<h3>🔑 為什麼某些 item 沒有建立 master_product？</h3>
+
+<div class="section">
+<table>
+<tr><th>情況</th><th>原因</th><th>解決方向</th></tr>
+<tr><td>item_name 在 product_aliases 有 exact match</td><td>不會建立新的，已經有 master_product_id</td><td>✅ 預期行為</td></tr>
+<tr><td>item_name 在 master_products 有 ILIKE match</td><td>會建立 product_alias，但唔會建立新的 master_product</td><td>✅ 預期行為</td></tr>
+<tr><td>item_name 完全新，無任何 match</td><td>應該建立 master_product + product_alias</td><td>⚠️ 如有失敗需加 error handling</td></tr>
+<tr><td>item_name 太店鋪特異（如「759阿信屋圣擊袋」）</td><td>LLM 解析出黎的名字唔係真正既 product name，可能俾人感覺奇怪</td><td>🟡 LLM prompt 可優化，指導佢提取通用 product name</td></tr>
+<tr><td>createMasterProduct 返回失敗</td><td>可能是 RLS policy 問題或數據庫 constraint</td><td>需查看 Edge Function logs</td></tr>
+</table>
+</div>
+
+<h3>💡 實際例子：70b613fd-0151-4318-abe5-06bad8ca3afc</h3>
+
+<pre class="flow" style="font-family: monospace; font-size: 0.82rem; white-space: pre-wrap;">
+Item 1: "BOSDMI嬰兒加美濕紙巾60P"
+  Step 5a Exact Match → ✅ 找到（之前已建立）
+  → master_product_id = f80eb4ee...（濕紙巾）
+  Step 5e price_history → ✅ 建立（price=14.8, qty=6）
+
+Item 2: "759阿信屋圣擊袋 大號"
+  Step 5a Exact Match → ❌ 找不到
+  Step 5b ILIKE Match → ❌ 找不到（無任何包含「阿信屋」或「圣擊袋」的 master_product）
+  Step 5c createMasterProduct → ❓ 理應建立，但 master_product_id = null
+
+  可能原因（需進一步 Debug）：
+  • createMasterProduct 的 POST 失敗（500 error）
+  • item_name 含有特殊字符導致 JSON 解析問題
+  • PRd_Cate 為 "other" 但 master_products 有 constraint 限制
+
+Shop: "759阿信屋"
+  Step 6a Exact Match → ✅ 找到（id: 7c9a6ca9...）
+  Step 6d PATCH shop_id → ⚠️ 但 receipts.shop_id 仍為 null
+  （懷疑係 product matching 階段有未捕獲的 error，導致
+   整個 tryProcessReceipt 拋出 exception，係 shop matching 之前已中止）
+</pre>
+
+<h3>🐛 發現的 Bug（待修復）</h3>
+
+<div class="section">
+<table>
+<tr><th>#</th><th>問題</th><th>位置</th><th>修復方向</th></tr>
+<tr><td>1</td><td>Product matching loop 入面，如果任何 item 拋出未捕獲的 error，會導致後續 item（包括 shop matching）全部跳過</td><td>Step 5 的 try-catch 只係 for-loop 內，但 error 會向上傳播</td><td>把 product matching + shop matching 全部包在同一個 try-catch，確保一個 item 失敗唔影響其他 item 和 shop matching</td></tr>
+<tr><td>2</td><td>LLM Output 的 item_name 有機會係店鋪特異的名字（如「759阿信屋圣擊袋」），唔係通用 product name</td><td>callLLMParse prompt</td><td>在 prompt 入面加強指引：要求 LLM 輸出通用產品名稱，而非店鋪自訂名</td></tr>
+<tr><td>3</td><td>Shop matching 在 receipt_items product matching 完成後先執行，如果 product matching 整體失敗，shop matching 永遠唔會執行</td><td>tryProcessReceipt 架構</td><td>把 shop matching 移到 receipt update 步驟（Step 3）之後，唔需要等 product matching 完成</td></tr>
+</table>
+</div>
+
 </body>
 </html>
