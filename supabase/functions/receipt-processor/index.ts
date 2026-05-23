@@ -38,8 +38,8 @@ interface ReceiptRow {
 
 // In-memory cache
 let categoriesCache: {
-  storeCategories: { code: string; name: string }[];
-  prdCategories: { code: string; name: string }[];
+  storeCategories: { code: string; name_tc: string }[];
+  prdCategories: { code: string; name_tc: string }[];
   fetchedAt: number;
 } | null = null;
 const CACHE_TTL_MS = 5 * 60 * 1000; // 5 minutes
@@ -78,6 +78,26 @@ function escapeIlike(str: string): string {
 // Product matching helpers
 // ─────────────────────────────────────────────────────────────────────────────
 
+// UPSERT helper — treats 409 Conflict as success (alias already exists).
+// This prevents race conditions when two helpers upload the same product name
+// at almost the same time.
+async function upsertProductAlias(supabaseUrl: string, supabaseKey: string, rawName: string, masterProductId: string): Promise<void> {
+  const resp = await fetch(`${supabaseUrl}/rest/v1/product_aliases`, {
+    method: "POST",
+    headers: { "apikey": supabaseKey, Authorization: `Bearer ${supabaseKey}`, "Content-Type": "application/json", Prefer: "resolution=ignore-duplicates" },
+    body: JSON.stringify({ raw_name: rawName.trim(), master_product_id: masterProductId, source: "ocr" }),
+  });
+  // 201 = created, 200 = ok, 409 = already exists (all are fine)
+  if (resp.status !== 201 && resp.status !== 200 && resp.status !== 409) {
+    const err = await resp.text();
+    throw new Error(`upsertProductAlias failed (${resp.status}): ${err}`);
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Product matching helpers
+// ─────────────────────────────────────────────────────────────────────────────
+
 async function matchProduct(supabaseUrl: string, supabaseKey: string, itemName: string, prdCate: string | null): Promise<string | null> {
   const aliasResp = await fetch(
     `${supabaseUrl}/rest/v1/product_aliases?select=master_product_id&raw_name=eq.${encodeURIComponent(itemName)}&limit=1`,
@@ -85,24 +105,17 @@ async function matchProduct(supabaseUrl: string, supabaseKey: string, itemName: 
   );
   const aliases = await aliasResp.json();
   if (aliases?.length > 0) return aliases[0].master_product_id;
-
   const keywords = itemName.trim().split(/[\s　]+/).filter((k) => k.length > 1).slice(0, 3);
   if (keywords.length === 0) return null;
-
   const orParts = keywords.map((kw) => `canonical_name.ilike.%${escapeIlike(kw)}%`).join(",");
   const catFilter = prdCate && prdCate !== "other" ? `&prd_cate=eq.${prdCate}` : "";
-
   const mpResp = await fetch(
     `${supabaseUrl}/rest/v1/master_products?select=id&or=(${orParts})${catFilter}&limit=5`,
     { headers: { "apikey": supabaseKey, Authorization: `Bearer ${supabaseKey}` } }
   );
   const products = await mpResp.json();
   if (products?.length > 0) {
-    await fetch(`${supabaseUrl}/rest/v1/product_aliases`, {
-      method: "POST",
-      headers: { "apikey": supabaseKey, Authorization: `Bearer ${supabaseKey}`, "Content-Type": "application/json", Prefer: "resolution=ignore-duplicates" },
-      body: JSON.stringify({ raw_name: itemName, master_product_id: products[0].id, source: "ocr" }),
-    });
+    await upsertProductAlias(supabaseUrl, supabaseKey, itemName, products[0].id);
     return products[0].id;
   }
   return null;
@@ -117,12 +130,7 @@ async function createMasterProduct(supabaseUrl: string, supabaseKey: string, nam
   const mp = await mpResp.json();
   const mpId = mp[0]?.id ?? mp?.id;
   if (!mpId) throw new Error("Failed to create master product");
-
-  await fetch(`${supabaseUrl}/rest/v1/product_aliases`, {
-    method: "POST",
-    headers: { "apikey": supabaseKey, Authorization: `Bearer ${supabaseKey}`, "Content-Type": "application/json", Prefer: "resolution=ignore-duplicates" },
-    body: JSON.stringify({ raw_name: name.trim(), master_product_id: mpId, source: "ocr" }),
-  });
+  await upsertProductAlias(supabaseUrl, supabaseKey, name, mpId);
   return mpId;
 }
 
@@ -197,10 +205,10 @@ ${reconstructedText}
 ` : ""}
 
 ## 有效商店類別（請從以下選擇 store_cate）：
-${STORE_CATEGORIES.map((c) => `- ${c.code} = ${c.name}`).join("\n")}
+${STORE_CATEGORIES.map((c) => `- ${c.code} = ${c.name_tc}`).join("\n")}
 
 ## 有效產品類別（請從以下選擇 prd_cate）：
-${PRD_CATEGORIES.map((c) => `- ${c.code} = ${c.name}`).join("\n")}
+${PRD_CATEGORIES.map((c) => `- ${c.code} = ${c.name_tc}`).join("\n")}
 
 ## 香港地區名稱（用於校正 location）：
 中環、上環、西環、堅尼地城、香港仔、薄扶林、山頂、灣仔、銅鑼灣、跑馬地、北角、鰂魚涌、筲箕灣、西灣河、柴灣、九龍城、九龍塘、旺角、太子、深水埗、長沙灣、荔枝角、美孚、黃大仙、彩虹、觀塘、牛頭角、九龍灣、油塘、藍田、鯉魚門、新蒲崗、沙田、大圍、火炭、馬鞍山、科學園、大埔、上水、粉嶺、元朗、天水圍、屯門、荃灣、葵涌、青衣、將軍澳、坑口、調景嶺、西貢、清水灣、其他
@@ -348,7 +356,28 @@ async function tryProcessReceipt(receiptId: string, supabaseUrl: string, supabas
     }),
   });
 
-  // Insert receipt_items
+  // ── Step 3b: Shop matching (BEFORE product matching — shop is safest, run first) ──
+  // Bug 1 fix: moved here so it ALWAYS runs, even if product matching fails for some items
+  if (parseResult.store_name) {
+    let shopId: string | null = null;
+    try {
+      shopId = await matchShop(supabaseUrl, supabaseKey, parseResult.store_name);
+      if (!shopId) {
+        shopId = await createShop(supabaseUrl, supabaseKey, parseResult.store_name, parseResult.store_cate, parseResult.location);
+      }
+    } catch (e) {
+      console.error(`Shop matching failed for "${parseResult.store_name}":`, e);
+    }
+    if (shopId) {
+      await fetch(`${supabaseUrl}/rest/v1/receipts?id=eq.${receiptId}`, {
+        method: "PATCH",
+        headers: { "apikey": supabaseKey, Authorization: `Bearer ${supabaseKey}`, "Content-Type": "application/json" },
+        body: JSON.stringify({ shop_id: shopId }),
+      });
+    }
+  }
+
+  // ── Step 4: Insert receipt_items ──
   const items: any[] = parseResult.items ?? [];
   if (items.length > 0) {
     const itemRows = items.map((item) => ({
@@ -367,13 +396,31 @@ async function tryProcessReceipt(receiptId: string, supabaseUrl: string, supabas
       body: JSON.stringify(itemRows),
     });
 
-    // Product matching + price_history
+
+    // ── Step 5: Product matching + price_history (each item fully isolated) ──
+    // Bug 1 fix: each item is in its own try/catch — one failure does NOT affect other items or shop matching
     for (const item of items) {
       try {
-        let masterProductId = await matchProduct(supabaseUrl, supabaseKey, item.item_name, item.prd_cate);
-        if (!masterProductId) {
-          masterProductId = await createMasterProduct(supabaseUrl, supabaseKey, item.item_name, item.prd_cate || "other");
+        let masterProductId: string | null = null;
+        try {
+          masterProductId = await matchProduct(supabaseUrl, supabaseKey, item.item_name, item.prd_cate);
+        } catch (e) {
+          console.error(`matchProduct error for "${item.item_name}":`, e);
         }
+
+        if (!masterProductId) {
+          try {
+            masterProductId = await createMasterProduct(supabaseUrl, supabaseKey, item.item_name, item.prd_cate || "other");
+          } catch (e) {
+            console.error(`createMasterProduct error for "${item.item_name}":`, e);
+          }
+        }
+
+        if (!masterProductId) {
+          console.warn(`No master_product_id for item "${item.item_name}", skipping price_history`);
+          continue;
+        }
+
 
         // Bind to receipt_item — use id DESC to get latest inserted row
         const itemResp = await fetch(
@@ -382,17 +429,13 @@ async function tryProcessReceipt(receiptId: string, supabaseUrl: string, supabas
         );
         const itemRows2 = await itemResp.json();
         const targetItem = itemRows2 && itemRows2.length > 0 ? itemRows2[0] : null;
-
         if (!targetItem) continue;
 
-        const targetMpId = masterProductId ?? targetItem.master_product_id;
-        if (!targetMpId) continue;
-
-        if (!targetItem.master_product_id || targetItem.master_product_id !== targetMpId) {
+        if (!targetItem.master_product_id || targetItem.master_product_id !== masterProductId) {
           await fetch(`${supabaseUrl}/rest/v1/receipt_items?id=eq.${targetItem.id}`, {
             method: "PATCH",
             headers: { "apikey": supabaseKey, Authorization: `Bearer ${supabaseKey}`, "Content-Type": "application/json" },
-            body: JSON.stringify({ master_product_id: targetMpId }),
+            body: JSON.stringify({ master_product_id: masterProductId }),
           });
         }
 
@@ -401,7 +444,7 @@ async function tryProcessReceipt(receiptId: string, supabaseUrl: string, supabas
             method: "POST",
             headers: { "apikey": supabaseKey, Authorization: `Bearer ${supabaseKey}`, "Content-Type": "application/json" },
             body: JSON.stringify({
-              master_product_id: targetMpId,
+              master_product_id: masterProductId,
               region: parseResult.location ?? null,
               location: parseResult.location ?? null,
               price: item.unit_price * (item.qty ?? 1),
@@ -413,27 +456,9 @@ async function tryProcessReceipt(receiptId: string, supabaseUrl: string, supabas
           });
         }
       } catch (e) {
-        console.error(`Product matching error for "${item.item_name}":`, e);
+        // Top-level catch per item — ensures this item never affects any other item
+        console.error(`Product matching loop error for "${item.item_name}":`, e);
       }
-    }
-  }
-
-  // Shop matching
-  if (parseResult.store_name) {
-    let shopId = await matchShop(supabaseUrl, supabaseKey, parseResult.store_name);
-    if (!shopId) {
-      try {
-        shopId = await createShop(supabaseUrl, supabaseKey, parseResult.store_name, parseResult.store_cate, parseResult.location);
-      } catch (e) {
-        console.error(`Failed to create shop "${parseResult.store_name}":`, e);
-      }
-    }
-    if (shopId) {
-      await fetch(`${supabaseUrl}/rest/v1/receipts?id=eq.${receiptId}`, {
-        method: "PATCH",
-        headers: { "apikey": supabaseKey, Authorization: `Bearer ${supabaseKey}`, "Content-Type": "application/json" },
-        body: JSON.stringify({ shop_id: shopId }),
-      });
     }
   }
 
@@ -477,8 +502,9 @@ serve(async (req) => {
     // ── CRON FALLBACK MODE: batch pending receipts with age filter ──
     // Cron sends GET (no body) — pick up old pending receipts
     const minAgeSec = FALLBACK_MIN_AGE_SEC;
+    const minAgeDate = new Date(Date.now() - minAgeSec * 1000).toISOString();
     const resp = await fetch(
-      `${supabaseUrl}/rest/v1/receipts?select=id&parse_status=eq.pending&created_at=lt.now()-%20seconds%20${minAgeSec}&limit=5`.replace("%20seconds%20", "%20seconds%20"),
+      `${supabaseUrl}/rest/v1/receipts?select=id&parse_status=eq.pending&created_at=lt.${encodeURIComponent(minAgeDate)}&limit=5`,
       { headers: { "apikey": supabaseKey, Authorization: `Bearer ${supabaseKey}` } }
     );
 
