@@ -61,7 +61,7 @@
 <body>
 
 <h1>🧹 MaidLedger — 數據庫架構與資料流程</h1>
-<p class="meta">更新日期：2026-05-22 | 來源：supabase/migrations/</p>
+<p class="meta">更新日期：2026-05-23 | 來源：supabase/migrations/</p>
 
 <div class="note">
   <strong>🎯 統一 Schema 目標：</strong>Chat 和 Scan 寫入<strong>完全相同的 tables</strong>——只是輸入方式不同。所有收據條目都經過：<code>receipts</code> → <code>receipt_items</code> → <code>master_products</code> + <code>product_aliases</code>，同時更新 <code>shops</code> + <code>shop_aliases</code> 和 <code>price_history</code>。
@@ -117,12 +117,15 @@
 <tr><td class="pk">id</td><td>UUID 主鍵</td><td></td></tr>
 <tr><td class="fk">receipt_id</td><td>UUID 外鍵</td><td>→ receipts ON DELETE CASCADE</td></tr>
 <tr><td class="fk">master_product_id</td><td>UUID 外鍵</td><td>→ master_products（可為空）</td></tr>
-<tr><td></td><td>TEXT</td><td>item_name（LLM 翻譯成中文）</td></tr>
-<tr><td></td><td>TEXT</td><td>item_raw_text（原始 OCR/Chat 文字）</td></tr>
+<tr><td></td><td>TEXT</td><td>item_name（LLM 原始輸出，含品牌/容量）</td></tr>
+<tr><td></td><td>TEXT</td><td>extracted_brand（標準化品牌名）</td></tr>
+<tr><td></td><td>TEXT</td><td>extracted_name（純產品核心名稱）</td></tr>
+<tr><td></td><td>TEXT</td><td>extracted_spec（規格/容量）</td></tr>
+<tr><td></td><td>TEXT</td><td>item_raw_text（原始 OCR 文字）</td></tr>
 <tr><td></td><td>DECIMAL</td><td>qty、unit_price、line_total</td></tr>
 <tr><td></td><td>TEXT</td><td>prd_cate：魚|豬肉|牛肉|雞肉|蔬菜|...</td></tr>
 </table>
-<p class="type">收據項目（1:N）。LLM 將 item_name 翻譯成中文</p>
+<p class="type">B2B 擴展：extracted_brand/name/spec 結構化欄位（Migration 024）</p>
 </div>
 
 <div class="card">
@@ -176,7 +179,7 @@
 <tr><td class="fk">master_product_id</td><td>UUID 外鍵</td><td>→ master_products ON DELETE CASCADE</td></tr>
 <tr><td class="fk">shop_id</td><td>UUID 外鍵</td><td>→ shops ON DELETE SET NULL</td></tr>
 <tr><td></td><td>TEXT</td><td>location、region</td></tr>
-<tr><td></td><td>DECIMAL</td><td>price、unit</td></tr>
+<tr><td></td><td>DECIMAL</td><td>price（單價，B2B 橫向比較用）、unit（extracted_spec）</td></tr>
 <tr><td class="fk">source_receipt_id</td><td>UUID 外鍵</td><td>→ receipts ON DELETE SET NULL</td></tr>
 <tr><td></td><td>DATE</td><td>recorded_at（預設：當前日期）</td></tr>
 <tr><td></td><td>TEXT</td><td>source_type：receipt|scraper</td></tr>
@@ -234,9 +237,9 @@ receipts ──┬──► receipt_items ──► master_products
 <h3>📷 幫手 App 輸入流程（Scan）</h3>
 <ol>
 <li>用戶拍攝圖片 → ML Kit OCR</li>
-<li>→ <code>receipt-parser</code> Edge Function（LLM）</li>
+<li>→ <code>receipt-processor</code> Edge Function（LLM）</li>
 <li>→ <code>receipts</code>（寫入）</li>
-<li>→ <code>receipt_items</code>（寫入）</li>
+<li>→ <code>receipt_items</code>（寫入，含 extracted_brand/name/spec）</li>
 <li>→ <code>ShopMatchingService.matchShop()</code> → <code>shops</code> + <code>shop_aliases</code></li>
 <li>→ <code>ProductMatchingService.matchItem()</code> → <code>master_products</code> + <code>product_aliases</code></li>
 <li>→ <code>price_history</code>（寫入，source_type='receipt'）</li>
@@ -310,6 +313,9 @@ receipts ──┬──► receipt_items ──► master_products
 <tr><td>019</td><td>drop_receipts_category_column.sql</td><td>移除 receipts.category（遷移到 receipt_items.prd_cate）</td></tr>
 <tr><td>020</td><td>shops_and_aliases_rls.sql</td><td>shops 和 shop_aliases 加 RLS policies</td></tr>
 <tr><td>021</td><td>app_errors_table.sql</td><td>app_errors 表（客戶端錯誤記錄）</td></tr>
+<tr><td>022</td><td>receipt_parse_queue.sql</td><td>parse_status + needs_review 欄位</td></tr>
+<tr><td>023</td><td>receipt_webhook_trigger.sql</td><td>DB Trigger（pg_net）觸發 receipt-processor</td></tr>
+<tr><td>024</td><td>receipt_items_brand_spec.sql</td><td>B2B 擴展：extracted_brand/name/spec 欄位</td></tr>
 </table>
 </div>
 
@@ -331,6 +337,7 @@ receipts ──┬──► receipt_items ──► master_products
 <tr><td>11</td><td>chat_screen 和 scan_screen 產品匹配邏輯重複</td><td class="warning">🟡 不一致</td><td>✅ 已修復（統一用 ProductMatchingService）</td></tr>
 <tr><td>12</td><td><code>_getMasterProductIdForItem</code> 和 <code>_logAppError</code> 在 class 外定義</td><td class="warning">🟡 程式碼風格</td><td>✅ 已修復（移入 class 內）</td></tr>
 <tr><td>13</td><td>ScanScreen 處理錯誤後保持過期預覽狀態</td><td class="warning">🟡 UX</td><td>✅ 已修復（catch 清空 _capturedImage）</td></tr>
+<tr><td>14</td><td>receipts.shop_id PATCH 返回 200 但值未寫入</td><td class="error">🔴 數據丟失</td><td>🔍 調查中（可能是 RLS 或 trigger 問題）</td></tr>
 </table>
 </div>
 
@@ -389,75 +396,47 @@ tryProcessReceipt(receiptId)
 │  WHERE id = receiptId                               │
 └─────────────────────────────────────────────────────┘
     ↓
+┌─ Step 3b: Shop matching（BEFORE product matching）─┐
+│  ▸ 最穩定的步驟，移到最前確保一定執行                │
+│  matchShop() → createShop() → PATCH shop_id        │
+└─────────────────────────────────────────────────────┘
+    ↓
 ┌─ Step 4: Insert receipt_items──────────────────────┐
 │  POST receipt_items[]（batch insert）                │
 │                                                        │
-│  receipt_items 結構：                                 │
-│  { receipt_id, item_name, item_raw_text, qty,      │
-│    unit_price, line_total, prd_cate }               │
+│  receipt_items 結構（B2B v2）：                       │
+│  { receipt_id, item_name,                           │
+│    extracted_brand, extracted_name, extracted_spec, │
+│    item_raw_text, qty, unit_price, line_total,     │
+│    prd_cate }                                       │
 └─────────────────────────────────────────────────────┘
     ↓
-┌─ Step 5: Product Matching（per item）───────────────┐
+┌─ Step 5: Product matching + price_history（per item）─┐
 │                                                        │
 │  for each item in parseResult.items:                  │
+│  （每個 item 有獨立 try/catch，隔離不受影響）         │
 │                                                        │
 │  5a. 嘗試 Exact Match（product_aliases）               │
-│      POST /rest/v1/product_aliases                    │
 │      WHERE raw_name = item_name                       │
 │      ▸ 有結果 → 直接取得 master_product_id           │
 │      ▸ 無結果 → 繼續 5b                              │
 │                                                        │
 │  5b. 嘗試 ILIKE Keyword Match（master_products）       │
-│      把 item_name 拆成 keywords（最多 3 個）           │
-│      POST /rest/v1/master_products                   │
+│      把 extracted_name 拆成 keywords（最多 3 個）     │
 │      WHERE canonical_name ILIKE '%keyword%'         │
-│            AND prd_cate = item.prd_cate（如果有）    │
-│      ▸ 有結果 → 建立 product_alias（raw_name→id）    │
-│                 回傳 master_product_id              │
+│      ▸ 有結果 → 建立 product_alias → 回傳 id         │
 │      ▸ 無結果 → 繼續 5c                              │
 │                                                        │
 │  5c. 建立新的 master_product（createMasterProduct）  │
-│      POST /rest/v1/master_products                   │
-│      { canonical_name: item_name,                    │
-│        prd_cate: item.prd_cate || 'other',          │
-│        default_unit: '件' }                          │
+│      canonical_name = extracted_name                │
 │      ▸ 成功 → 建立 product_alias → 回傳 id           │
-│      ▸ 失敗 → 回傳 null，呢個 item 唔建立           │
+│      ▸ 失敗 → 回傳 null                              │
 │                                                        │
 │  5d. Bind 到 receipt_item                            │
-│      GET receipt_items                               │
-│      WHERE receipt_id = X AND item_name = Y          │
-│      ORDER BY id DESC LIMIT 1                        │
-│      PATCH SET master_product_id = 取得的id          │
+│      PATCH SET master_product_id                      │
 │                                                        │
-│  5e. 寫入 price_history（如有 unit_price）          │
-│      POST /rest/v1/price_history                    │
-│      { master_product_id, price, original_price,    │
-│        qty, unit, source_receipt_id, recorded_at }  │
-└─────────────────────────────────────────────────────┘
-    ↓
-┌─ Step 6: Shop Matching─────────────────────────────┐
-│                                                        │
-│  6a. 嘗試 Exact Match（shop_aliases）                 │
-│      GET /rest/v1/shops?select=id&                     │
-│          shop_aliases(raw_name ILIKE '%shopName%')   │
-│      ▸ 有結果 → 回傳 shop_id                         │
-│      ▸ 無結果 → 繼續 6b                              │
-│                                                        │
-│  6b. 嘗試 ILIKE Match（shops）                        │
-│      GET /rest/v1/shops?select=id&                    │
-│          canonical_name ILIKE '%shopName%'            │
-│      ▸ 有結果 → 回傳 shop_id                         │
-│      ▸ 無結果 → 繼續 6c                              │
-│                                                        │
-│  6c. 建立新的 shop（createShop）                      │
-│      POST /rest/v1/shops                              │
-│      { canonical_name: shopName,                     │
-│        shop_type: store_cate, region }               │
-│      + 建立 shop_aliases                             │
-│                                                        │
-│  6d. Update receipts                                  │
-│      PATCH receipts SET shop_id = 取得的id           │
+│  5e. 寫入 price_history                              │
+│      price = unit_price（單價），unit = extracted_spec│
 └─────────────────────────────────────────────────────┘
     ↓
 完成
@@ -467,49 +446,64 @@ tryProcessReceipt(receiptId)
 
 <div class="section">
 <table>
-<tr><th>情況</th><th>原因</th><th>解決方向</th></tr>
-<tr><td>item_name 在 product_aliases 有 exact match</td><td>不會建立新的，已經有 master_product_id</td><td>✅ 預期行為</td></tr>
-<tr><td>item_name 在 master_products 有 ILIKE match</td><td>會建立 product_alias，但唔會建立新的 master_product</td><td>✅ 預期行為</td></tr>
-<tr><td>item_name 完全新，無任何 match</td><td>應該建立 master_product + product_alias</td><td>⚠️ 如有失敗需加 error handling</td></tr>
-<tr><td>item_name 太店鋪特異（如「759阿信屋圣擊袋」）</td><td>LLM 解析出黎的名字唔係真正既 product name，可能俾人感覺奇怪</td><td>🟡 LLM prompt 可優化，指導佢提取通用 product name</td></tr>
-<tr><td>createMasterProduct 返回失敗</td><td>可能是 RLS policy 問題或數據庫 constraint</td><td>需查看 Edge Function logs</td></tr>
+<tr><th>情況</th><th>原因</th><th>狀態</th></tr>
+<tr><td>extracted_name 在 product_aliases 有 exact match</td><td>不會建立新的，已經有 master_product_id</td><td>✅ 預期行為</td></tr>
+<tr><td>extracted_name 在 master_products 有 ILIKE match</td><td>會建立 product_alias，但唔會建立新的 master_product</td><td>✅ 預期行為</td></tr>
+<tr><td>extracted_name 完全新，無任何 match</td><td>應建立 master_product + product_alias</td><td>✅ Bug 1+2 隔離後應正常</td></tr>
+<tr><td>LLM 無法拆出通用 product name</td><td>extracted_name 為 null，回退到 item_name</td><td>✅ 回退機制</td></tr>
 </table>
 </div>
 
-<h3>💡 實際例子：70b613fd-0151-4318-abe5-06bad8ca3afc</h3>
+<h3>💡 實際例子：70b613fd-0151-4318-abe5-06bad8ca3afc（v2 新欄位測試）</h3>
 
 <pre class="flow" style="font-family: monospace; font-size: 0.82rem; white-space: pre-wrap;">
-Item 1: "BOSDMI嬰兒加美濕紙巾60P"
-  Step 5a Exact Match → ✅ 找到（之前已建立）
-  → master_product_id = f80eb4ee...（濕紙巾）
-  Step 5e price_history → ✅ 建立（price=14.8, qty=6）
+收到 LLM Parse 結果：
+  extracted_brand: "759阿信屋"  extracted_name: "聖擊袋"  extracted_spec: "大號"
+  extracted_brand: "BOSDMI"         extracted_name: "嬰兒濕紙巾" extracted_spec: "60P"
 
-Item 2: "759阿信屋圣擊袋 大號"
-  Step 5a Exact Match → ❌ 找不到
-  Step 5b ILIKE Match → ❌ 找不到（無任何包含「阿信屋」或「圣擊袋」的 master_product）
-  Step 5c createMasterProduct → ❓ 理應建立，但 master_product_id = null
+receipt_items 寫入結果：
+  item_name: "759阿信屋圣擊袋 大號"
+    extracted_brand: "759阿信屋"  extracted_name: "聖擊袋"  extracted_spec: "大號"
+    master_product_id: ✅ 新建立（canonical_name: "聖擊袋"）
+    price_history: price=21.00, unit="大號" ✅
+  item_name: "BOSDMI嬰兒加美濕紙巾60P 件"
+    extracted_brand: "BOSDMI"  extracted_name: "嬰兒濕紙巾"  extracted_spec: "60P"
+    master_product_id: ✅ 新建立（canonical_name: "嬰兒濕紙巾"）
+    price_history: price=14.80, unit="60P" ✅
 
-  可能原因（需進一步 Debug）：
-  • createMasterProduct 的 POST 失敗（500 error）
-  • item_name 含有特殊字符導致 JSON 解析問題
-  • PRd_Cate 為 "other" 但 master_products 有 constraint 限制
-
-Shop: "759阿信屋"
-  Step 6a Exact Match → ✅ 找到（id: 7c9a6ca9...）
-  Step 6d PATCH shop_id → ⚠️ 但 receipts.shop_id 仍為 null
-  （懷疑係 product matching 階段有未捕獲的 error，導致
-   整個 tryProcessReceipt 拋出 exception，係 shop matching 之前已中止）
+Shop matching：
+  matchShop("759阿信屋") → ✅ 找到（id: 7c9a6ca9...）
+  PATCH shop_id → ⚠️ 返回 200 但 shop_id 仍為 null（Bug 14，調查中）
 </pre>
 
-<h3>🐛 發現的 Bug（待修復）</h3>
+<h3>🐛 發現的 Bug（已修復）</h3>
 
 <div class="section">
 <table>
-<tr><th>#</th><th>問題</th><th>位置</th><th>修復方向</th></tr>
-<tr><td>1</td><td>Product matching loop 入面，如果任何 item 拋出未捕獲的 error，會導致後續 item（包括 shop matching）全部跳過</td><td>Step 5 的 try-catch 只係 for-loop 內，但 error 會向上傳播</td><td>把 product matching + shop matching 全部包在同一個 try-catch，確保一個 item 失敗唔影響其他 item 和 shop matching</td></tr>
-<tr><td>2</td><td>LLM Output 的 item_name 有機會係店鋪特異的名字（如「759阿信屋圣擊袋」），唔係通用 product name</td><td>callLLMParse prompt</td><td>在 prompt 入面加強指引：要求 LLM 輸出通用產品名稱，而非店鋪自訂名</td></tr>
-<tr><td>3</td><td>Shop matching 在 receipt_items product matching 完成後先執行，如果 product matching 整體失敗，shop matching 永遠唔會執行</td><td>tryProcessReceipt 架構</td><td>把 shop matching 移到 receipt update 步驟（Step 3）之後，唔需要等 product matching 完成</td></tr>
+<tr><th>#</th><th>問題</th><th>位置</th><th>狀態</th></tr>
+<tr><td>1</td><td>Product matching loop exception 向上傳播，中斷 shop matching</td><td>Step 5 try-catch 不足</td><td>✅ 已修復（Shop matching 移至 Step 3b，每個 item 獨立 try/catch）</td></tr>
+<tr><td>2</td><td>product_aliases UNIQUE constraint 導致 409 Conflict 崩潰</td><td>upsertProductAlias</td><td>✅ 已修復（新增 UPSERT helper，明確 treat 409 為成功）</td></tr>
+<tr><td>3</td><td>LLM 輸出店鋪特異名字，污染 master_products</td><td>callLLMParse prompt</td><td>✅ 已修復（prompt 返回 extracted_brand/name/spec 三欄位）</td></tr>
+<tr><td>4</td><td>Shop matching 在 Step 5 後執行，product matching 失敗時跳過</td><td>tryProcessReceipt 架構</td><td>✅ 已修復（Shop matching 移至 Step 3b）</td></tr>
+<tr><td>14</td><td>receipts.shop_id PATCH 返回 200 但值未寫入</td><td>PATCH succeeds but value stays null</td><td>🔍 調查中</td></tr>
 </table>
+</div>
+
+<h3>🗄️ B2B Schema 擴展（Migration 024）</h3>
+
+<div class="section">
+<table>
+<tr><th>欄位</th><th>類型</th><th>說明</th></tr>
+<tr><td>extracted_brand</td><td>TEXT</td><td>標準化品牌名（如：759阿信屋 / 維記 / 雀巢），無則 null</td></tr>
+<tr><td>extracted_name</td><td>TEXT</td><td>純產品核心名稱（如：聖擊袋 / 鮮牛奶 / 嬰兒濕紙巾）</td></tr>
+<tr><td>extracted_spec</td><td>TEXT</td><td>規格/容量（如：946ml / 60P / 大號），無則 null</td></tr>
+<tr><td>item_name</td><td>TEXT</td><td>LLM 原始輸出（含噪音），向後兼容保留</td></tr>
+<tr><td>line_total</td><td>NUMERIC</td><td>qty × unit_price（總價，給用戶查看用）</td></tr>
+<tr><td>price_history.price</td><td>NUMERIC</td><td>現在存<strong>單價</strong>（unit_price），不存總價，方便 B2B 橫向比較</td></tr>
+<tr><td>price_history.unit</td><td>TEXT</td><td>現在存 extracted_spec（如：60P / 946ml / 大號）而非「件」</td></tr>
+</table>
+
+<p>匹配邏輯：先用 <code>extracted_name</code> 做 keyword matching，fail 時才 fallback 到 <code>item_name</code>。</p>
 </div>
 
 </body>
