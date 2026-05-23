@@ -76,7 +76,7 @@ async function matchProduct(supabaseUrl: string, supabaseKey: string, itemName: 
   return null;
 }
 
-async function createMasterProduct(supabaseUrl: string, supabaseKey: string, name: string, prdCate: string): Promise<string> {
+async function createMasterProduct(supabaseUrl: string, supabaseKey: string, name: string, brand: string | null, prdCate: string): Promise<string> {
   const mpResp = await fetch(`${supabaseUrl}/rest/v1/master_products`, {
     method: "POST",
     headers: {
@@ -221,7 +221,7 @@ serve(async (req) => {
       // If not found, create
       if (!masterProductId) {
         try {
-          masterProductId = await createMasterProduct(supabaseUrl, supabaseKey, body.item_name, body.prd_cate || "other");
+          masterProductId = await createMasterProduct(supabaseUrl, supabaseKey, body.item_name, body.brand ?? null, body.prd_cate || "other");
         } catch (e) {
           errors.push(`createMasterProduct error: ${e}`);
         }
