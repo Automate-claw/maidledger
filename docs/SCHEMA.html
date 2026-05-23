@@ -61,7 +61,7 @@
 <body>
 
 <h1>🧹 MaidLedger — 數據庫架構與資料流程</h1>
-<p class="meta">更新日期：2026-05-23 | 來源：supabase/migrations/</p>
+<p class="meta">更新日期：2026-05-24 | 來源：supabase/migrations/</p>
 
 <div class="note">
   <strong>🎯 統一 Schema 目標：</strong>Chat 和 Scan 寫入<strong>完全相同的 tables</strong>——只是輸入方式不同。所有收據條目都經過：<code>receipts</code> → <code>receipt_items</code> → <code>master_products</code> + <code>product_aliases</code>，同時更新 <code>shops</code> + <code>shop_aliases</code> 和 <code>price_history</code>。
@@ -187,6 +187,21 @@
 <p class="type">統一價格記錄。爬蟲 + 幫手 App 都寫入，方便比價</p>
 </div>
 
+<div class="card">
+<h3>💳 employer_payments（僱主付款 / 幫手收款記錄）</h3>
+<table>
+<tr><td class="pk">id</td><td>UUID 主鍵</td><td></td></tr>
+<tr><td class="fk">relation_id</td><td>UUID 外鍵</td><td>→ employer_helper_relations ON DELETE CASCADE</td></tr>
+<tr><td class="fk">employer_id</td><td>UUID 外鍵</td><td>→ user_profiles</td></tr>
+<tr><td class="fk">helper_id</td><td>UUID 外鍵</td><td>→ user_profiles</td></tr>
+<tr><td></td><td>DECIMAL(10,2)</td><td>amount（收到金額）</td></tr>
+<tr><td></td><td>DATE</td><td>payment_date（收款日期）</td></tr>
+<tr><td></td><td>TEXT</td><td>note（備註：6月零用 / 補貼 etc）</td></tr>
+<tr><td></td><td>TIMESTAMPTZ</td><td>created_at</td></tr>
+</table>
+<p class="type">滾動結餘追蹤：Balance = 累計收入 − 累計支出。僱主同幫手都可以 record 和 view。</p>
+</div>
+
 </div>
 
 <h2>🔗 表格關係圖</h2>
@@ -209,12 +224,14 @@ receipts ──┬──► receipt_items ──► master_products
            │                            │
            └──► shops ◄──────┼──────────┘
                               │
-                              ▼
                         shop_aliases
                         product_aliases
                               │
                               ▼
                         price_history
+
+employer_helper_relations ──► employer_payments
+      (both employer + helper can record/view)
 </pre>
 
 <div class="two-col">
@@ -231,6 +248,17 @@ receipts ──┬──► receipt_items ──► master_products
 <li>→ <code>receipt-writer</code> <code>writeShopLink</code>（僅當店名匹配成功）</li>
 <li>→ <code>product-manager</code> <code>upsert</code> → <code>master_products</code> + <code>product_aliases</code></li>
 <li>→ <code>receipt-writer</code> <code>writePriceHistory</code> → <code>price_history</code></li>
+</ol>
+</div>
+
+<div class="subsection">
+<h3>💰 記錄收款（History App — 滾動結餘）</h3>
+<ol>
+<li>Helper 或僱主喺 History 頁按下 [+]</li>
+<li>→ <code>RecordPaymentScreen</code> 輸入金額 + 日期 + 備註</li>
+<li>→ <code>employer_payments</code>（insert）</li>
+<li>→ Balance Card 即時更新（累計收入 − 累計支出）</li>
+<li>→ 月曆該日顯示 💰 gold dot</li>
 </ol>
 </div>
 
