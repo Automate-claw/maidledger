@@ -222,7 +222,10 @@ ${PRD_CATEGORIES.map((c) => `- ${c.code} = ${c.name_tc}`).join("\n")}
   "transaction_date": "YYYY-MM-DD格式或null",
   "items": [
     {
-      "item_name": "產品名稱",
+      "item_name": "產品的原始完整名稱（如：759阿信屋圣擊袋 大號 / 維記鮮奶 946ml）",
+      "extracted_brand": "品牌名稱，必須係標準化字眼（如：759阿信屋 / 維記 / 雀巢），收據上無品牌則填 null",
+      "extracted_name": "去除品牌、容量、店鋪特異字眼後的【純產品核心名稱】（如：聖擊袋 / 鮮牛奶 / 濕紙巾），必須係通用名稱",
+      "extracted_spec": "規格、容量或包裝數量（如：946ml / 10卷裝 / 大號），無則填 null",
       "item_raw_text": "呢行嘅原始OCR文字",
       "qty": 數量,
       "unit_price": 單價或null,
@@ -231,6 +234,15 @@ ${PRD_CATEGORIES.map((c) => `- ${c.code} = ${c.name_tc}`).join("\n")}
   ],
   "parse_confidence": 0.0-1.0
 }
+
+
+### 品牌/名稱/規格 拆分規則
+- extracted_brand：品牌名（如收據上寫「759阿信屋」，就填「759阿信屋」；如果寫「維記」，就填「維記」）
+- extracted_name：去除品牌同規格之後的純產品通用名稱（唔好包含店鋪名稱，如「759阿信屋圣擊袋」→ 只取「聖擊袋」）
+- extracted_spec：容量、尺寸、包裝數量（ml、g、卷、件、罐、盒等）
+- 如果無法確定某個欄位，填 null（但 extracted_name 盡可能要有值）
+
+- extracted_name 用於 master_products canonical_name 建立同 keyword matching，必須係有意義的通用名稱
 
 ### item + price 配對規則
 - 如果有「Row-Reconstructed」格式，以「 | 」分隔黎配對左邊item名稱、右邊價格
@@ -358,22 +370,33 @@ async function tryProcessReceipt(receiptId: string, supabaseUrl: string, supabas
 
   // ── Step 3b: Shop matching (BEFORE product matching — shop is safest, run first) ──
   // Bug 1 fix: moved here so it ALWAYS runs, even if product matching fails for some items
+  console.log(`Shop matching for store_name="${parseResult.store_name}"`);
   if (parseResult.store_name) {
     let shopId: string | null = null;
     try {
       shopId = await matchShop(supabaseUrl, supabaseKey, parseResult.store_name);
+      console.log(`matchShop result: ${shopId}`);
       if (!shopId) {
         shopId = await createShop(supabaseUrl, supabaseKey, parseResult.store_name, parseResult.store_cate, parseResult.location);
+        console.log(`createShop result: ${shopId}`);
       }
     } catch (e) {
       console.error(`Shop matching failed for "${parseResult.store_name}":`, e);
     }
     if (shopId) {
-      await fetch(`${supabaseUrl}/rest/v1/receipts?id=eq.${receiptId}`, {
+      console.log(`PATCH shop_id=${shopId} on receipt ${receiptId}`);
+      const patchResp = await fetch(`${supabaseUrl}/rest/v1/receipts?id=eq.${receiptId}`, {
         method: "PATCH",
         headers: { "apikey": supabaseKey, Authorization: `Bearer ${supabaseKey}`, "Content-Type": "application/json" },
         body: JSON.stringify({ shop_id: shopId }),
       });
+      console.log(`PATCH shop_id response: ${patchResp.status} ${patchResp.statusText}`);
+      if (!patchResp.ok) {
+        const errBody = await patchResp.text();
+        console.error(`PATCH shop_id failed: ${errBody}`);
+      }
+    } else {
+      console.log(`No shopId found for "${parseResult.store_name}"`);
     }
   }
 
@@ -383,6 +406,9 @@ async function tryProcessReceipt(receiptId: string, supabaseUrl: string, supabas
     const itemRows = items.map((item) => ({
       receipt_id: receiptId,
       item_name: item.item_name ?? "",
+      extracted_brand: item.extracted_brand ?? null,
+      extracted_name: item.extracted_name ?? item.item_name ?? "",
+      extracted_spec: item.extracted_spec ?? null,
       item_raw_text: item.item_raw_text ?? "",
       qty: item.qty ?? 1,
       unit_price: item.unit_price ?? null,
@@ -401,18 +427,20 @@ async function tryProcessReceipt(receiptId: string, supabaseUrl: string, supabas
     // Bug 1 fix: each item is in its own try/catch — one failure does NOT affect other items or shop matching
     for (const item of items) {
       try {
+        // Use extracted_name for matching (clean product name), fallback to item_name
+        const matchName = item.extracted_name || item.item_name;
         let masterProductId: string | null = null;
         try {
-          masterProductId = await matchProduct(supabaseUrl, supabaseKey, item.item_name, item.prd_cate);
+          masterProductId = await matchProduct(supabaseUrl, supabaseKey, matchName, item.prd_cate);
         } catch (e) {
-          console.error(`matchProduct error for "${item.item_name}":`, e);
+          console.error(`matchProduct error for "${matchName}":`, e);
         }
 
         if (!masterProductId) {
           try {
-            masterProductId = await createMasterProduct(supabaseUrl, supabaseKey, item.item_name, item.prd_cate || "other");
+            masterProductId = await createMasterProduct(supabaseUrl, supabaseKey, matchName, item.prd_cate || "other");
           } catch (e) {
-            console.error(`createMasterProduct error for "${item.item_name}":`, e);
+            console.error(`createMasterProduct error for "${matchName}":`, e);
           }
         }
 
@@ -423,6 +451,7 @@ async function tryProcessReceipt(receiptId: string, supabaseUrl: string, supabas
 
 
         // Bind to receipt_item — use id DESC to get latest inserted row
+        // Look up by item_name (original raw name) not extracted_name
         const itemResp = await fetch(
           `${supabaseUrl}/rest/v1/receipt_items?select=id,master_product_id&receipt_id=eq.${receiptId}&item_name=eq.${encodeURIComponent(item.item_name)}&order=id.desc&limit=1`,
           { headers: { "apikey": supabaseKey, Authorization: `Bearer ${supabaseKey}` } }
@@ -447,9 +476,9 @@ async function tryProcessReceipt(receiptId: string, supabaseUrl: string, supabas
               master_product_id: masterProductId,
               region: parseResult.location ?? null,
               location: parseResult.location ?? null,
-              price: item.unit_price * (item.qty ?? 1),
+              price: item.unit_price,  // Store unit price (not total) for B2B analytics
               original_price: item.unit_price,
-              unit: "件",
+              unit: item.extracted_spec ?? "件",
               source_receipt_id: receiptId,
               recorded_at: parseResult.transaction_date ?? new Date().toISOString().split("T")[0],
             }),
