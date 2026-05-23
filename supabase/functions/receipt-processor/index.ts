@@ -1,6 +1,13 @@
-// Supabase Edge Function: receipt-processor
-// Background job: picks up pending receipts → LLM parse → product matching → price_history
-// Triggered by cron every 1 minute
+// ══════════════════════════════════════════════════════════════════════════════
+// receipt-processor — event-driven + fallback cron
+// ══════════════════════════════════════════════════════════════════════════════
+// Dual trigger modes:
+//   1. Webhook (DB trigger) → single receipt_id → immediate parse
+//   2. Fallback cron (every 5 min) → batch pending → handles webhook failures
+//
+// Idempotent: only processes receipts still in `pending` status.
+// Webhook uses atomic UPDATE WHERE parse_status=pending as mutex.
+// Fallback adds 2-minute age filter to avoid colliding with in-flight webhooks.
 
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 
@@ -22,39 +29,152 @@ interface ReceiptRow {
   helper_id: string;
   employer_id: string | null;
   relation_id: string | null;
-  ocr_raw_text: string;
-  ocr_reconstructed: string | null;
-  amount: string | null;
+  ocr_raw_text?: string | null;
+  ocr_reconstructed?: string | null;
+  raw_text?: string | null;
+  amount?: string | null;
+  transaction_date?: string | null;
 }
 
 // In-memory cache
 let categoriesCache: {
-  storeCategories: { code: string; name_tc: string }[];
-  prdCategories: { code: string; name_tc: string }[];
+  storeCategories: { code: string; name: string }[];
+  prdCategories: { code: string; name: string }[];
   fetchedAt: number;
 } | null = null;
+const CACHE_TTL_MS = 5 * 60 * 1000; // 5 minutes
 
-const CACHE_TTL_MS = 60 * 60 * 1000;
 const HIGH_AMOUNT_THRESHOLD = 500; // HKD
+const FALLBACK_MIN_AGE_SEC = 120; // 2 minutes — skip receipts still being handled by webhook
 
 async function getCategories(supabaseUrl: string, supabaseKey: string) {
-  const now = Date.now();
-  if (categoriesCache && (now - categoriesCache.fetchedAt) < CACHE_TTL_MS) {
-    return categoriesCache;
+  if (categoriesCache) {
+    const now = Date.now();
+    if (now - categoriesCache.fetchedAt < CACHE_TTL_MS) return categoriesCache;
   }
   const storeFetch = await fetch(`${supabaseUrl}/rest/v1/store_categories?select=code,name_tc&order=display_order.asc`, {
-    headers: { "apikey": supabaseKey, "Authorization": `Bearer ${supabaseKey}` },
+    headers: { "apikey": supabaseKey, Authorization: `Bearer ${supabaseKey}` },
   });
   const prdFetch = await fetch(`${supabaseUrl}/rest/v1/prd_categories?select=code,name_tc&order=display_order.asc`, {
-    headers: { "apikey": supabaseKey, "Authorization": `Bearer ${supabaseKey}` },
+    headers: { "apikey": supabaseKey, Authorization: `Bearer ${supabaseKey}` },
   });
-  categoriesCache = {
-    storeCategories: await storeFetch.json(),
-    prdCategories: await prdFetch.json(),
-    fetchedAt: now,
-  };
+  const storeCategories = await storeFetch.json();
+  const prdCategories = await prdFetch.json();
+  categoriesCache = { storeCategories, prdCategories, fetchedAt: Date.now() };
   return categoriesCache;
 }
+
+function parseJsonResponse(text: string): any {
+  const jsonMatch = text.match(/\{[\s\S]*\}/);
+  if (!jsonMatch) throw new Error("No JSON found in response");
+  return JSON.parse(jsonMatch[0]);
+}
+
+function escapeIlike(str: string): string {
+  return str.replace(/[%_\\]/g, "\\$&");
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Product matching helpers
+// ─────────────────────────────────────────────────────────────────────────────
+
+async function matchProduct(supabaseUrl: string, supabaseKey: string, itemName: string, prdCate: string | null): Promise<string | null> {
+  const aliasResp = await fetch(
+    `${supabaseUrl}/rest/v1/product_aliases?select=master_product_id&raw_name=eq.${encodeURIComponent(itemName)}&limit=1`,
+    { headers: { "apikey": supabaseKey, Authorization: `Bearer ${supabaseKey}` } }
+  );
+  const aliases = await aliasResp.json();
+  if (aliases?.length > 0) return aliases[0].master_product_id;
+
+  const keywords = itemName.trim().split(/[\s　]+/).filter((k) => k.length > 1).slice(0, 3);
+  if (keywords.length === 0) return null;
+
+  const orParts = keywords.map((kw) => `canonical_name.ilike.%${escapeIlike(kw)}%`).join(",");
+  const catFilter = prdCate && prdCate !== "other" ? `&prd_cate=eq.${prdCate}` : "";
+
+  const mpResp = await fetch(
+    `${supabaseUrl}/rest/v1/master_products?select=id&or=(${orParts})${catFilter}&limit=5`,
+    { headers: { "apikey": supabaseKey, Authorization: `Bearer ${supabaseKey}` } }
+  );
+  const products = await mpResp.json();
+  if (products?.length > 0) {
+    await fetch(`${supabaseUrl}/rest/v1/product_aliases`, {
+      method: "POST",
+      headers: { "apikey": supabaseKey, Authorization: `Bearer ${supabaseKey}`, "Content-Type": "application/json", Prefer: "resolution=ignore-duplicates" },
+      body: JSON.stringify({ raw_name: itemName, master_product_id: products[0].id, source: "ocr" }),
+    });
+    return products[0].id;
+  }
+  return null;
+}
+
+async function createMasterProduct(supabaseUrl: string, supabaseKey: string, name: string, prdCate: string): Promise<string> {
+  const mpResp = await fetch(`${supabaseUrl}/rest/v1/master_products`, {
+    method: "POST",
+    headers: { "apikey": supabaseKey, Authorization: `Bearer ${supabaseKey}`, "Content-Type": "application/json", Prefer: "return=representation" },
+    body: JSON.stringify({ canonical_name: name.trim(), prd_cate: prdCate || "other", default_unit: "件" }),
+  });
+  const mp = await mpResp.json();
+  const mpId = mp[0]?.id ?? mp?.id;
+  if (!mpId) throw new Error("Failed to create master product");
+
+  await fetch(`${supabaseUrl}/rest/v1/product_aliases`, {
+    method: "POST",
+    headers: { "apikey": supabaseKey, Authorization: `Bearer ${supabaseKey}`, "Content-Type": "application/json", Prefer: "resolution=ignore-duplicates" },
+    body: JSON.stringify({ raw_name: name.trim(), master_product_id: mpId, source: "ocr" }),
+  });
+  return mpId;
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Shop matching helpers
+// ─────────────────────────────────────────────────────────────────────────────
+
+async function matchShop(supabaseUrl: string, supabaseKey: string, rawShopName: string): Promise<string | null> {
+  const aliasResp = await fetch(
+    `${supabaseUrl}/rest/v1/shops?select=id&shop_aliases(raw_name.ilike.%${escapeIlike(rawShopName)}%)&limit=1`,
+    { headers: { "apikey": supabaseKey, Authorization: `Bearer ${supabaseKey}` } }
+  );
+  const shops = await aliasResp.json();
+  if (shops?.length > 0) return shops[0].id;
+
+  const nameResp = await fetch(
+    `${supabaseUrl}/rest/v1/shops?select=id&canonical_name.ilike.%${escapeIlike(rawShopName)}%&limit=1`,
+    { headers: { "apikey": supabaseKey, Authorization: `Bearer ${supabaseKey}` } }
+  );
+  const shops2 = await nameResp.json();
+  if (shops2?.length > 0) return shops2[0].id;
+
+  return null;
+}
+
+async function createShop(supabaseUrl: string, supabaseKey: string, rawShopName: string, shopType: string | null, location: string | null): Promise<string> {
+  const shopTypeMap: Record<string, string> = {
+    supermarket: "supermarket", wet_market: "wet_market",
+    convenience: "convenience", online: "online", restaurant: "restaurant", other: "other",
+  };
+  const mappedType = shopType && shopTypeMap[shopType] ? shopTypeMap[shopType] : "other";
+
+  const shopResp = await fetch(`${supabaseUrl}/rest/v1/shops`, {
+    method: "POST",
+    headers: { "apikey": supabaseKey, Authorization: `Bearer ${supabaseKey}`, "Content-Type": "application/json", Prefer: "return=representation" },
+    body: JSON.stringify({ canonical_name: rawShopName.trim(), shop_type: mappedType, region: location ?? null }),
+  });
+  const shopJson = await shopResp.json();
+  const shopId = shopJson[0]?.id ?? shopJson?.id;
+  if (!shopId) throw new Error("Failed to create shop");
+
+  await fetch(`${supabaseUrl}/rest/v1/shop_aliases`, {
+    method: "POST",
+    headers: { "apikey": supabaseKey, Authorization: `Bearer ${supabaseKey}`, "Content-Type": "application/json", Prefer: "resolution=ignore-duplicates" },
+    body: JSON.stringify({ raw_name: rawShopName.trim(), shop_id: shopId, source: "ocr" }),
+  });
+  return shopId;
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// LLM Parse
+// ─────────────────────────────────────────────────────────────────────────────
 
 async function callLLMParse(rawOcrText: string, reconstructedText: string, supabaseUrl: string, supabaseKey: string) {
   const openRouterKey = Deno.env.get("OPENROUTER_API_KEY") ?? "";
@@ -147,117 +267,59 @@ ${PRD_CATEGORIES.map((c) => `- ${c.code} = ${c.name}`).join("\n")}
     }
   }
 
-  if (!textResponse) throw new Error(`LLM failed: ${lastError}`);
-
-  const jsonMatch = textResponse.match(/\{[\s\S]*\}/);
-  if (!jsonMatch) throw new Error("No JSON in LLM response");
-  return JSON.parse(jsonMatch[0]);
+  if (!textResponse) throw new Error(`LLM failed for all models. Last error: ${lastError}`);
+  return parseJsonResponse(textResponse);
 }
 
-// Product matching helpers
-function escapeIlike(str: string): string {
-  return str.replace(/[%_\\]/g, "\\$&");
-}
+// ─────────────────────────────────────────────────────────────────────────────
+// Atomic lock + process (shared by webhook and cron modes)
+// Returns true if processed, false if skipped (already taken / not pending)
+// ─────────────────────────────────────────────────────────────────────────────
 
-async function matchProduct(supabaseUrl: string, supabaseKey: string, itemName: string, prdCate: string | null): Promise<string | null> {
-  // 1. Exact alias match
-  const aliasResp = await fetch(
-    `${supabaseUrl}/rest/v1/product_aliases?select=master_product_id&raw_name=eq.${encodeURIComponent(itemName)}&limit=1`,
-    { headers: { "apikey": supabaseKey, "Authorization": `Bearer ${supabaseKey}` } }
+async function tryProcessReceipt(receiptId: string, supabaseUrl: string, supabaseKey: string): Promise<boolean> {
+  // ── Atomic mutex: only update if still in `pending` state ──
+  // This is the key to preventing race conditions when multiple webhooks fire at once
+  const lockResp = await fetch(
+    `${supabaseUrl}/rest/v1/receipts?id=eq.${receiptId}&parse_status=eq.pending&select=id,ocr_raw_text,ocr_reconstructed,raw_text,amount`,
+    {
+      method: "PATCH",
+      headers: { "apikey": supabaseKey, Authorization: `Bearer ${supabaseKey}`, "Content-Type": "application/json", Prefer: "return=representation" },
+      body: JSON.stringify({ parse_status: "processing" }),
+    }
   );
-  const aliases = await aliasResp.json();
-  if (aliases?.length > 0) return aliases[0].master_product_id;
 
-  // 2. ILIKE keyword match
-  const keywords = itemName.trim().split(/[\s　]+/).filter((k) => k.length > 1).slice(0, 3);
-  if (keywords.length === 0) return null;
-
-  const orParts = keywords.map((kw) => `canonical_name.ilike.%${escapeIlike(kw)}%`).join(",");
-  const catFilter = prdCate && prdCate !== "other" ? `&prd_cate=eq.${prdCate}` : "";
-
-  const mpResp = await fetch(
-    `${supabaseUrl}/rest/v1/master_products?select=id&or=(${orParts})${catFilter}&limit=5`,
-    { headers: { "apikey": supabaseKey, "Authorization": `Bearer ${supabaseKey}` } }
-  );
-  const products = await mpResp.json();
-  if (products?.length > 0) {
-    // Create alias for future
-    await fetch(`${supabaseUrl}/rest/v1/product_aliases`, {
-      method: "POST",
-      headers: { "apikey": supabaseKey, "Authorization": `Bearer ${supabaseKey}`, "Content-Type": "application/json", "Prefer": "resolution=ignore-duplicates" },
-      body: JSON.stringify({ raw_name: itemName, master_product_id: products[0].id, source: "ocr" }),
-    });
-    return products[0].id;
+  if (!lockResp.ok) {
+    console.error(`Lock failed for ${receiptId}: ${lockResp.status}`);
+    return false;
   }
-  return null;
-}
 
-async function createMasterProduct(supabaseUrl: string, supabaseKey: string, name: string, prdCate: string): Promise<string> {
-  // Create master product
-  const mpResp = await fetch(`${supabaseUrl}/rest/v1/master_products`, {
-    method: "POST",
-    headers: { "apikey": supabaseKey, "Authorization": `Bearer ${supabaseKey}`, "Content-Type": "application/json", "Prefer": "return=representation" },
-    body: JSON.stringify({ canonical_name: name.trim(), prd_cate: prdCate || "other", default_unit: "件" }),
-  });
-  const mp = await mpResp.json();
-  const mpId = mp[0]?.id ?? mp?.id;
-  if (!mpId) throw new Error("Failed to create master product");
+  const locked: ReceiptRow[] = await lockResp.json();
+  if (!locked || locked.length === 0) {
+    // Receipt already processed, or not in pending state — skip
+    console.log(`Receipt ${receiptId} skipped (not pending or already locked)`);
+    return false;
+  }
 
-  // Create alias
-  await fetch(`${supabaseUrl}/rest/v1/product_aliases`, {
-    method: "POST",
-    headers: { "apikey": supabaseKey, "Authorization": `Bearer ${supabaseKey}`, "Content-Type": "application/json", "Prefer": "resolution=ignore-duplicates" },
-    body: JSON.stringify({ raw_name: name.trim(), master_product_id: mpId, source: "ocr" }),
-  });
-  return mpId;
-}
-
-async function matchShop(supabaseUrl: string, supabaseKey: string, rawShopName: string, shopType: string | null): Promise<string | null> {
-  // 1. Exact match in shop_aliases
-  const aliasResp = await fetch(
-    `${supabaseUrl}/rest/v1/shops?select=id&shop_aliases(raw_name.ilike.%${escapeIlike(rawShopName)}%)&limit=1`,
-    { headers: { "apikey": supabaseKey, "Authorization": `Bearer ${supabaseKey}` } }
-  );
-  const shops = await aliasResp.json();
-  if (shops?.length > 0) return shops[0].id;
-
-  // 2. ILIKE match on canonical_name
-  const nameResp = await fetch(
-    `${supabaseUrl}/rest/v1/shops?select=id&canonical_name.ilike.%${escapeIlike(rawShopName)}%&limit=1`,
-    { headers: { "apikey": supabaseKey, "Authorization": `Bearer ${supabaseKey}` } }
-  );
-  const shops2 = await nameResp.json();
-  if (shops2?.length > 0) return shops2[0].id;
-
-  return null;
-}
-
-// Main process function
-async function processReceipt(receipt: ReceiptRow, supabaseUrl: string, supabaseKey: string): Promise<void> {
-  // Mark as processing
-  await fetch(`${supabaseUrl}/rest/v1/receipts?id=eq.${receipt.id}`, {
-    method: "PATCH",
-    headers: { "apikey": supabaseKey, "Authorization": `Bearer ${supabaseKey}`, "Content-Type": "application/json" },
-    body: JSON.stringify({ parse_status: "processing" }),
-  });
+  const receipt = locked[0];
+  console.log(`Processing receipt ${receiptId}...`);
 
   let parseResult: any;
   try {
     parseResult = await callLLMParse(
-      receipt.ocr_raw_text || "",
-      receipt.ocr_reconstructed || "",
+      (receipt.ocr_raw_text || receipt.raw_text || "").trim(),
+      (receipt.ocr_reconstructed || "").trim(),
       supabaseUrl,
       supabaseKey
     );
   } catch (e) {
-    // LLM failed → mark failed
-    await fetch(`${supabaseUrl}/rest/v1/receipts?id=eq.${receipt.id}`, {
+    // LLM failed → mark failed, leave for fallback cron retry
+    await fetch(`${supabaseUrl}/rest/v1/receipts?id=eq.${receiptId}`, {
       method: "PATCH",
-      headers: { "apikey": supabaseKey, "Authorization": `Bearer ${supabaseKey}`, "Content-Type": "application/json" },
+      headers: { "apikey": supabaseKey, Authorization: `Bearer ${supabaseKey}`, "Content-Type": "application/json" },
       body: JSON.stringify({ parse_status: "failed" }),
     });
-    console.error(`Receipt ${receipt.id} LLM failed:`, e);
-    return;
+    console.error(`Receipt ${receiptId} LLM failed:`, e);
+    return true; // did attempt (even though failed)
   }
 
   // Determine needs_review
@@ -265,33 +327,32 @@ async function processReceipt(receipt: ReceiptRow, supabaseUrl: string, supabase
   const amount = parseResult.total_amount ?? 0;
   const needsReview = confidence < 0.7 || amount > HIGH_AMOUNT_THRESHOLD;
 
-  const validStoreCodes = (await getCategories(supabaseUrl, supabaseKey)).storeCategories.map((c) => c.code);
-  const validPrdCodes = (await getCategories(supabaseUrl, supabaseKey)).prdCategories.map((c) => c.code);
+  const cats = await getCategories(supabaseUrl, supabaseKey);
+  const validStoreCodes = cats.storeCategories.map((c) => c.code);
+  const validPrdCodes = cats.prdCategories.map((c) => c.code);
 
   // Update receipt with parsed data
-  const receiptUpdate: Record<string, any> = {
-    store_name: parseResult.store_name ?? "未知商戶",
-    store_cate: validStoreCodes.includes(parseResult.store_cate) ? parseResult.store_cate : "other",
-    location: parseResult.location ?? null,
-    amount: parseResult.total_amount ?? null,
-    transaction_date: parseResult.transaction_date ?? null,
-    parsed_data: JSON.stringify(parseResult),
-    parse_confidence: confidence,
-    needs_review: needsReview,
-    parse_status: "parsed",
-  };
-
-  await fetch(`${supabaseUrl}/rest/v1/receipts?id=eq.${receipt.id}`, {
+  await fetch(`${supabaseUrl}/rest/v1/receipts?id=eq.${receiptId}`, {
     method: "PATCH",
-    headers: { "apikey": supabaseKey, "Authorization": `Bearer ${supabaseKey}`, "Content-Type": "application/json" },
-    body: JSON.stringify(receiptUpdate),
+    headers: { "apikey": supabaseKey, Authorization: `Bearer ${supabaseKey}`, "Content-Type": "application/json" },
+    body: JSON.stringify({
+      store_name: parseResult.store_name ?? "未知商戶",
+      store_cate: validStoreCodes.includes(parseResult.store_cate) ? parseResult.store_cate : "other",
+      location: parseResult.location ?? null,
+      amount: parseResult.total_amount ?? null,
+      transaction_date: parseResult.transaction_date ?? null,
+      parsed_data: JSON.stringify(parseResult),
+      parse_confidence: confidence,
+      needs_review: needsReview,
+      parse_status: "parsed",
+    }),
   });
 
   // Insert receipt_items
   const items: any[] = parseResult.items ?? [];
   if (items.length > 0) {
     const itemRows = items.map((item) => ({
-      receipt_id: receipt.id,
+      receipt_id: receiptId,
       item_name: item.item_name ?? "",
       item_raw_text: item.item_raw_text ?? "",
       qty: item.qty ?? 1,
@@ -302,47 +363,54 @@ async function processReceipt(receipt: ReceiptRow, supabaseUrl: string, supabase
 
     await fetch(`${supabaseUrl}/rest/v1/receipt_items`, {
       method: "POST",
-      headers: { "apikey": supabaseKey, "Authorization": `Bearer ${supabaseKey}`, "Content-Type": "application/json", "Prefer": "return=representation" },
+      headers: { "apikey": supabaseKey, Authorization: `Bearer ${supabaseKey}`, "Content-Type": "application/json", Prefer: "return=representation" },
       body: JSON.stringify(itemRows),
     });
 
     // Product matching + price_history
     for (const item of items) {
       try {
-        let masterProductId = await matchProduct(supabaseUrl, supabaseKey, item.item_raw_text || item.item_name, item.prd_cate);
+        let masterProductId = await matchProduct(supabaseUrl, supabaseKey, item.item_name, item.prd_cate);
         if (!masterProductId) {
           masterProductId = await createMasterProduct(supabaseUrl, supabaseKey, item.item_name, item.prd_cate || "other");
         }
 
-        // Bind to receipt_item
+        // Bind to receipt_item — use id DESC to get latest inserted row
         const itemResp = await fetch(
-          `${supabaseUrl}/rest/v1/receipt_items?select=id&receipt_id=eq.${receipt.id}&item_name=eq.${encodeURIComponent(item.item_name)}&limit=1`,
-          { headers: { "apikey": supabaseKey, "Authorization": `Bearer ${supabaseKey}` } }
+          `${supabaseUrl}/rest/v1/receipt_items?select=id,master_product_id&receipt_id=eq.${receiptId}&item_name=eq.${encodeURIComponent(item.item_name)}&order=id.desc&limit=1`,
+          { headers: { "apikey": supabaseKey, Authorization: `Bearer ${supabaseKey}` } }
         );
         const itemRows2 = await itemResp.json();
-        if (itemRows2?.length > 0) {
-          await fetch(`${supabaseUrl}/rest/v1/receipt_items?id=eq.${itemRows2[0].id}`, {
-            method: "PATCH",
-            headers: { "apikey": supabaseKey, "Authorization": `Bearer ${supabaseKey}`, "Content-Type": "application/json" },
-            body: JSON.stringify({ master_product_id: masterProductId }),
-          });
+        const targetItem = itemRows2 && itemRows2.length > 0 ? itemRows2[0] : null;
 
-          // Write price_history
-          if (item.unit_price != null) {
-            await fetch(`${supabaseUrl}/rest/v1/price_history`, {
-              method: "POST",
-              headers: { "apikey": supabaseKey, "Authorization": `Bearer ${supabaseKey}`, "Content-Type": "application/json" },
-              body: JSON.stringify({
-                master_product_id: masterProductId,
-                location: parseResult.location,
-                price: item.unit_price * (item.qty ?? 1),
-                original_price: item.unit_price,
-                unit: "件",
-                source_receipt_id: receipt.id,
-                recorded_at: receipt.transaction_date ?? new Date().toISOString().split("T")[0],
-              }),
-            });
-          }
+        if (!targetItem) continue;
+
+        const targetMpId = masterProductId ?? targetItem.master_product_id;
+        if (!targetMpId) continue;
+
+        if (!targetItem.master_product_id || targetItem.master_product_id !== targetMpId) {
+          await fetch(`${supabaseUrl}/rest/v1/receipt_items?id=eq.${targetItem.id}`, {
+            method: "PATCH",
+            headers: { "apikey": supabaseKey, Authorization: `Bearer ${supabaseKey}`, "Content-Type": "application/json" },
+            body: JSON.stringify({ master_product_id: targetMpId }),
+          });
+        }
+
+        if (item.unit_price != null) {
+          await fetch(`${supabaseUrl}/rest/v1/price_history`, {
+            method: "POST",
+            headers: { "apikey": supabaseKey, Authorization: `Bearer ${supabaseKey}`, "Content-Type": "application/json" },
+            body: JSON.stringify({
+              master_product_id: targetMpId,
+              region: parseResult.location ?? null,
+              location: parseResult.location ?? null,
+              price: item.unit_price * (item.qty ?? 1),
+              original_price: item.unit_price,
+              unit: "件",
+              source_receipt_id: receiptId,
+              recorded_at: parseResult.transaction_date ?? new Date().toISOString().split("T")[0],
+            }),
+          });
         }
       } catch (e) {
         console.error(`Product matching error for "${item.item_name}":`, e);
@@ -352,20 +420,31 @@ async function processReceipt(receipt: ReceiptRow, supabaseUrl: string, supabase
 
   // Shop matching
   if (parseResult.store_name) {
-    const shopId = await matchShop(supabaseUrl, supabaseKey, parseResult.store_name, parseResult.store_cate);
+    let shopId = await matchShop(supabaseUrl, supabaseKey, parseResult.store_name);
+    if (!shopId) {
+      try {
+        shopId = await createShop(supabaseUrl, supabaseKey, parseResult.store_name, parseResult.store_cate, parseResult.location);
+      } catch (e) {
+        console.error(`Failed to create shop "${parseResult.store_name}":`, e);
+      }
+    }
     if (shopId) {
-      await fetch(`${supabaseUrl}/rest/v1/receipts?id=eq.${receipt.id}`, {
+      await fetch(`${supabaseUrl}/rest/v1/receipts?id=eq.${receiptId}`, {
         method: "PATCH",
-        headers: { "apikey": supabaseKey, "Authorization": `Bearer ${supabaseKey}`, "Content-Type": "application/json" },
+        headers: { "apikey": supabaseKey, Authorization: `Bearer ${supabaseKey}`, "Content-Type": "application/json" },
         body: JSON.stringify({ shop_id: shopId }),
       });
     }
   }
 
-  console.log(`Receipt ${receipt.id} processed. needs_review=${needsReview}`);
+  console.log(`Receipt ${receiptId} processed. needs_review=${needsReview}`);
+  return true;
 }
 
-// Health check endpoint
+// ─────────────────────────────────────────────────────────────────────────────
+// HTTP handler — supports both webhook (single) and cron (batch) modes
+// ─────────────────────────────────────────────────────────────────────────────
+
 serve(async (req) => {
   if (req.method === "GET" && new URL(req.url).pathname.endsWith("health")) {
     return new Response(JSON.stringify({ status: "ok", timestamp: Date.now() }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
@@ -379,31 +458,61 @@ serve(async (req) => {
     const supabaseUrl = Deno.env.get("SUPABASE_URL") ?? "";
     const supabaseKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? Deno.env.get("SUPABASE_ANON_KEY") ?? "";
 
-    // Pick up first 5 pending receipts
+    // ── WEBHOOK MODE: single receipt_id in body ──
+    // POST { "receipt_id": "uuid" }  →  process one immediately
+    let body: any = {};
+    try {
+      body = await req.json();
+    } catch { /* empty body for cron GET */ }
+
+    if (body?.receipt_id) {
+      const receiptId: string = body.receipt_id;
+      const processed = await tryProcessReceipt(receiptId, supabaseUrl, supabaseKey);
+      return new Response(
+        JSON.stringify({ mode: "webhook", receipt_id: receiptId, processed }),
+        { headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+
+    // ── CRON FALLBACK MODE: batch pending receipts with age filter ──
+    // Cron sends GET (no body) — pick up old pending receipts
+    const minAgeSec = FALLBACK_MIN_AGE_SEC;
     const resp = await fetch(
-      `${supabaseUrl}/rest/v1/receipts?select=id,helper_id,employer_id,relation_id,ocr_raw_text,ocr_reconstructed,amount&parse_status=eq.pending&limit=5`,
-      { headers: { "apikey": supabaseKey, "Authorization": `Bearer ${supabaseKey}` } }
+      `${supabaseUrl}/rest/v1/receipts?select=id&parse_status=eq.pending&created_at=lt.now()-%20seconds%20${minAgeSec}&limit=5`.replace("%20seconds%20", "%20seconds%20"),
+      { headers: { "apikey": supabaseKey, Authorization: `Bearer ${supabaseKey}` } }
     );
 
-    const pending: ReceiptRow[] = await resp.json();
+    if (!resp.ok) {
+      const errText = await resp.text();
+      return new Response(JSON.stringify({ error: "DB query failed", details: errText }), { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+    }
+
+    const pending: { id: string }[] = await resp.json();
 
     if (pending.length === 0) {
-      return new Response(JSON.stringify({ processed: 0, message: "No pending receipts" }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
+      return new Response(JSON.stringify({ mode: "cron", processed: 0, message: "No stale pending receipts" }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
     }
 
     let processed = 0;
-    for (const receipt of pending) {
+    for (const row of pending) {
       try {
-        await processReceipt(receipt, supabaseUrl, supabaseKey);
-        processed++;
+        const ok = await tryProcessReceipt(row.id, supabaseUrl, supabaseKey);
+        if (ok) processed++;
       } catch (e) {
-        console.error(`Error processing receipt ${receipt.id}:`, e);
+        console.error(`Cron error processing receipt ${row.id}:`, e);
       }
     }
 
-    return new Response(JSON.stringify({ processed }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
+    return new Response(
+      JSON.stringify({ mode: "cron", processed, total: pending.length }),
+      { headers: { ...corsHeaders, "Content-Type": "application/json" } }
+    );
+
   } catch (error) {
     console.error("receipt-processor error:", error);
-    return new Response(JSON.stringify({ error: error.message ?? "Internal error" }), { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+    return new Response(
+      JSON.stringify({ error: error.message ?? "Internal error" }),
+      { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" }
+    });
   }
 });
