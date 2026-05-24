@@ -25,16 +25,23 @@ const HIGH_AMOUNT_THRESHOLD = 500;
 // Internal function caller (same project → internal REST call)
 // ─────────────────────────────────────────────────────────────────────────────
 async function callFunction(funcName: string, payload: any): Promise<any> {
-  const resp = await fetch(`${SUPABASE_URL}/functions/v1/${funcName}`, {
+  const url = `${SUPABASE_URL}/functions/v1/${funcName}`;
+  const headers = {
+    "Content-Type": "application/json",
+    "Authorization": `Bearer ${SUPABASE_SERVICE_KEY}`,
+    "apikey": SUPABASE_SERVICE_KEY,
+    "x-client-info": "supabase-deno/1.0.0",
+  };
+  console.log(`[callFunction] calling ${funcName} with headers: ${JSON.stringify(Object.keys(headers))}`);
+  const resp = await fetch(url, {
     method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      "Authorization": `Bearer ${SUPABASE_SERVICE_KEY}`,
-    },
+    headers,
     body: JSON.stringify(payload),
   });
+  const status = resp.status;
   const data = await resp.json();
-  return { ok: resp.ok, status: resp.status, data };
+  console.log(`[callFunction] ${funcName} responded ${status}: ${JSON.stringify(data).substring(0, 200)}`);
+  return { ok: resp.ok, status, data };
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -67,25 +74,53 @@ async function getValidCodes() {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Atomic lock — only process if receipt still in pending state
+// Atomic lock — lock receipt for processing
+// Simpler approach: directly PATCH parse_status to 'processing', check result
 // ─────────────────────────────────────────────────────────────────────────────
 async function lockReceipt(receiptId: string): Promise<boolean> {
-  const lockResp = await fetch(
-    `${SUPABASE_URL}/rest/v1/receipts?id=eq.${receiptId}&parse_status=eq.pending&select=id,ocr_raw_text,ocr_reconstructed,raw_text`,
-    {
-      method: "PATCH",
-      headers: {
-        apikey: SUPABASE_SERVICE_KEY,
-        Authorization: `Bearer ${SUPABASE_SERVICE_KEY}`,
-        "Content-Type": "application/json",
-        Prefer: "return=representation",
-      },
-      body: JSON.stringify({ parse_status: "processing" }),
+  // Try up to 2 times with 1s delay
+  for (let attempt = 0; attempt < 2; attempt++) {
+    if (attempt > 0) {
+      console.log(`[lockReceipt] retry ${attempt + 1} for ${receiptId}`);
+      await new Promise((r) => setTimeout(r, 1000));
     }
-  );
-  if (!lockResp.ok) return false;
-  const locked = await lockResp.json();
-  return locked && locked.length > 0;
+
+    // Direct PATCH to set parse_status = 'processing' for this specific receipt
+    const lockResp = await fetch(
+      `${SUPABASE_URL}/rest/v1/receipts?id=eq.${receiptId}&select=id,parse_status`,
+      {
+        method: "PATCH",
+        headers: {
+          apikey: SUPABASE_SERVICE_KEY,
+          Authorization: `Bearer ${SUPABASE_SERVICE_KEY}`,
+          "Content-Type": "application/json",
+          Prefer: "return=representation",
+        },
+        body: JSON.stringify({ parse_status: "processing" }),
+      }
+    );
+
+    if (!lockResp.ok) {
+      console.log(`[lockReceipt] attempt ${attempt + 1} PATCH failed: ${lockResp.status}`);
+      continue;
+    }
+
+    const locked = await lockResp.json();
+    console.log(`[lockReceipt] PATCH returned: ${JSON.stringify(locked)}`);
+
+    // If we got back an array with our receipt, it means we locked it successfully
+    // (PostgREST only returns rows that matched the implicit WHERE condition)
+    if (Array.isArray(locked) && locked.length > 0 && locked[0].id === receiptId) {
+      console.log(`[lockReceipt] SUCCESS: locked receipt ${receiptId}`);
+      return true;
+    }
+
+    // Empty array means no matching rows (not pending or already processing)
+    console.log(`[lockReceipt] attempt ${attempt + 1}: no matching rows (receipt not pending or already processing)`);
+  }
+
+  console.log(`[lockReceipt] FAILED: could not lock ${receiptId}`);
+  return false;
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -96,30 +131,37 @@ async function processReceipt(receiptId: string): Promise<{ success: boolean; re
   const allErrors: string[] = [];
 
   // Step 0: Lock receipt
+  console.log(`[processReceipt] attempting to lock receipt ${receiptId}`);
   const locked = await lockReceipt(receiptId);
   if (!locked) {
-    console.log(`Receipt ${receiptId} skipped (not pending or already locked)`);
+    console.log(`[processReceipt] FAIL: could not lock receipt ${receiptId}`);
     return { success: false, receipt_id: receiptId, needs_review: false, errors: ["skipped: not pending or already locked"] };
   }
+  console.log(`[processReceipt] successfully locked ${receiptId}`);
 
   // Fetch raw text and image URL
-  const receiptRes = await fetch(`${SUPABASE_URL}/rest/v1/receipts?id=eq.${receiptId}&select=ocr_raw_text,ocr_reconstructed,raw_text,image_local_path,image_url`, {
+  console.log(`[processReceipt] fetching receipt ${receiptId}`);
+  const receiptRes = await fetch(`${SUPABASE_URL}/rest/v1/receipts?id=eq.${receiptId}&select=id,parse_status,ocr_raw_text,ocr_reconstructed,raw_text,image_local_path`, {
     headers: { apikey: SUPABASE_SERVICE_KEY, Authorization: `Bearer ${SUPABASE_SERVICE_KEY}` },
   });
-  const receiptData = await receiptRes.json();
+  const receiptText = await receiptRes.text();
+  console.log(`[processReceipt] receipt fetch status: ${receiptRes.status}, body: ${receiptText.substring(0, 500)}`);
+  let receiptData: any[];
+  try { receiptData = JSON.parse(receiptText); } catch { receiptData = []; }
   const receipt = receiptData[0];
   if (!receipt) {
     allErrors.push("receipt not found after lock");
     return { success: false, receipt_id: receiptId, needs_review: false, errors: allErrors };
   }
 
+  console.log(`[processReceipt] receipt found: id=${receipt.id}, parse_status=${receipt.parse_status}, image=${receipt.image_local_path}`);
+
   // ── Step 1: receipt-vision (pure LLM Vision, replaces ML Kit + LLM) ──
   let parseResult: any = null;
   try {
-    // Use image_url from the receipt's stored image
-    const imageUrl = receipt.image_local_path || receipt.image_url;
+    // Use image_local_path which contains the storage URL
     const parseResult_ = await callFunction("receipt-vision", {
-      image_url: imageUrl,
+      image_url: receipt.image_local_path || "",
     });
     if (!parseResult_.ok || !parseResult_.data?.success) {
       throw new Error(`receipt-vision failed (${parseResult_.status}): ${JSON.stringify(parseResult_.data)}`);

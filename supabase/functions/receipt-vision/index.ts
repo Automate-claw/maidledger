@@ -45,7 +45,7 @@ function parseJsonResponse(text: string) {
   // Strip markdown code blocks if present
   const stripped = text.replace(/```json\n?/, "").replace(/```\n?/, "").trim();
   const jsonMatch = stripped.match(/\{[\s\S]*\}/);
-  if (!jsonMatch) throw new Error("No JSON found in LLM response");
+  if (!jsonMatch) throw new Error(`No JSON found in LLM response. Raw response: ${stripped.substring(0, 500)}`);
   return JSON.parse(jsonMatch[0]);
 }
 
@@ -63,15 +63,18 @@ async function callLLMVision(
   const STORE_CATEGORIES = cats.storeCategories;
   const PRD_CATEGORIES = cats.prdCategories;
 
-  // Build image content based on whether it's base64 or URL
+  // Build image content for OpenRouter's OpenAI-compatible multimodal API
+  // Format for OpenAI-compatible API: { type: "image_url", image_url: { url: "..." } }
   let imageContent: any;
   if (imageData.startsWith("data:")) {
-    imageContent = { type: "base64", data: imageData.split(",")[1] ?? imageData };
+    // Direct base64 data URL
+    imageContent = { type: "image_url", image_url: { url: imageData } };
   } else if (imageData.startsWith("http")) {
-    imageContent = { type: "url", url: imageData };
+    // Public URL
+    imageContent = { type: "image_url", image_url: { url: imageData } };
   } else {
-    // Assume raw base64
-    imageContent = { type: "base64", data: imageData };
+    // Raw base64 — wrap in data URL
+    imageContent = { type: "image_url", image_url: { url: `data:image/jpeg;base64,${imageData}` } };
   }
 
   const prompt = `你係一個香港收據分析助手。請直接睇呢張收據圖片，提取結構化資料。
@@ -118,70 +121,59 @@ ${PRD_CATEGORIES.map((c) => `- ${c.code} = ${c.name_tc}`).join("\n")}
 - 金額唔需要加$符號，直接填數字
 - parse_confidence 反映對整體解析結果的信心程度`;
 
-  const models = [
-    { name: "openai/gpt-4o", vision: true },
-    { name: "anthropic/claude-3.5-sonnet", vision: true },
-    { name: "google/gemini-2.0-flash", vision: true },
-  ];
+  const model = "openai/gpt-4o"; // Primary vision model
 
   let lastError = "";
   let textResponse = "";
   let usage = { prompt_tokens: 0, completion_tokens: 0, total_tokens: 0 };
 
-  for (const modelInfo of models) {
-    try {
-      const resp = await fetch("https://openrouter.ai/api/v1/chat/completions", {
-        method: "POST",
-        headers: {
-          "Authorization": `Bearer ${openRouterKey}`,
-          "Content-Type": "application/json",
-          "HTTP-Referer": "https://maidledger.app",
-          "X-Title": "MaidLedger Receipt Vision",
-        },
-        body: JSON.stringify({
-          model: modelInfo.name,
-          messages: [
-            {
-              role: "user",
-              content: [
-                { type: "text", text: prompt },
-                { type: "image", image: imageContent },
-              ],
-            },
-          ],
-          temperature: 0.2,
-          max_tokens: 2048,
-        }),
-      });
+  try {
+    const resp = await fetch("https://openrouter.ai/api/v1/chat/completions", {
+      method: "POST",
+      headers: {
+        "Authorization": `Bearer ${openRouterKey}`,
+        "Content-Type": "application/json",
+        "HTTP-Referer": "https://maidledger.app",
+        "X-Title": "MaidLedger Receipt Vision",
+      },
+      body: JSON.stringify({
+        model,
+        messages: [
+          {
+            role: "user",
+            content: [
+              { type: "text", text: prompt },
+              imageContent, // already in OpenAI vision format: { type: "image_url", image_url: { url: "..." } }
+            ],
+          },
+        ],
+        temperature: 0.2,
+        max_tokens: 2048,
+      }),
+    });
 
-      if (!resp.ok) {
-        lastError = await resp.text();
-        continue;
-      }
-
-      const data = await resp.json();
-      textResponse = data?.choices?.[0]?.message?.content ?? "";
-
-      // Extract token usage from response
-      if (data?.usage) {
-        usage = {
-          prompt_tokens: data.usage.prompt_tokens ?? 0,
-          completion_tokens: data.usage.completion_tokens ?? 0,
-          total_tokens: data.usage.total_tokens ?? 0,
-        };
-      } else if (data?.usage === undefined && data?.model?.includes("gemini")) {
-        // Gemini doesn't always return usage — estimate
-        usage = { prompt_tokens: 2500, completion_tokens: 500, total_tokens: 3000 };
-      }
-
-      if (textResponse) break;
-    } catch (e) {
-      lastError = String(e);
-      continue;
+    if (!resp.ok) {
+      lastError = await resp.text();
+      throw new Error(`OpenRouter error ${resp.status}: ${lastError}`);
     }
+
+    const data = await resp.json();
+    console.error("[receipt-vision] LLM raw response:", JSON.stringify(data));
+    textResponse = data?.choices?.[0]?.message?.content ?? "";
+
+    if (data?.usage) {
+      usage = {
+        prompt_tokens: data.usage.prompt_tokens ?? 0,
+        completion_tokens: data.usage.completion_tokens ?? 0,
+        total_tokens: data.usage.total_tokens ?? 0,
+      };
+    }
+  } catch (e) {
+    lastError = String(e);
+    throw new Error(`Vision model failed: ${lastError}`);
   }
 
-  if (!textResponse) throw new Error(`LLM Vision failed for all models. Last error: ${lastError}`);
+  if (!textResponse) throw new Error(`Empty response from vision model. Raw data was logged.`);
   return { textResponse, usage };
 }
 
@@ -189,9 +181,13 @@ ${PRD_CATEGORIES.map((c) => `- ${c.code} = ${c.name_tc}`).join("\n")}
 serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
 
+  // Debug: log incoming headers
+  console.log("[receipt-vision] incoming headers:", JSON.stringify(Object.fromEntries(req.headers.entries())));
+
   try {
     const supabaseUrl = Deno.env.get("SUPABASE_URL") ?? "";
     const supabaseKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? Deno.env.get("SUPABASE_ANON_KEY") ?? "";
+    console.log("[receipt-vision] supabaseUrl present:", !!supabaseUrl, "supabaseKey present:", !!supabaseKey);
 
     let body: any;
     try { body = await req.json(); } catch { body = {}; }
