@@ -120,7 +120,7 @@ class AIBookingAgent {
     debugPrint('🤖 [AIBookingAgent] Calling chat-orchestrate to save: $text');
 
     final anonKey = dotenv.env['SUPABASE_ANON_KEY'] ?? '';
-    final body: Map<String, dynamic> = {
+    final Map<String, dynamic> body = {
       'text': text,
       'user_id': userId,
       'location': location,
