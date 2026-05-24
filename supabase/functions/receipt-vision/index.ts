@@ -121,7 +121,7 @@ ${PRD_CATEGORIES.map((c) => `- ${c.code} = ${c.name_tc}`).join("\n")}
 - 金額唔需要加$符號，直接填數字
 - parse_confidence 反映對整體解析結果的信心程度`;
 
-  const model = "openai/gpt-4o"; // Primary vision model
+  const model = "qwen/qwen3-vl-30b-a3b-instruct"; // Primary vision model (switch to gpt-4o if quality degrades)
 
   let lastError = "";
   let textResponse = "";
