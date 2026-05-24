@@ -422,7 +422,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
       final userId = client.auth.currentSession?.user.id;
       if (userId == null) throw Exception('Not logged in');
 
-      // Upload image if provided (audit trail only, not used by business logic)
+      // Upload image if provided (audit trail only — primary upload is in chat-orchestrate via receipt-writer)
       if (image != null) {
         await _uploadImage(image, userId, base64: imageBase64);
       }
@@ -433,7 +433,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
       // - receipt-writer writeItemsFromChat
       // - product-manager upsert loop + price_history writes
       final aiAgent = AIBookingAgent();
-      final result = await aiAgent.saveExpense(intent.rawText, userId, location: location);
+      final result = await aiAgent.saveExpense(intent.rawText, userId, location: location, imageBase64: imageBase64);
 
       if (result['success'] != true) {
         final errors = (result['errors'] as List?)?.join('; ') ?? AppStrings.expenseSaveFailed(locale);
