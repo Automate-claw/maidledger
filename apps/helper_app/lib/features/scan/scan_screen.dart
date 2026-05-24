@@ -284,8 +284,9 @@ class _ScanScreenState extends ConsumerState<ScanScreen> {
     }
   }
 
-  /// Fire-and-forget: save receipt raw data + image immediately.
-  /// LLM parse + product matching done by receipt-processor background job.
+  /// Save receipt immediately and trigger LLM parsing via receipt-orchestrate.
+  /// Flow: insert → call receipt-orchestrate → user returns to camera.
+  /// Backend handles: receipt-vision → shop-manager → product-manager → receipt-writer.
   Future<void> _saveReceiptImmediate({
     required String imageUrl,
     required String rawText,
@@ -304,7 +305,7 @@ class _ScanScreenState extends ConsumerState<ScanScreen> {
     final receiptId = const Uuid().v4();
     final now = DateTime.now().millisecondsSinceEpoch;
 
-    // Immediate write: only raw data + image, parse_status = pending
+    // Step 1: Immediate write to DB with image URL
     await supabase.from('receipts').insert({
       'id': receiptId,
       'employer_id': relations?['employer_id'],
@@ -319,6 +320,29 @@ class _ScanScreenState extends ConsumerState<ScanScreen> {
       'parse_status': 'pending',
       'created_at': DateTime.now().toIso8601String(),
     });
+
+    // Step 2: Immediately trigger receipt-orchestrate (receipt-vision → write)
+    _triggerReceiptOrchestrate(receiptId);
+  }
+
+  Future<void> _triggerReceiptOrchestrate(String receiptId) async {
+    // Fire-and-forget: trigger backend processing, don't wait for result
+    try {
+      final supabaseUrl = dotenv.env['SUPABASE_URL'] ?? '';
+      final serviceKey = dotenv.env['SUPABASE_SERVICE_ROLE_KEY'] ?? '';
+
+      await http.post(
+        Uri.parse('$supabaseUrl/functions/v1/receipt-orchestrate'),
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': 'Bearer $serviceKey',
+        },
+        body: jsonEncode({'receipt_id': receiptId}),
+      );
+    } catch (e) {
+      // Non-critical: receipt is saved, orchestration can be retried via cron
+      debugPrint('receipt-orchestrate trigger failed (will retry via cron): $e');
+    }
   }
 
   // ============================================================
