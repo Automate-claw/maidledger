@@ -42,12 +42,10 @@ class _HistoryScreenState extends ConsumerState<HistoryScreen> {
 
       // Load ALL receipts for this helper (not just filtered by relation)
       // This ensures we show receipts even if relation_id is null or different
-      final cutoff = DateTime.now().subtract(const Duration(days: 365));
       final receiptsRes = await supabase
           .from('receipts')
           .select('id, amount, transaction_date, created_at, store_name, store_cate, parse_status, relation_id')
           .eq('helper_id', userId)
-          .gte('transaction_date', cutoff.toIso8601String().split('T')[0])
           .order('transaction_date', ascending: false);
 
       final receipts = List<Map<String, dynamic>>.from(receiptsRes as List);
