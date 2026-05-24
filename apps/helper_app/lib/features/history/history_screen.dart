@@ -246,7 +246,7 @@ class _HistoryScreenState extends ConsumerState<HistoryScreen> {
 
   Widget _buildCalendar() {
     return TableCalendar(
-      firstDay: DateTime.now().subtract(const Duration(days: 365)),
+      firstDay: DateTime(2020, 1, 1),
       lastDay: DateTime.now().add(const Duration(days: 30)),
       focusedDay: _focusedDay,
       calendarFormat: _calendarFormat,
