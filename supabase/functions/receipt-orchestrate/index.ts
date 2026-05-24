@@ -102,8 +102,8 @@ async function processReceipt(receiptId: string): Promise<{ success: boolean; re
     return { success: false, receipt_id: receiptId, needs_review: false, errors: ["skipped: not pending or already locked"] };
   }
 
-  // Fetch raw text
-  const receiptRes = await fetch(`${SUPABASE_URL}/rest/v1/receipts?id=eq.${receiptId}&select=ocr_raw_text,ocr_reconstructed,raw_text`, {
+  // Fetch raw text and image URL
+  const receiptRes = await fetch(`${SUPABASE_URL}/rest/v1/receipts?id=eq.${receiptId}&select=ocr_raw_text,ocr_reconstructed,raw_text,image_local_path,image_url`, {
     headers: { apikey: SUPABASE_SERVICE_KEY, Authorization: `Bearer ${SUPABASE_SERVICE_KEY}` },
   });
   const receiptData = await receiptRes.json();
@@ -113,19 +113,21 @@ async function processReceipt(receiptId: string): Promise<{ success: boolean; re
     return { success: false, receipt_id: receiptId, needs_review: false, errors: allErrors };
   }
 
-  // ── Step 1: receipt-parse ──────────────────────────────────────────────
+  // ── Step 1: receipt-vision (pure LLM Vision, replaces ML Kit + LLM) ──
   let parseResult: any = null;
   try {
-    const parseResult_ = await callFunction("receipt-parse", {
-      ocr_raw_text: (receipt.ocr_raw_text || receipt.raw_text || "").trim(),
-      ocr_reconstructed: (receipt.ocr_reconstructed || "").trim(),
+    // Use image_url from the receipt's stored image
+    const imageUrl = receipt.image_local_path || receipt.image_url;
+    const parseResult_ = await callFunction("receipt-vision", {
+      image_url: imageUrl,
     });
     if (!parseResult_.ok || !parseResult_.data?.success) {
-      throw new Error(`receipt-parse failed (${parseResult_.status}): ${JSON.stringify(parseResult_.data)}`);
+      throw new Error(`receipt-vision failed (${parseResult_.status}): ${JSON.stringify(parseResult_.data)}`);
     }
     parseResult = parseResult_.data.data;
+    console.log(`[receipt-orchestrate] receipt-vision tokens: ${JSON.stringify(parseResult_.data.tokens_used)}`);
   } catch (e) {
-    allErrors.push(`receipt-parse error: ${e}`);
+    allErrors.push(`receipt-vision error: ${e}`);
     // Mark as failed
     await fetch(`${SUPABASE_URL}/rest/v1/receipts?id=eq.${receiptId}`, {
       method: "PATCH",
