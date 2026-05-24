@@ -28,6 +28,8 @@ class AppStrings {
       'confidence': '信心度',
       'items': '貨品',
       'location': '地點',
+      'confirm_location': '確認位置',
+      'no_network': '無網絡連接',
       'photo_attached': '📎 附有相片',
       'need_link_employer': '🔗 需要先連接僱主',
       'enter_invite_code': '請先輸入僱主的邀請碼來連接。',
@@ -91,6 +93,8 @@ class AppStrings {
       'confidence': 'Confidence',
       'items': 'Items',
       'location': 'Location',
+      'confirm_location': 'Confirm location',
+      'no_network': 'No network connection',
       'photo_attached': '📎 Photo attached',
       'need_link_employer': '🔗 Link to employer first',
       'enter_invite_code': 'Please enter your employer\'s invite code to link.',
@@ -154,6 +158,8 @@ class AppStrings {
       'confidence': 'Kepercayaan',
       'items': 'Barang',
       'location': 'Lokasi',
+      'confirm_location': 'Konfirmasi lokasi',
+      'no_network': 'Tidak ada koneksi jaringan',
       'photo_attached': '📎 Foto dilampirkan',
       'need_link_employer': '🔗 Tautkan ke majikan dulu',
       'enter_invite_code': 'Silakan masukkan kode undangan majikan untuk menautkan.',
@@ -217,6 +223,8 @@ class AppStrings {
       'confidence': 'Kumpyansa',
       'items': 'Mga bagay',
       'location': 'Lokasyon',
+      'confirm_location': 'Kumpirmahin ang lokasyon',
+      'no_network': 'Walang koneksyon sa network',
       'photo_attached': '📎 May larawan na nakakabit',
       'need_link_employer': '🔗 I-link muna sa employer',
       'enter_invite_code': 'Pakilarawan ang invite code ng employer para i-link.',
@@ -305,6 +313,8 @@ class AppStrings {
   static String confidence(AppLocale locale) => get(locale, 'confidence');
   static String items(AppLocale locale) => get(locale, 'items');
   static String location(AppLocale locale) => get(locale, 'location');
+  static String confirmLocation(AppLocale locale) => get(locale, 'confirm_location');
+  static String noNetwork(AppLocale locale) => get(locale, 'no_network');
   static String photoAttached(AppLocale locale) => get(locale, 'photo_attached');
   static String lowConfidence(AppLocale locale) => get(locale, 'low_confidence_warning');
   static String photoExpense(AppLocale locale) => get(locale, 'photo_expense');

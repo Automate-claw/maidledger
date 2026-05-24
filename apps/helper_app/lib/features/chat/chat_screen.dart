@@ -134,16 +134,16 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
     return showDialog<String>(
       context: context,
       builder: (context) => AlertDialog(
-        title: const Text('📍 確認地點'),
-        content: Text('系統偵測到您可能喺「$detectedLocation」'),
+        title: Text('📍 ${AppStrings.confirmLocation(locale)}'),
+        content: Text('${AppStrings.confirmLocation(locale)} 「$detectedLocation」'),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context, detectedLocation),
-            child: const Text('✅ 是'),
+            child: Text(AppStrings.confirm(locale)),
           ),
           TextButton(
             onPressed: () => Navigator.pop(context, null),
-            child: const Text('❌ 不是'),
+            child: Text(AppStrings.cancel(locale)),
           ),
           TextButton(
             onPressed: () async {
@@ -153,7 +153,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
                 Navigator.pop(context, result);
               }
             },
-            child: const Text('📍 手動選擇'),
+            child: Text(AppStrings.location(locale)),
           ),
         ],
       ),
@@ -204,7 +204,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
     return showDialog<String>(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: const Text('📍 添加位置'),
+        title: Text('📍 ${AppStrings.location(locale)}'),
         content: SizedBox(
           width: double.maxFinite,
           child: GridView.count(
@@ -217,7 +217,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
           ),
         ),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('取消')),
+          TextButton(onPressed: () => Navigator.pop(ctx), child: Text(AppStrings.cancel(locale))),
         ],
       ),
     );
@@ -254,7 +254,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
-            content: Text('無網絡連接'),
+            content: Text(AppStrings.noNetwork(locale)),
             backgroundColor: Colors.orange,
           ),
         );
