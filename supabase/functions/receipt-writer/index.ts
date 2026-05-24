@@ -138,7 +138,7 @@ serve(async (req) => {
         });
       }
 
-      // ── Upload image to storage (fire-and-forget, non-blocking) ──────────
+      // Upload image to storage, then include public URL directly in INSERT body
       if (body.attached_image_base64) {
         const imgBuf = Uint8Array.from(atob(body.attached_image_base64), c => c.charCodeAt(0));
         const ext = (body.image_ext ?? "jpg").toLowerCase();
@@ -146,19 +146,24 @@ serve(async (req) => {
         const storageResp = await fetch(
           `${supabaseUrl}/storage/v1/object/receipts/${imgPath}`,
           { method: "POST",
-            headers: { apikey: supabaseKey, Authorization: `Bearer ${supabaseKey}`, "Content-Type": "image/${ext}" },
+            headers: { apikey: supabaseKey, Authorization: `Bearer ${supabaseKey}`, "Content-Type": `image/${ext}` },
             body: imgBuf }
         );
         if (storageResp.ok) {
           const publicUrl = `${supabaseUrl}/storage/v1/object/public/receipts/${imgPath}`;
-          // Patch image_local_path on the newly inserted receipt
-          await fetch(`${supabaseUrl}/rest/v1/receipts?id=eq.${receiptId}`, {
+          console.log(`[createFromChat] image uploaded OK, publicUrl=${publicUrl}`);
+          // Include image_local_path directly in the existing receipt row via PATCH
+          const patchResp = await fetch(`${supabaseUrl}/rest/v1/receipts?id=eq.${receiptId}`, {
             method: "PATCH",
             headers: { apikey: supabaseKey, Authorization: `Bearer ${supabaseKey}`, "Content-Type": "application/json", Prefer: "return=representation" },
             body: JSON.stringify({ image_local_path: publicUrl }),
           });
+          const patchBody = await patchResp.clone().text();
+          console.log(`[createFromChat] PATCH status=${patchResp.status} body=${patchBody}`);
+          if (!patchResp.ok) console.error("[createFromChat] PATCH failed:", patchBody);
         } else {
-          console.error("Image upload failed:", await storageResp.text());
+          const errText = await storageResp.text();
+          console.error("Image upload failed:", errText);
         }
       }
 
