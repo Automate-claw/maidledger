@@ -133,9 +133,11 @@ maidledger/
 │   ├── functions/                # ⭐ 主要後端邏輯（所有 Edge Functions）
 │   │   ├── chat-orchestrate/     # ⭐ 主力整合點（302 lines）
 │   │   │   └── index.ts
-│   │   ├── receipt-orchestrate/  # 多步驟協調（334 lines）
-│   │   ├── receipt-writer/      # 寫入 receipts（354 lines）
+│   │   ├── receipt-orchestrate/  # 多步驟協調（378 lines）
+│   │   ├── receipt-writer/      # 寫入 receipts（386 lines）
 │   │   ├── receipt-parse/       # 新版 receipt 解析（189 lines）
+│   │   ├── receipt-vision/     # ⭐ LLM Vision 解析（235 lines）
+│   │   ├── receipt-benchmark/  # 模型性價比 benchmark（108 lines）
 │   │   ├── shop-manager/        # 商戶 matching（321 lines）
 │   │   ├── product-manager/      # 商品 master data（250 lines）
 │   │   ├── chat-parser/         # 舊版 chat 解析（520 lines, legacy）
@@ -176,10 +178,11 @@ maidledger/
 
 | 組件 | 路徑 | 重點 |
 |---|---|---|
-| **Chat flow (主力)** | `supabase/functions/chat-orchestrate/index.ts` | 接收文字 → 解析 → 寫入 receipt |
+| **Chat flow (主力)** | `supabase/functions/chat-orchestrate/index.ts` | 接收文字 → 解析 → 寫入 receipt（chat-orchestrate 支援 attached_image_base64） |
 | **Receipt scan flow** | `supabase/functions/receipt-orchestrate/index.ts` | lock → patch → RPC 協調 |
+| **Receipt vision** | `supabase/functions/receipt-vision/index.ts` | 純 LLM Vision 解析（qwen3-vl-30b） |
 | **Receipt parse** | `supabase/functions/receipt-parse/index.ts` | OCR 解析 receipt |
-| **Receipt write** | `supabase/functions/receipt-writer/index.ts` | 寫入 DB |
+| **Receipt write** | `supabase/functions/receipt-writer/index.ts` | 寫入 DB（receipt-writer 含 createFromChat 圖片上傳） |
 | **Shop matching** | `supabase/functions/shop-manager/index.ts` | canonical name + matching |
 | **Product matching** | `supabase/functions/product-manager/index.ts` | master product + brand |
 | **Helper App** | `apps/helper_app/lib/` | 工人所有畫面 |
@@ -277,6 +280,14 @@ supabase db push
 - **HK Timezone**: 所有日期用 `Asia/Hong_Kong`，`toLocaleString("en-US", {timeZone: "Asia/Hong_Kong"})`
 - **PostgREST ILIKE Bug**: `receipt-writer` 用 in-memory matching 绕过 PostgREST URL-encoding 問題
 - **Race Condition**: receipt-orchestrate 的 lock → PATCH → RPC 流程可能有同步問題
+### Vision Model Pricing（每百萬 tokens）
+
+| Model | Input $/M | 備註 |
+|-------|-----------|------|
+| `qwen/qwen3-vl-30b-a3b-instruct` | ~$0.13 | 🏆 當前使用（最平、快 ~1.4s） |
+| `openai/gpt-4o` | ~$2.50 | 備選（100% 準確，貴 3x） |
+| `google/gemini-2.5-flash` | ~$0.125-0.40 | 暫勿用（貴 + hallucinate items） |
+
 - **Edge Function Auth**: 用 `SUPABASE_SERVICE_ROLE_KEY`（唔係 ANON_KEY）做 backend-internal calls
 - **LLM Provider**: OpenRouter (DeepSeek V4 / GPT-4o)
 - **OCR**: Google ML Kit (client-side Flutter)
