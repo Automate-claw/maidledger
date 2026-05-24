@@ -251,7 +251,15 @@ serve(async (req) => {
         });
       }
 
+
       const validPrdCodes: string[] = body.validPrdCodes ?? [];
+
+      // Delete any existing items for this receipt first (idempotent — prevents duplicates on retry/re-run)
+      await fetch(`${supabaseUrl}/rest/v1/receipt_items?receipt_id=eq.${body.receipt_id}`, {
+        method: "DELETE",
+        headers: { apikey: supabaseKey, Authorization: `Bearer ${supabaseKey}` },
+      });
+
       const itemRows = body.items.map((item: any) => ({
         receipt_id: body.receipt_id,
         item_name: item.item_name ?? "",
