@@ -138,6 +138,30 @@ serve(async (req) => {
         });
       }
 
+      // ── Upload image to storage (fire-and-forget, non-blocking) ──────────
+      if (body.attached_image_base64) {
+        const imgBuf = Uint8Array.from(atob(body.attached_image_base64), c => c.charCodeAt(0));
+        const ext = (body.image_ext ?? "jpg").toLowerCase();
+        const imgPath = `receipts/${receiptId}.${ext}`;
+        const storageResp = await fetch(
+          `${supabaseUrl}/storage/v1/object/receipts/${imgPath}`,
+          { method: "POST",
+            headers: { apikey: supabaseKey, Authorization: `Bearer ${supabaseKey}`, "Content-Type": "image/${ext}" },
+            body: imgBuf }
+        );
+        if (storageResp.ok) {
+          const publicUrl = `${supabaseUrl}/storage/v1/object/public/receipts/${imgPath}`;
+          // Patch image_local_path on the newly inserted receipt
+          await fetch(`${supabaseUrl}/rest/v1/receipts?id=eq.${receiptId}`, {
+            method: "PATCH",
+            headers: { apikey: supabaseKey, Authorization: `Bearer ${supabaseKey}`, "Content-Type": "application/json", Prefer: "return=representation" },
+            body: JSON.stringify({ image_local_path: publicUrl }),
+          });
+        } else {
+          console.error("Image upload failed:", await storageResp.text());
+        }
+      }
+
       return new Response(JSON.stringify({ success: true, receipt_id: receiptId }), {
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
