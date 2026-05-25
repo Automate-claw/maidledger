@@ -46,7 +46,7 @@ class _HistoryScreenState extends ConsumerState<HistoryScreen> {
       // This ensures we show receipts even if relation_id is null or different
       final receiptsRes = await supabase
           .from('receipts')
-          .select('id, amount, transaction_date, created_at, store_name, store_cate, parse_status, relation_id')
+          .select('id, amount, transaction_date, created_at, store_name, store_cate, parse_status, relation_id, date_anomaly')
           .eq('helper_id', userId)
           .order('transaction_date', ascending: false);
 
@@ -99,6 +99,7 @@ class _HistoryScreenState extends ConsumerState<HistoryScreen> {
           storeName: r['store_name'] as String?,
           storeCate: r['store_cate'] as String? ?? 'other',
           createdAt: date,
+          dateAnomaly: r['date_anomaly'] as bool? ?? false,
         ));
       }
 
@@ -278,7 +279,7 @@ class _HistoryScreenState extends ConsumerState<HistoryScreen> {
                 Container(
                   width: 6, height: 6,
                   decoration: const BoxDecoration(
-                    color: Colors.amber, shape: BoxShape.circle,
+                    color: Colors.green, shape: BoxShape.circle,
                   ),
                 ),
               if (payments.isNotEmpty && receipts.isNotEmpty) const SizedBox(width: 2),
@@ -286,7 +287,10 @@ class _HistoryScreenState extends ConsumerState<HistoryScreen> {
                 Container(
                   width: 6, height: 6,
                   decoration: BoxDecoration(
-                    color: Colors.red[400], shape: BoxShape.circle,
+                    color: receipts.any((r) => r.dateAnomaly)
+                        ? Colors.orange
+                        : Colors.red[400],
+                    shape: BoxShape.circle,
                   ),
                 ),
             ],
@@ -470,6 +474,7 @@ class ReceiptDayItem {
   final String? storeName;
   final String storeCate;
   final DateTime createdAt;
+  final bool dateAnomaly;
 
   ReceiptDayItem({
     required this.id,
@@ -477,6 +482,7 @@ class ReceiptDayItem {
     this.storeName,
     required this.storeCate,
     required this.createdAt,
+    this.dateAnomaly = false,
   });
 }
 
