@@ -33,7 +33,7 @@
 
 | Table | 用途 |
 |---|---|
-| `receipts` | 收據 header（employer_id, helper_id, total, transaction_date, raw_text） |
+| `receipts` | 收據 header（employer_id, helper_id, total, transaction_date, raw_text, date_anomaly） |
 | `receipt_items` | 收據項目（receipt_id, item_name, extracted_brand/name/spec, unit_price, qty, prd_cate） |
 | `shops` | 商戶標準化（canonical_name, shop_type, region） |
 | `shop_aliases` | 商戶別名 → shops（raw_name → canonical） |
@@ -42,7 +42,7 @@
 | `price_history` | 價格歷史（master_product_id, shop_id, price, unit, source_type） |
 | `user_profiles` | 用戶（employer/helper，name, phone, short_code） |
 | `employer_helper_relations` | 僱主-工人關係（employer_id, helper_id, status） |
-| `employer_payments` | 付款記錄（滾動結餘：收入 − 支出） |
+| `employer_payments` | 付款記錄（滾動結餘：收入 − 支出，created_by 記錄操作者） |
 | `store_categories` / `prd_categories` | 分類主數據 |
 | `chat_logs` | LLM 調用審計 |
 
