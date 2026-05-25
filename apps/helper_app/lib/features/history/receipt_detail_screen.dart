@@ -18,6 +18,7 @@ class _ReceiptDetailScreenState extends ConsumerState<ReceiptDetailScreen> {
   AppLocale get _locale => ref.watch(localeProvider);
   Map<String, dynamic>? _receipt;
   List<Map<String, dynamic>> _items = [];
+  Map<String, Map<String, String>> _prdCategories = {}; // code → {tc, en}
   bool _isLoading = true;
   String? _error;
   bool _isSaving = false;
@@ -62,6 +63,16 @@ class _ReceiptDetailScreenState extends ConsumerState<ReceiptDetailScreen> {
         return;
       }
 
+      // Load prd_categories lookup (for display names)
+      final cateRes = await supabase.from('prd_categories').select('code, name_tc, name_en');
+      final cateMap = <String, Map<String, String>>{};
+      for (final row in cateRes as List) {
+        cateMap[row['code'] as String] = {
+          'tc': row['name_tc'] as String,
+          'en': row['name_en'] as String? ?? row['name_tc'] as String,
+        };
+      }
+
       final itemsRes = await supabase
           .from('receipt_items')
           .select()
@@ -74,9 +85,19 @@ class _ReceiptDetailScreenState extends ConsumerState<ReceiptDetailScreen> {
       _transactionDate = DateTime.tryParse(receiptRes['transaction_date'] ?? '');
       _storeCate = receiptRes['store_cate'] ?? 'other';
 
+      // Merge category display names into each item
+      final itemsWithCate = (itemsRes as List).map((item) {
+        final code = item['prd_cate'] as String? ?? 'other';
+        final names = cateMap[code] ?? {'tc': code, 'en': code};
+        return Map<String, dynamic>.from(item)
+          ..['prd_cate_name_tc'] = names['tc']
+          ..['prd_cate_name_en'] = names['en'];
+      }).toList();
+
       setState(() {
         _receipt = Map<String, dynamic>.from(receiptRes);
-        _items = List<Map<String, dynamic>>.from(itemsRes as List);
+        _items = itemsWithCate;
+        _prdCategories = cateMap;
         _isLoading = false;
       });
     } catch (e) {
@@ -620,6 +641,9 @@ class _ReceiptDetailScreenState extends ConsumerState<ReceiptDetailScreen> {
   }
 
   String _getPrdCateName(String cate) {
-    return AppStrings.productCategory(_locale, cate);
+    final names = _prdCategories[cate];
+    if (names == null) return cate;
+    // Use name_en for English locale, name_tc for all others (TC, ID, FIL)
+    return _locale == AppLocale.english ? (names['en'] ?? names['tc']!) : names['tc']!;
   }
 }
