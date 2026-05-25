@@ -187,6 +187,32 @@ serve(async (req) => {
       const confidence = pr.parse_confidence ?? 0;
       const needsReview = confidence < 0.7 || (pr.total_amount ?? 0) > 500;
 
+      // Anomaly detection: if transaction_date differs from created_at by > 3 days, flag as suspicious
+      // Note: caller should have passed created_at in body or we fetch it here
+      let dateAnomaly = false;
+      if (pr.transaction_date) {
+        try {
+          const receiptMetaRes = await fetch(
+            `${supabaseUrl}/rest/v1/receipts?id=eq.${body.receipt_id}&select=created_at`,
+            { headers: { apikey: supabaseKey, Authorization: `Bearer ${supabaseKey}` } }
+          );
+          if (receiptMetaRes.ok) {
+            const rows = await receiptMetaRes.json();
+            const createdAt = rows[0]?.created_at;
+            if (createdAt) {
+              const createdDate = new Date(createdAt);
+              const txDate = new Date(pr.transaction_date);
+              const diffMs = Math.abs(createdDate.getTime() - txDate.getTime());
+              const diffDays = diffMs / (1000 * 60 * 60 * 24);
+              dateAnomaly = diffDays > 3;
+              console.log(`[writeReceipt] date_anomaly check: created=${createdDate.toISOString().split('T')[0]} tx=${pr.transaction_date} diff=${diffDays.toFixed(1)}d → anomaly=${dateAnomaly}`);
+            }
+          }
+        } catch (e) {
+          console.error("[writeReceipt] date_anomaly check failed:", e);
+        }
+      }
+
       const resp = await fetch(`${supabaseUrl}/rest/v1/receipts?id=eq.${body.receipt_id}`, {
         method: "PATCH",
         headers: {
@@ -204,6 +230,7 @@ serve(async (req) => {
           parse_confidence: confidence,
           needs_review: needsReview,
           parse_status: "parsed",
+          date_anomaly: dateAnomaly,
         }),
       });
 
