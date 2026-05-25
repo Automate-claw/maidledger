@@ -37,6 +37,7 @@ class AppStrings {
       'history_title': '記帳歷史',
       'error': '錯誤',
       'cash_balance': '現金結餘',
+      'recent_records': '最近記錄',
       'overdraft': '透支',
       'item_saved': '✅ 項目已儲存',
       'save_failed': '儲存失敗',
@@ -177,6 +178,7 @@ class AppStrings {
       'history_title': 'Expense History',
       'error': 'Error',
       'cash_balance': 'Cash Balance',
+      'recent_records': 'Recent Records',
       'overdraft': 'Overdraft',
       'item_saved': '✅ Item saved',
       'save_failed': 'Save failed',
@@ -280,6 +282,7 @@ class AppStrings {
       'history_title': 'Riwayat Pengeluaran',
       'error': 'Kesalahan',
       'cash_balance': 'Saldo Tunai',
+      'recent_records': 'Catatan Terbaru',
       'overdraft': 'Kelebihan tarik',
       'item_saved': '✅ Item disimpan',
       'save_failed': 'Gagal menyimpan',
@@ -383,6 +386,7 @@ class AppStrings {
       'history_title': 'Kasaysayan ng Gastos',
       'error': 'Pagkakamali',
       'cash_balance': 'Kuwenta ng Pera',
+      'recent_records': 'Kamakailang mga Tala',
       'overdraft': 'Overdraft',
       'item_saved': '✅ Na-save ang item',
       'save_failed': 'Hindi nagtagumpay ang pag-save',
@@ -476,6 +480,7 @@ class AppStrings {
   static String historyTitle(AppLocale locale) => get(locale, 'history_title');
   static String error(AppLocale locale) => get(locale, 'error');
   static String cashBalance(AppLocale locale) => get(locale, 'cash_balance');
+  static String recentRecords(AppLocale locale) => get(locale, 'recent_records');
   static String overdraft(AppLocale locale) => get(locale, 'overdraft');
   static String itemSaved(AppLocale locale) => get(locale, 'item_saved');
   static String saveFailed(AppLocale locale) => get(locale, 'save_failed');
