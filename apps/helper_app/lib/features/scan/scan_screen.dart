@@ -33,7 +33,7 @@ class ScanScreen extends ConsumerStatefulWidget {
 }
 
 class _ScanScreenState extends ConsumerState<ScanScreen> {
-  late final AppLocale _locale;
+  AppLocale get _locale => ref.watch(localeProvider);
 
   CameraController? _cameraController;
   List<CameraDescription>? _cameras;
@@ -55,7 +55,6 @@ class _ScanScreenState extends ConsumerState<ScanScreen> {
   @override
   void initState() {
     super.initState();
-    _locale = ref.read(localeProvider);
     _initCamera();
   }
 

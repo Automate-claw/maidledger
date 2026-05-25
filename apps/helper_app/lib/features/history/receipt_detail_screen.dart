@@ -15,7 +15,7 @@ class ReceiptDetailScreen extends ConsumerStatefulWidget {
 }
 
 class _ReceiptDetailScreenState extends ConsumerState<ReceiptDetailScreen> {
-  late final AppLocale _locale;
+  AppLocale get _locale => ref.watch(localeProvider);
   Map<String, dynamic>? _receipt;
   List<Map<String, dynamic>> _items = [];
   bool _isLoading = true;
@@ -31,7 +31,6 @@ class _ReceiptDetailScreenState extends ConsumerState<ReceiptDetailScreen> {
   @override
   void initState() {
     super.initState();
-    _locale = ref.read(localeProvider);
     _storeNameController = TextEditingController();
     _locationController = TextEditingController();
     _amountController = TextEditingController();

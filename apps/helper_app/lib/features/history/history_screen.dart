@@ -16,7 +16,7 @@ class HistoryScreen extends ConsumerStatefulWidget {
 }
 
 class _HistoryScreenState extends ConsumerState<HistoryScreen> {
-  late final AppLocale _locale;
+  AppLocale get _locale => ref.watch(localeProvider);
   CalendarFormat _calendarFormat = CalendarFormat.month;
   DateTime _focusedDay = DateTime.now();
   DateTime? _selectedDay;
@@ -31,7 +31,6 @@ class _HistoryScreenState extends ConsumerState<HistoryScreen> {
   @override
   void initState() {
     super.initState();
-    _locale = ref.read(localeProvider);
     _selectedDay = _focusedDay;
     _loadData();
   }

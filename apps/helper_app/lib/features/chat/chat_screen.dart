@@ -25,7 +25,7 @@ class ChatScreen extends ConsumerStatefulWidget {
 }
 
 class _ChatScreenState extends ConsumerState<ChatScreen> {
-  late final AppLocale _locale;
+  AppLocale get _locale => ref.watch(localeProvider);
   final _messageController = TextEditingController();
   final _scrollController = ScrollController();
   final List<ChatMessage> _messages = [];
@@ -50,7 +50,6 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
   @override
   void initState() {
     super.initState();
-    _locale = ref.read(localeProvider);
     _agent = AIBookingAgent();
     _messages.add(ChatMessage(text: AppStrings.greeting(_locale), isUser: false));
   }
