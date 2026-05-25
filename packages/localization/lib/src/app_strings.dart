@@ -25,6 +25,14 @@ class AppStrings {
       'input': '輸入',
       'category': '類別',
       'amount': '金額',
+      'date': '日期',
+      'note': '備註',
+      'note_hint': '例如：6月零用 / 補貼 / 其他',
+      'save_payment': '儲存收款記錄',
+      'record_payment': '記錄收款',
+      'enter_valid_amount': '請輸入有效金額',
+      'payment_saved': '✅ 收款記錄已儲存',
+      'payment_failed': '儲存失敗',
       'confidence': '信心度',
       'items': '貨品',
       'location': '地點',
@@ -129,6 +137,14 @@ class AppStrings {
       'input': 'Input',
       'category': 'Category',
       'amount': 'Amount',
+      'date': 'Date',
+      'note': 'Note',
+      'note_hint': 'e.g. June allowance / allowance / other',
+      'save_payment': 'Save Payment Record',
+      'record_payment': 'Record Payment',
+      'enter_valid_amount': 'Please enter a valid amount',
+      'payment_saved': '✅ Payment record saved',
+      'payment_failed': 'Save failed',
       'confidence': 'Confidence',
       'items': 'Items',
       'location': 'Location',
@@ -233,6 +249,14 @@ class AppStrings {
       'input': 'Input',
       'category': 'Kategori',
       'amount': 'Jumlah',
+      'date': 'Tanggal',
+      'note': 'Catatan',
+      'note_hint': 'contoh: uang bulanan / tunjangan / lain',
+      'save_payment': 'Simpan Catatan Pembayaran',
+      'record_payment': 'Catat Pembayaran',
+      'enter_valid_amount': 'Silakan masukkan jumlah yang valid',
+      'payment_saved': '✅ Catatan pembayaran tersimpan',
+      'payment_failed': 'Gagal menyimpan',
       'confidence': 'Kepercayaan',
       'items': 'Barang',
       'location': 'Lokasi',
@@ -337,6 +361,14 @@ class AppStrings {
       'input': 'Input',
       'category': 'Kategorya',
       'amount': 'Halaga',
+      'date': 'Petsa',
+      'note': 'Talaan',
+      'note_hint': 'hal. buwanang allowance / subsidy / iba pa',
+      'save_payment': 'I-save ang Record ng Pagbabayad',
+      'record_payment': 'Mag-record ng Pagbabayad',
+      'enter_valid_amount': 'Mangyaring magpasok ng wastong halaga',
+      'payment_saved': '✅ Na-save ang record ng pagbabayad',
+      'payment_failed': 'Nabigo ang pag-save',
       'confidence': 'Kumpyansa',
       'items': 'Mga bagay',
       'location': 'Lokasyon',
@@ -466,6 +498,14 @@ class AppStrings {
   static String input(AppLocale locale) => get(locale, 'input');
   static String category(AppLocale locale) => get(locale, 'category');
   static String amount(AppLocale locale) => get(locale, 'amount');
+  static String date(AppLocale locale) => get(locale, 'date');
+  static String note(AppLocale locale) => get(locale, 'note');
+  static String noteHint(AppLocale locale) => get(locale, 'note_hint');
+  static String savePayment(AppLocale locale) => get(locale, 'save_payment');
+  static String recordPayment(AppLocale locale) => get(locale, 'record_payment');
+  static String enterValidAmount(AppLocale locale) => get(locale, 'enter_valid_amount');
+  static String paymentSaved(AppLocale locale) => get(locale, 'payment_saved');
+  static String paymentFailed(AppLocale locale) => get(locale, 'payment_failed');
   static String confidence(AppLocale locale) => get(locale, 'confidence');
   static String items(AppLocale locale) => get(locale, 'items');
   static String location(AppLocale locale) => get(locale, 'location');

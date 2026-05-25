@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
+import 'package:maidledger_localization/maidledger_localization.dart';
 import '../../core/services/supabase_client_provider.dart';
 
 /// Screen to record a payment received (from employer or self)
@@ -12,6 +13,8 @@ class RecordPaymentScreen extends ConsumerStatefulWidget {
 }
 
 class _RecordPaymentScreenState extends ConsumerState<RecordPaymentScreen> {
+  AppLocale get _locale => ref.watch(localeProvider);
+
   final _formKey = GlobalKey<FormState>();
   final _amountController = TextEditingController();
   final _noteController = TextEditingController();
@@ -43,7 +46,7 @@ class _RecordPaymentScreenState extends ConsumerState<RecordPaymentScreen> {
 
     final amount = double.tryParse(_amountController.text);
     if (amount == null || amount <= 0) {
-      setState(() { _error = '請輸入有效金額'; });
+      setState(() { _error = AppStrings.enterValidAmount(_locale); });
       return;
     }
 
@@ -73,22 +76,22 @@ class _RecordPaymentScreenState extends ConsumerState<RecordPaymentScreen> {
         'employer_id': employerId,
         'helper_id': userId,
         'amount': amount,
-        'payment_date': DateFormat('yyyy-MM-dd').format(_paymentDate),
+        'payment_date': DateFormat('yyyy-MM-dd', _locale.code).format(_paymentDate),
         'note': _noteController.text.trim().isEmpty ? null : _noteController.text.trim(),
         'created_by': userId,
       });
 
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('✅ 收款記錄已儲存'),
+          SnackBar(
+            content: Text(AppStrings.paymentSaved(_locale)),
             backgroundColor: Colors.green,
           ),
         );
         Navigator.pop(context);
       }
     } catch (e) {
-      setState(() { _error = '儲存失敗：$e'; _isLoading = false; });
+      setState(() { _error = '${AppStrings.paymentFailed(_locale)}: $e'; _isLoading = false; });
     }
   }
 
@@ -96,7 +99,7 @@ class _RecordPaymentScreenState extends ConsumerState<RecordPaymentScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text('記錄收款'),
+        title: Text(AppStrings.recordPayment(_locale)),
         centerTitle: true,
       ),
       body: Form(
@@ -109,7 +112,7 @@ class _RecordPaymentScreenState extends ConsumerState<RecordPaymentScreen> {
               controller: _amountController,
               keyboardType: const TextInputType.numberWithOptions(decimal: true),
               decoration: InputDecoration(
-                labelText: '金額',
+                labelText: AppStrings.amount(_locale),
                 prefixText: '\$ ',
                 prefixStyle: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
                 border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
@@ -119,7 +122,7 @@ class _RecordPaymentScreenState extends ConsumerState<RecordPaymentScreen> {
               style: const TextStyle(fontSize: 24, fontWeight: FontWeight.bold),
               validator: (v) {
                 final n = double.tryParse(v ?? '');
-                if (n == null || n <= 0) return '請輸入有效金額';
+                if (n == null || n <= 0) return AppStrings.enterValidAmount(_locale);
                 return null;
               },
             ),
@@ -132,8 +135,8 @@ class _RecordPaymentScreenState extends ConsumerState<RecordPaymentScreen> {
                 side: BorderSide(color: Colors.grey[300]!),
               ),
               leading: const Icon(Icons.calendar_today),
-              title: const Text('日期'),
-              subtitle: Text(DateFormat('yyyy/MM/dd（EEE）', 'zh_Hant').format(_paymentDate)),
+              title: Text(AppStrings.date(_locale)),
+              subtitle: Text(DateFormat.yMd(_locale.code).format(_paymentDate)),
               trailing: const Icon(Icons.chevron_right),
               onTap: _selectDate,
             ),
@@ -144,8 +147,8 @@ class _RecordPaymentScreenState extends ConsumerState<RecordPaymentScreen> {
               controller: _noteController,
               maxLines: 2,
               decoration: InputDecoration(
-                labelText: '備註（選填）',
-                hintText: '例如：6月零用 / 補貼 / 其他',
+                labelText: AppStrings.note(_locale),
+                hintText: AppStrings.noteHint(_locale),
                 border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
                 filled: true,
                 fillColor: Colors.grey.withValues(alpha: 0.05),
@@ -182,7 +185,7 @@ class _RecordPaymentScreenState extends ConsumerState<RecordPaymentScreen> {
               icon: _isLoading
                   ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2))
                   : const Icon(Icons.check),
-              label: const Text('儲存收款記錄'),
+              label: Text(AppStrings.savePayment(_locale)),
               style: FilledButton.styleFrom(
                 padding: const EdgeInsets.symmetric(vertical: 16),
                 backgroundColor: Colors.green,
