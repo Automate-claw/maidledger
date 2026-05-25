@@ -220,6 +220,19 @@
   </div>
 </div>
 
+<!-- 2026-05 -->
+<div class="timeline-item">
+  <div class="timeline-dot done"></div>
+  <div class="timeline-date">2026-05</div>
+  <div class="timeline-content">
+    <h4>🛡️ 日期異常偵測</h4>
+    <div class="timeline-tags">
+      <span class="tag tag-mvp">防假</span>
+    </div>
+    <div class="timeline-desc">date_anomaly + created_by，LLM 自動標記日期異常記錄，日曆視覺化區分，Recent 10 records 審查功能</div>
+  </div>
+</div>
+
 <!-- 2026-06 -->
 <div class="timeline-item">
   <div class="timeline-dot"></div>
@@ -510,6 +523,7 @@
 <tr><td>022</td><td>2026-05</td><td>receipt_parse_queue.sql</td><td>parse_status + needs_review 欄位</td></tr>
 <tr><td>023</td><td>2026-05</td><td>receipt_webhook_trigger.sql</td><td>DB Trigger（pg_net）觸發 receipt-orchestrate</td></tr>
 <tr><td>024</td><td>2026-05</td><td>receipt_items_brand_spec.sql</td><td>B2B 擴展：extracted_brand/name/spec 欄位</td></tr>
+<tr><td>028</td><td>2026-05</td><td>anomaly_detection_fields.sql</td><td>receipts: transaction_date, date_anomaly, created_by | employer_payments: created_by</td></tr>
 </table>
 </div>
 
