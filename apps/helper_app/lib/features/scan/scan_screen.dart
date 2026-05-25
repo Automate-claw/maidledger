@@ -145,16 +145,25 @@ class _ScanScreenState extends ConsumerState<ScanScreen> {
       setState(() {
         _capturedImage = image;
         _scanPhase = ScanPhase.preview;
-        _ocrRawText = null;
-        _ocrReconstructedText = null;
         _compressedBytes = null;
         _imageUrl = null;
       });
 
-      // Step 2: Run OCR + Compress in parallel (background, non-blocking)
-      _runOcrAndCompressInBackground(image);
+      // Step 2: Compress in background (preparing for upload when confirmed)
+      _compressInBackground(image);
     } catch (e) {
       _showError('Capture failed: $e');
+    }
+  }
+
+  Future<void> _compressInBackground(XFile image) async {
+    try {
+      final compressed = await _compressImage(image);
+      if (mounted) {
+        setState(() => _compressedBytes = compressed);
+      }
+    } catch (e) {
+      debugPrint('Background compress failed: $e');
     }
   }
 
@@ -236,10 +245,13 @@ class _ScanScreenState extends ConsumerState<ScanScreen> {
 
     if (!await _checkConnectivity()) return;
 
-    // Fire-and-forget: save receipt immediately, return to camera < 1s
-    // LLM Vision runs in background — no user confirmation needed
+    setState(() => _isProcessing = true);
+
+    // Show processing state
+    setState(() => _scanPhase = ScanPhase.processing);
+
     try {
-      // Compress + upload if background hasn't finished yet
+      // Compress + upload
       Uint8List? bytes = _compressedBytes;
       String? imageUrl = _imageUrl;
       if (bytes == null || imageUrl == null) {
@@ -249,8 +261,8 @@ class _ScanScreenState extends ConsumerState<ScanScreen> {
 
       await _saveReceiptImmediate(
         imageUrl: imageUrl,
-        rawText: _ocrRawText ?? '',
-        reconstructedText: _ocrReconstructedText ?? '',
+        rawText: '',
+        reconstructedText: '',
       );
 
       // Success: full-page feedback, 3.5s delay, then return to camera
@@ -259,14 +271,13 @@ class _ScanScreenState extends ConsumerState<ScanScreen> {
       if (!mounted) return;
       _returnToCamera();
     } catch (e) {
-      setState(() => _isProcessing = false);
       final errStr = e.toString();
       if (errStr.contains('NO_ACTIVE_RELATION')) {
         _showRelationRequiredDialog();
         _returnToCamera();
       } else {
-        // Failure: show error state
         setState(() => _scanPhase = ScanPhase.failed);
+        _isProcessing = false;
       }
     }
   }
@@ -815,9 +826,8 @@ class _ScanScreenState extends ConsumerState<ScanScreen> {
   }
 
   // ============================================================
-  // PHASE 2: Preview with OCR Text + Retake / Confirm buttons
+  // PHASE 2: Image preview — user judges clarity → Confirm
   // ============================================================
-
   Widget _buildPreviewBody() {
     if (_capturedImage == null) {
       return const Center(child: CircularProgressIndicator());
@@ -827,9 +837,8 @@ class _ScanScreenState extends ConsumerState<ScanScreen> {
 
     return Column(
       children: [
-        // Image preview (tappable to zoom)
+        // Image preview (tappable to zoom full screen)
         Expanded(
-          flex: 3,
           child: GestureDetector(
             onTap: () => _showImageFullScreen(imageBytes),
             child: Container(
@@ -841,89 +850,13 @@ class _ScanScreenState extends ConsumerState<ScanScreen> {
                   fit: BoxFit.contain,
                 ),
               ),
-              child: Stack(
-                children: [
-                  // Quality indicator badge
-                  Positioned(
-                    top: 12,
-                    right: 12,
-                    child: _buildQualityBadge(),
-                  ),
-                ],
-              ),
-            ),
-          ),
-        ),
-
-        // OCR Text section
-        Expanded(
-          flex: 2,
-          child: Container(
-            margin: const EdgeInsets.symmetric(horizontal: 16),
-            padding: const EdgeInsets.all(12),
-            decoration: BoxDecoration(
-              color: Colors.grey[100],
-              borderRadius: BorderRadius.circular(12),
-            ),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Row(
-                  children: [
-                    const Icon(Icons.text_fields, size: 16, color: Colors.grey),
-                    const SizedBox(width: 6),
-                    Text(
-                      '📝 識別文字',
-                      style: TextStyle(
-                        fontSize: 13,
-                        fontWeight: FontWeight.w600,
-                        color: Colors.grey[700],
-                      ),
-                    ),
-                    const Spacer(),
-                    if (_ocrRawText == null)
-                      const SizedBox(
-                        width: 14,
-                        height: 14,
-                        child: CircularProgressIndicator(strokeWidth: 2),
-                      )
-                    else if (_ocrRawText!.isEmpty)
-                      Text(
-                        '⚠️ 未識別到文字',
-                        style: TextStyle(fontSize: 12, color: Colors.orange[700]),
-                      )
-                    else
-                      Text(
-                        '✓ 已識別',
-                        style: TextStyle(fontSize: 12, color: Colors.green[700]),
-                      ),
-                  ],
-                ),
-                const SizedBox(height: 8),
-                Expanded(
-                  child: _ocrRawText != null
-                      ? SingleChildScrollView(
-                          child: Text(
-                            _ocrRawText!.isEmpty
-                                ? '（未能識別文字，請嘗試重新拍攝）'
-                                : _ocrRawText!,
-                            style: TextStyle(
-                              fontSize: 12,
-                              color: _ocrRawText!.isEmpty ? Colors.grey : Colors.black87,
-                              fontFamily: 'monospace',
-                            ),
-                          ),
-                        )
-                      : const Center(child: Text('正在識別文字...', style: TextStyle(color: Colors.grey))),
-                ),
-              ],
             ),
           ),
         ),
 
         // Action buttons
         Padding(
-          padding: const EdgeInsets.all(16),
+          padding: const EdgeInsets.fromLTRB(16, 0, 16, 32),
           child: Row(
             children: [
               Expanded(
@@ -932,18 +865,18 @@ class _ScanScreenState extends ConsumerState<ScanScreen> {
                   icon: const Icon(Icons.refresh),
                   label: Text(AppStrings.scan(_locale)),
                   style: OutlinedButton.styleFrom(
-                    padding: const EdgeInsets.symmetric(vertical: 14),
+                    padding: const EdgeInsets.symmetric(vertical: 16),
                   ),
                 ),
               ),
               const SizedBox(width: 12),
               Expanded(
                 child: FilledButton.icon(
-                  onPressed: (_isProcessing || _ocrRawText == null) ? null : _onConfirm,
+                  onPressed: _isProcessing ? null : _onConfirm,
                   icon: const Icon(Icons.check),
                   label: Text(AppStrings.confirm(_locale)),
                   style: FilledButton.styleFrom(
-                    padding: const EdgeInsets.symmetric(vertical: 14),
+                    padding: const EdgeInsets.symmetric(vertical: 16),
                   ),
                 ),
               ),
