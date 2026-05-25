@@ -237,35 +237,27 @@ class _ScanScreenState extends ConsumerState<ScanScreen> {
     if (!await _checkConnectivity()) return;
 
     // Fire-and-forget: save receipt immediately, return to camera < 1s
-    // LLM parse + matching runs in background via receipt-processor cron
+    // LLM Vision runs in background — no user confirmation needed
     try {
-      // Ensure we have compressed bytes (should be ready from background)
+      // Compress + upload if background hasn't finished yet
       Uint8List? bytes = _compressedBytes;
       String? imageUrl = _imageUrl;
-
-      // If background upload didn't complete, do it now (blocking but fast)
       if (bytes == null || imageUrl == null) {
         bytes ??= await _compressImage(_capturedImage!);
         imageUrl ??= await _uploadToStorage(bytes, _capturedImage!.path);
       }
 
-      final rawText = _ocrRawText ?? '';
-      final reconstructed = _ocrReconstructedText ?? '';
-
-      if (rawText.isEmpty) {
-        _showError('未能識別文字，請重新拍攝');
-        await _onRetake();
-        return;
-      }
-
-      // Immediate save: parse_status=pending, background job does LLM later
       await _saveReceiptImmediate(
         imageUrl: imageUrl,
-        rawText: rawText,
-        reconstructedText: reconstructed,
+        rawText: _ocrRawText ?? '',
+        reconstructedText: _ocrReconstructedText ?? '',
       );
 
-      // Instant return to camera - user can continue scanning
+      // Show success feedback, then return to camera
+      _showSnackbar('✅ 已上傳！1-2分鐘後會有結果', isLoading: false);
+
+      await Future.delayed(const Duration(milliseconds: 1200));
+      if (!mounted) return;
       setState(() {
         _capturedImage = null;
         _ocrRawText = null;
@@ -275,8 +267,6 @@ class _ScanScreenState extends ConsumerState<ScanScreen> {
         _scanPhase = ScanPhase.camera;
         _isProcessing = false;
       });
-
-      _showSnackbar('已保存，後台處理緊...', isLoading: false);
     } catch (e) {
       setState(() => _isProcessing = false);
       final errStr = e.toString();
