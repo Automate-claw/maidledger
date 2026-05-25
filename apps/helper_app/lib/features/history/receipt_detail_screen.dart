@@ -20,12 +20,6 @@ class _ReceiptDetailScreenState extends ConsumerState<ReceiptDetailScreen> {
   List<Map<String, dynamic>> _items = [];
   bool _isLoading = true;
   String? _error;
-
-  @override
-  void initState() {
-    super.initState();
-    _locale = ref.read(localeProvider);
-  }
   bool _isSaving = false;
 
   late TextEditingController _storeNameController;
@@ -37,6 +31,7 @@ class _ReceiptDetailScreenState extends ConsumerState<ReceiptDetailScreen> {
   @override
   void initState() {
     super.initState();
+    _locale = ref.read(localeProvider);
     _storeNameController = TextEditingController();
     _locationController = TextEditingController();
     _amountController = TextEditingController();
@@ -117,7 +112,7 @@ class _ReceiptDetailScreenState extends ConsumerState<ReceiptDetailScreen> {
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('❌ ${AppStrings.saveFailed(_locale)}')), backgroundColor: Colors.red),
+          SnackBar(content: Text('❌ ${AppStrings.saveFailed(_locale)}'), backgroundColor: Colors.red),
         );
       }
     } finally {
@@ -139,7 +134,7 @@ class _ReceiptDetailScreenState extends ConsumerState<ReceiptDetailScreen> {
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('❌ ${AppStrings.updateFailed(_locale)}')), backgroundColor: Colors.red),
+          SnackBar(content: Text('❌ ${AppStrings.updateFailed(_locale)}'), backgroundColor: Colors.red),
         );
       }
     }
@@ -153,7 +148,7 @@ class _ReceiptDetailScreenState extends ConsumerState<ReceiptDetailScreen> {
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('❌ ${AppStrings.deleteFailed(_locale)}')), backgroundColor: Colors.red),
+          SnackBar(content: Text('❌ ${AppStrings.deleteFailed(_locale)}'), backgroundColor: Colors.red),
         );
       }
     }
@@ -204,7 +199,7 @@ class _ReceiptDetailScreenState extends ConsumerState<ReceiptDetailScreen> {
                           border: OutlineInputBorder(),
                           prefixIcon: Icon(Icons.category),
                         ),
-                        items: const [
+                        items: [
                           DropdownMenuItem(value: 'supermarket', child: Text(AppStrings.supermarket(_locale))),
                           DropdownMenuItem(value: 'wet_market', child: Text(AppStrings.wetMarket(_locale))),
                           DropdownMenuItem(value: 'pharmacy', child: Text(AppStrings.pharmacy(_locale))),
@@ -272,7 +267,7 @@ class _ReceiptDetailScreenState extends ConsumerState<ReceiptDetailScreen> {
                             color: Colors.grey[100],
                             borderRadius: BorderRadius.circular(12),
                           ),
-                          child: const Center(
+                          child: Center(
                             child: Text(AppStrings.noItems(_locale), style: TextStyle(color: Colors.grey)),
                           ),
                         )
@@ -299,7 +294,7 @@ class _ReceiptDetailScreenState extends ConsumerState<ReceiptDetailScreen> {
           color: Colors.grey[200],
           borderRadius: BorderRadius.circular(12),
         ),
-        child: const Center(
+        child: Center(
           child: Column(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
@@ -355,7 +350,7 @@ class _ReceiptDetailScreenState extends ConsumerState<ReceiptDetailScreen> {
         color: Colors.grey[200],
         borderRadius: BorderRadius.circular(12),
       ),
-      child: const Center(
+      child: Center(
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
@@ -518,7 +513,7 @@ class _ReceiptDetailScreenState extends ConsumerState<ReceiptDetailScreen> {
               DropdownButtonFormField<String>(
                 value: prdCate,
                 decoration: const InputDecoration(labelText: '類別', border: OutlineInputBorder()),
-                items: const [
+                items: [
                   DropdownMenuItem(value: 'fish', child: Text(AppStrings.fish(_locale))),
                   DropdownMenuItem(value: 'pork', child: Text(AppStrings.pork(_locale))),
                   DropdownMenuItem(value: 'beef', child: Text(AppStrings.beef(_locale))),

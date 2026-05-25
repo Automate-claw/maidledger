@@ -1,347 +1,128 @@
 # MaidLedger — Architecture & Workflow Documentation
 
-**最後更新：** 2026-05-17
 **用途：** 維護參考 — 快速定位 logic 修改位置
+**最後更新：** 2026-05-25
 
 ---
 
-## 📁 關鍵檔案位置
+## 🗺️ Component → Path 對照表
 
-```
-maidledger/
-├── apps/
-│   ├── helper_app/lib/
-│   │   ├── main.dart                           # App 入口 + AuthGate + RelationGate
-│   │   ├── features/
-│   │   │   ├── scan/scan_screen.dart           # 📷 OCR 掃描 workflow
-│   │   │   ├── chat/chat_screen.dart           # 💬 AI Chat 記帳 workflow
-│   │   │   ├── history/history_screen.dart      # 📜 Receipt history
-│   │   │   ├── settings/settings_screen.dart   # ⚙️ Settings (logout + language)
-│   │   │   └── auth/
-│   │   │       ├── auth_provider.dart           # Auth state management
-│   │   │       ├── relation_gate.dart           # 🔗 Relation check + link dialog
-│   │   │       └── login_screen.dart            # Login UI
-│   │   └── core/services/
-│   │       ├── ai_booking_agent_service.dart   # Chat → Edge call (rate limit aware)
-│   │       ├── receipt_scanner_service.dart     # ML Kit OCR
-│   │       ├── relation_service.dart            # Relation check/link (short_code)
-│   │       └── supabase_client_provider.dart    # Supabase init
-│   │
-│   └── employer_app/lib/
-│       ├── main.dart                           # App 入口 + NotificationService
-│       ├── features/
-│       │   ├── receipts/receipts_screen.dart   # 📜 收據列表
-│       │   ├── mycode/my_code_screen.dart       # 🔢 我的邀請碼 (short_code)
-│       │   └── settings/settings_screen.dart    # ⚙️ 設定 (notification toggle)
-│       └── core/services/
-│           └── supabase_client_provider.dart
-│
-├── packages/
-│   ├── receipt-parser/                          # LLM parsing service (Flutter side)
-│   ├── ai-booking-agent/                        # Multi-language expense parser
-│   └── receipt-scanner/                         # Core OCR package
-│
-└── supabase/
-    ├── functions/
-    │   ├── chat-parser/                         # 🌐 AI Chat 解析 + rate limiting
-    │   ├── receipt-parser/                      # 🌐 OCR  receipt 解析
-    │   └── notification-broadcast/              # 🌐 收據上傳 → Realtime notification
-    └── migrations/                              # DB schema
-```
+| 組件 | 路徑 | 用途 |
+|---|---|---|
+| **Chat flow (主力)** | `supabase/functions/chat-orchestrate/index.ts` | 接收文字 → 解析 → 寫入 receipt（支援 attached_image_base64） |
+| **Receipt scan flow** | `supabase/functions/receipt-orchestrate/index.ts` | lock → patch → RPC 協調 |
+| **Receipt vision** | `supabase/functions/receipt-vision/index.ts` | 純 LLM Vision 解析（qwen3-vl-30b） |
+| **Receipt parse** | `supabase/functions/receipt-parse/index.ts` | OCR 解析 receipt |
+| **Receipt write** | `supabase/functions/receipt-writer/index.ts` | 寫入 DB（含 createFromChat 圖片上傳） |
+| **Shop matching** | `supabase/functions/shop-manager/index.ts` | canonical name + matching |
+| **Product matching** | `supabase/functions/product-manager/index.ts` | master product + brand |
+| **Price alert engine** | `supabase/functions/price-alert-engine/index.ts` | 價格警報 + weather suppression |
+| **Notification broadcast** | `supabase/functions/notification-broadcast/index.ts` | 通知僱主 |
+| **Helper App** | `apps/helper_app/lib/` | 工人所有畫面 |
+| Chat Screen | `apps/helper_app/lib/features/chat/chat_screen.dart` | 價錢入帳 |
+| History Screen | `apps/helper_app/lib/features/history/history_screen.dart` | 歷史查詢 |
+| Scan Screen | `apps/helper_app/lib/features/scan/scan_screen.dart` | 掃描收據 |
+| **Employer App** | `apps/employer_app/lib/` | 僱主所有畫面 |
+| **Scraper** | `services/scraper/src/scraper.py` | Python 爬蟲（HKTVmall / 惠康 / 百佳） |
+| **DB Schema ERD** | `docs/SCHEMA.html` | 實體關係圖（不斷更新） |
+| **Migrations** | `supabase/migrations/` | SQL schema 變更 |
 
 ---
 
-## 🗄️ Database Schema Summary
+## 🗄️ Core Database Tables
 
-### receipts (Header Table)
-```sql
-id              UUID PRIMARY KEY
-employer_id     UUID → user_profiles(id)
-helper_id       UUID → user_profiles(id)
-relation_id     UUID → employer_helper_relations(id)
-
-store_name      TEXT
-store_cate      TEXT          -- supermarket|wet_market|pharmacy|convenience|online|other
-location        TEXT
-transaction_date DATE
-raw_text        TEXT NOT NULL
-image_local_path TEXT
-amount          DECIMAL(10,2)
-
-sync_status     TEXT DEFAULT 'pending'
-local_timestamp BIGINT NOT NULL
-created_at      TIMESTAMPTZ DEFAULT NOW()
-```
-
-### receipt_items (Line Items - 1:N with receipts)
-```sql
-id              UUID PRIMARY KEY
-receipt_id      UUID → receipts(id) ON DELETE CASCADE
-item_name       TEXT NOT NULL
-item_raw_text   TEXT
-qty             DECIMAL(10,3) DEFAULT 1
-unit_price      DECIMAL(10,2)
-prd_cate        TEXT           -- fish|pork|beef|chicken|vegetables|rice|oil|seasoning|snack|drink|daily|other
-line_total      DECIMAL(10,2)
-created_at      TIMESTAMPTZ DEFAULT NOW()
-```
-
-### user_profiles
-```sql
-id              UUID PRIMARY KEY → auth.users(id)
-role            TEXT CHECK (employer|helper)
-name            TEXT NOT NULL
-phone           TEXT
-short_code      VARCHAR(20) UNIQUE   -- 僱主邀請碼（如 HE5KZV）
-created_at      TIMESTAMPTZ DEFAULT NOW()
-```
-
-### employer_helper_relations
-```sql
-id              UUID PRIMARY KEY
-employer_id     UUID → user_profiles(id)
-helper_id       UUID → user_profiles(id)
-status          TEXT DEFAULT 'active' CHECK (active|inactive|pending)
-created_at      TIMESTAMPTZ DEFAULT NOW()
-UNIQUE(employer_id, helper_id)
-```
-
-### chat_rate_limits (Rate Limiting for Chat)
-```sql
-id              UUID PRIMARY KEY DEFAULT gen_random_uuid()
-user_id         TEXT NOT NULL
-is_expense      BOOLEAN NOT NULL DEFAULT false
-created_at      TIMESTAMPTZ DEFAULT NOW()
--- Index: (user_id, created_at), (user_id, is_expense, created_at)
-```
-
-### store_categories / prd_categories
-```sql
-store_categories: code, name_tc, name_en, description, display_order
-prd_categories:   code, name_tc, name_en, description, display_order
-```
+| Table | 用途 |
+|---|---|
+| `receipts` | 收據 header（employer_id, helper_id, total, transaction_date, raw_text） |
+| `receipt_items` | 收據項目（receipt_id, item_name, extracted_brand/name/spec, unit_price, qty, prd_cate） |
+| `shops` | 商戶標準化（canonical_name, shop_type, region） |
+| `shop_aliases` | 商戶別名 → shops（raw_name → canonical） |
+| `master_products` | 商品主數據（canonical_name, brand, prd_cate, search_keywords） |
+| `product_aliases` | 商品別名 → master_products（raw_name → canonical） |
+| `price_history` | 價格歷史（master_product_id, shop_id, price, unit, source_type） |
+| `user_profiles` | 用戶（employer/helper，name, phone, short_code） |
+| `employer_helper_relations` | 僱主-工人關係（employer_id, helper_id, status） |
+| `employer_payments` | 付款記錄（滾動結餘：收入 − 支出） |
+| `store_categories` / `prd_categories` | 分類主數據 |
+| `chat_logs` | LLM 調用審計 |
 
 ---
 
 ## 🔄 Workflow 總覽
 
+### Chat Flow（Helper App → chat-orchestrate）
 ```
-┌─────────────────────────────────────────────────────────────┐
-│                    MaidLedger System                          │
-├─────────────────────────────────────────────────────────────┤
-│                                                              │
-│  ┌──────────────┐         ┌──────────────────────┐          │
-│  │  Helper App  │ ──────→ │  chat-parser Edge   │          │
-│  │   (Chat)     │         │  LLM → expense?      │          │
-│  └──────────────┘         │  + rate limiting     │          │
-│                           └──────────┬───────────┘          │
-│                                      │                        │
-│  ┌──────────────┐         ┌──────────┴───────────┐          │
-│  │  Helper App  │ ──────→ │  receipt-parser Edge  │          │
-│  │   (Scan)    │         │  OCR → items[]        │          │
-│  └──────────────┘         └──────────┬───────────┘          │
-│                                      │                        │
-│                                      ▼                        │
-│  ┌──────────────────────────────────────────────┐           │
-│  │          INSERT receipts + receipt_items      │           │
-│  └──────────────────────┬───────────────────────┘           │
-│                         │                                    │
-│                         ▼                                    │
-│  ┌──────────────────────────────────────────────┐           │
-│  │       notification-broadcast Edge Fn         │           │
-│  │  → Supabase Realtime → Employer App          │           │
-│  │  → flutter_local_notifications (local push)  │           │
-│  └──────────────────────────────────────────────┘           │
-│                                                              │
-└─────────────────────────────────────────────────────────────┘
-```
-
----
-
-## 💬 Workflow: Chat (helper_app)
-
-```
-用戶輸入文字 → AIBookingAgent.parseExpense(text, userId)
+用戶輸入文字 → chat-orchestrate → LLM 解析（is_expense?）
     ↓
-chat-parser Edge Function (LLM via OpenRouter)
-    ↓
-┌─ is_expense=true → 分析 → 回應 ✅
-└─ is_expense=false → friendly guidance (唔係 error)
-    ↓
-Rate Limit Check:
-  ├─ 1分鐘 >6次 → ⏱️ 請稍後再試
-  └─ 2分鐘 >5次 non-expense → 🚫 暫停30分鐘
+rate limit check（1分鐘 >6次 → 限速；2分鐘 >5次 non-expense → 封30分鐘）
     ↓
 buildResponse(intent)
     ↓
-如果 confidence>0.7 + 有金額 → _showSaveDialog()
+confidence>0.7 + 有金額 → _showSaveDialog()
     ↓
 INSERT receipts + receipt_items
     ↓
-notification-broadcast (non-blocking)
+notification-broadcast（非阻塞）
 ```
 
-### Rate Limiting Logic
-```typescript
-// 1分鐘最多 6次請求
-if (reqCount >= 6) → { rate_limited: true, retry_after: 60 }
-
-// 2分鐘內 >5次非開支 → 30分鐘 block
-if (nonExpCount >= 5) → { rate_limited: true, retry_after: 1800 }
+### OCR Scan Flow（Helper App → receipt-orchestrate）
+```
+Camera Capture → ML Kit OCR（壓縮 ~500KB）→ receipt-orchestrate
+    ↓
+Atomic Lock（parse_status: pending → processing）
+    ↓
+LLM Vision Parse（qwen3-vl-30b via OpenRouter）
+    ↓
+UPDATE receipts（parsed_data + parse_status: parsed）
+    ↓
+Shop matching（Step 3b，早於 product matching）
+    ↓
+INSERT receipt_items（batch）
+    ↓
+Product matching + price_history（per item，獨立 try/catch）
+    ↓
+Realtime notification → Employer App
 ```
 
-### Chat → DB Schema
-| Chat Field | receipts table | receipt_items |
-|------------|---------------|----------------|
-| `rawText` | `raw_text` | — |
-| `items[]` | — | `item_name` (逐 item 一行) |
-| `amount` | `amount` | `unit_price` |
-| `image_url` | `image_local_path` | — |
-
----
-
-## 📷 Workflow: OCR Scan (helper_app)
-
+### My Code Flow（Employer App）
 ```
-Camera Capture → Compress (~500KB)
+user_profiles.short_code → Display（6位邀請碼，如 HE5KZV）
     ↓
-EXIF GPS (如果可用) → location
+Worker 輸入 short_code → RelationService.linkToEmployer()
     ↓
-ML Kit OCR (TextRecognizer, Chinese model)
-    ↓
-receipt-parser Edge Function (LLM via OpenRouter)
-    ↓
-Save receipts + receipt_items
-    ↓
-notification-broadcast (non-blocking)
+INSERT / UPDATE employer_helper_relations（status='active'）
 ```
 
 ---
 
-## 🔢 Workflow: My Code (employer_app)
+## 🌏 Critical Technical Rules
 
-```
-user_profiles.short_code → Display (6-char, e.g. HE5KZV)
-    ↓
-_worker輸入 short_code → RelationService.linkToEmployer()
-    ↓
-INSERT / UPDATE employer_helper_relations (status='active')
-```
-
----
-
-## 🔔 Workflow: Notifications (employer_app)
-
-```
-Helper INSERT receipt
-    ↓
-notification-broadcast Edge Function
-    ↓
-Supabase Realtime channel: notifications:{employer_id}
-    ↓
-Employer App → onBroadcast('new_receipt')
-    ↓
-flutter_local_notifications.show() → 本地推送
-    ↓
-用戶可在 Settings 關閉通知 (notificationEnabledProvider)
-```
+- **Timezone:** `Asia/Hong_Kong`，`toLocaleString("en-US", {timeZone: "Asia/Hong_Kong"})`
+- **Auth:** Edge Functions 内部調用用 `SUPABASE_SERVICE_ROLE_KEY`（唔係 ANON_KEY）
+- **LLM Provider:** OpenRouter（DeepSeek V4 / GPT-4o）
+- **OCR:** Google ML Kit（client-side，Flutter 端側）
+- **Vision Model:** `qwen/qwen3-vl-30b-a3b-instruct`（性價比最高，~$0.13/M tokens）
+- **PostgREST ILIKE Bug:** receipt-writer 用 in-memory matching 绕过 URL-encoding 問題
+- **Race Condition:** receipt-orchestrate 用 Atomic Lock（UPDATE parse_status WHERE pending）防止雙重處理
 
 ---
 
-## ⚙️ Settings Screens
+## 📁 Edge Functions API
 
-### Helper App (Settings)
-- Profile card (name, role)
-- 語言切換 (繁體中文 / English) → localeProvider (SharedPreferences)
-- 版本 1.0.0
-- 登出 (authStateProvider.signOut())
-
-### Employer App (Settings)
-- Profile card
-- 通知設定 SwitchListTile → notificationEnabledProvider (SharedPreferences)
-- 語言 / 版本 / 使用條款 (static)
-- 登出
+| Function | Input | Output |
+|---|---|---|
+| `chat-orchestrate` | `{text, user_id, location?, attached_image_base64?}` | `{success, receipt_id, needs_review, errors}` |
+| `receipt-orchestrate` | `{receipt_id}`（webhook trigger）或 cron fallback | `{success}` |
+| `receipt-parse` | `{image_base64?, image_url?}` | `{success, items, total}` |
+| `receipt-writer` | `{receipt_data}` | `{receipt_id}` |
+| `shop-manager` | `{store_name, location?}` | `{shop_id, canonical_name}` |
+| `product-manager` | `{item_name, brand?}` | `{product_id, canonical_name}` |
+| `notification-broadcast` | `{user_id, message}` | `{sent}` |
 
 ---
 
-## 🌐 Edge Functions
+## 🏷️ 相關文檔
 
-### chat-parser
-**URL:** `POST /functions/v1/chat-parser`
-**Rate limits:** 6 req/min per user; >5 non-expense in 2min → 30min block
-**Logic:** All inputs → LLM → expense=true OR friendly guidance
-
-**Request:**
-```json
-{ "text": "魚 30蚊", "user_id": "uuid-or-anonymous" }
-```
-
-**Response (expense):**
-```json
-{
-  "is_expense": true,
-  "completeness": "good",
-  "total_amount": 30,
-  "items": [{"item_name": "魚", "unit_price": 30, "prd_cate": "fish"}],
-  "store_cate": "wet_market",
-  "parse_confidence": 0.9
-}
-```
-
-**Response (non-expense):**
-```json
-{
-  "is_expense": false,
-  "completeness": "invalid",
-  "response_message": "👋 你好！我係你的記帳助手...\n• 魚 30蚊\n• 超市買餸 120元",
-  "rate_limited": false
-}
-```
-
-**Response (rate limited):**
-```json
-{
-  "is_expense": false,
-  "rate_limited": true,
-  "retry_after": 60,
-  "response_message": "⏱️ 你一分鐘內請求太多，請稍後再試。"
-}
-```
-
-### notification-broadcast
-**Trigger:** Called by helper_app after INSERT receipts
-**Action:** Broadcast to Supabase Realtime channel `notifications:{employer_id}`
-
----
-
-## 📝 修改記錄
-
-| 日期 | 修改內容 |
-|------|---------|
-| 2026-05-15 | 加入 OCR + LLM workflow、Chat + Image workflow、Relation logic、Edge function |
-| 2026-05-15 | 切換 LLM provider：Gemini → OpenRouter DeepSeek V4 |
-| 2026-05-15 | 加入 receipt_items table（normalized item storage）|
-| 2026-05-15 | 加入 short_code（6位僱主邀請碼）|
-| 2026-05-15 | 加入 store_categories + prd_categories master tables |
-| 2026-05-15 | 重寫 chat-parser edge function（2-stage classification）|
-| 2026-05-16 | chat-parser 取代 Gemini direct call |
-| 2026-05-16 | 加入 notification-broadcast (Realtime notification) |
-| 2026-05-16 | 加入 flutter_local_notifications (employer app) |
-| 2026-05-16 | 加入 short_code migration + DB update |
-| 2026-05-16 | Helper app: Settings screen (logout + language) |
-| 2026-05-16 | Push to GitHub: Automate-claw/maidledger |
-| 2026-05-17 | chat-parser: 簡化 logic（移除預檢，直接 LLM）|
-| 2026-05-17 | chat-parser: 加入 rate limiting（6/min, >5 non-expense→30min block）|
-| 2026-05-17 | chat-parser: 非開支 → friendly guidance，唔係 error |
-| 2026-05-18 | 加入 shops + shop_aliases + shop_matching_service（眾包店舖標準化）|
-| 2026-05-18 | 加入 raw amount extraction + validation（防止 LLM 忽略用戶金額）|
-| 2026-05-18 | 加入 multi-language product matching |
-| 2026-05-18 | 加入 price_history table + write flow |
-| 2026-05-18 | 加入 price-alert-engine + weather suppression |
-| 2026-05-18 | 加入 weather-check edge function（HK Observatory API）|
-
----
-
-## 🏷️ Crowdsourced Price System
-
-見 [docs/CROWDSOURCED_PRICE_SYSTEM.md](./docs/CROWDSOURCED_PRICE_SYSTEM.md) |
+- **Crowdsourced Price System:** [docs/CROWDSOURCED_PRICE_SYSTEM.md](./docs/CROWDSOURCED_PRICE_SYSTEM.md)
+- **DB Schema ERD:** [docs/SCHEMA.html](./docs/SCHEMA.html)
+- **待修問題追蹤:** [TODO.md](./TODO.md)

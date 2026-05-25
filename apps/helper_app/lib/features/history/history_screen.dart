@@ -21,12 +21,6 @@ class _HistoryScreenState extends ConsumerState<HistoryScreen> {
   DateTime _focusedDay = DateTime.now();
   DateTime? _selectedDay;
 
-  @override
-  void initState() {
-    super.initState();
-    _locale = ref.read(localeProvider);
-  }
-
   Map<DateTime, List<ReceiptDayItem>> _receiptsByDay = {};
   List<PaymentRecord> _payments = [];
   bool _isLoading = true;
@@ -37,6 +31,7 @@ class _HistoryScreenState extends ConsumerState<HistoryScreen> {
   @override
   void initState() {
     super.initState();
+    _locale = ref.read(localeProvider);
     _selectedDay = _focusedDay;
     _loadData();
   }

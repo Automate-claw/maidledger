@@ -1,0 +1,563 @@
+<!DOCTYPE html>
+<html lang="zh-HK">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>MaidLedger — 專案歷史與 Schema 關係</title>
+<style>
+  :root {
+    --bg: #0f1419;
+    --surface: #1a2332;
+    --surface2: #232d3f;
+    --border: #2d3a4d;
+    --text: #e6edf3;
+    --muted: #8b949e;
+    --accent: #58a6ff;
+    --green: #3fb950;
+    --yellow: #d29922;
+    --red: #f85149;
+    --purple: #a371f7;
+    --orange: #f0883e;
+    --pink: #db61a2;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: var(--bg); color: var(--text); padding: 2rem; line-height: 1.6; }
+  h1 { font-size: 1.8rem; margin-bottom: 0.5rem; color: var(--accent); }
+  h2 { font-size: 1.3rem; margin: 2rem 0 1rem; color: var(--green); border-bottom: 1px solid var(--border); padding-bottom: 0.25rem; display: flex; align-items: center; gap: 0.5rem; }
+  h3 { font-size: 1rem; margin: 1rem 0 0.5rem; color: var(--purple); }
+  h4 { font-size: 0.9rem; margin: 0.75rem 0 0.25rem; color: var(--orange); }
+  .meta { color: var(--muted); font-size: 0.85rem; margin-bottom: 1.5rem; }
+  .note { background: rgba(88,166,255,0.1); border-left: 3px solid var(--accent); padding: 0.75rem 1rem; margin: 1rem 0; border-radius: 0 4px 4px 0; font-size: 0.9rem; }
+  .warning-note { background: rgba(210,153,34,0.1); border-left: 3px solid var(--yellow); padding: 0.75rem 1rem; margin: 0.5rem 0; border-radius: 0 4px 4px 0; }
+  code { background: var(--surface); padding: 0.1rem 0.4rem; border-radius: 4px; font-size: 0.85em; color: var(--accent); }
+  .tag { display: inline-block; padding: 0.15rem 0.5rem; border-radius: 12px; font-size: 0.7rem; font-weight: bold; }
+  .tag-mvp { background: var(--green); color: #000; }
+  .tag-chat { background: var(--accent); color: #000; }
+  .tag-scan { background: var(--purple); color: #fff; }
+  .tag-price { background: var(--yellow); color: #000; }
+  .tag-migrate { background: var(--orange); color: #000; }
+  .tag-fix { background: var(--red); color: #fff; }
+  .tag-arch { background: var(--pink); color: #fff; }
+
+  /* Timeline */
+  .timeline { position: relative; padding: 1rem 0; overflow-x: auto; }
+  .timeline-track { display: flex; gap: 0; min-width: max-content; position: relative; }
+  .timeline-track::before { content: ''; position: absolute; top: 24px; left: 0; right: 0; height: 3px; background: var(--border); z-index: 0; }
+  .timeline-item { flex: 0 0 200px; position: relative; padding-top: 50px; padding-right: 1.5rem; }
+  .timeline-dot { position: absolute; top: 16px; left: 0; width: 18px; height: 18px; border-radius: 50%; background: var(--surface2); border: 3px solid var(--accent); z-index: 1; }
+  .timeline-dot.done { background: var(--green); border-color: var(--green); }
+  .timeline-dot.current { background: var(--yellow); border-color: var(--yellow); box-shadow: 0 0 0 3px rgba(210,153,34,0.3); }
+  .timeline-date { position: absolute; top: 0; left: 0; font-size: 0.7rem; color: var(--muted); }
+  .timeline-content { background: var(--surface); border: 1px solid var(--border); border-radius: 8px; padding: 0.75rem; margin-top: 0.5rem; }
+  .timeline-content h4 { margin-top: 0; }
+  .timeline-tags { display: flex; flex-wrap: wrap; gap: 0.25rem; margin-top: 0.5rem; }
+  .timeline-desc { font-size: 0.8rem; color: var(--muted); margin-top: 0.5rem; }
+
+  /* Schema */
+  .schema-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 1rem; }
+  .schema-card { background: var(--surface); border: 1px solid var(--border); border-radius: 8px; padding: 0.75rem; }
+  .schema-card h4 { color: var(--accent); margin: 0 0 0.5rem 0; display: flex; align-items: center; gap: 0.4rem; }
+  .schema-card table { font-size: 0.75rem; width: 100%; }
+  .schema-card td { padding: 0.2rem 0.4rem; vertical-align: top; }
+  .schema-card p { font-size: 0.75rem; color: var(--muted); margin-top: 0.4rem; }
+  .pk { color: var(--yellow); font-weight: bold; }
+  .fk { color: var(--accent); }
+  .type { color: var(--muted); font-size: 0.8em; }
+
+  /* Entity relationships */
+  .er-diagram { background: var(--surface); border: 1px solid var(--border); border-radius: 8px; padding: 1.5rem; margin: 1rem 0; overflow-x: auto; }
+  .er-row { display: flex; align-items: center; gap: 0.5rem; margin: 0.4rem 0; font-size: 0.85rem; flex-wrap: wrap; }
+  .er-box { background: var(--surface2); border: 1px solid var(--border); border-radius: 4px; padding: 0.3rem 0.6rem; color: var(--accent); font-size: 0.8rem; white-space: nowrap; }
+  .er-arrow { color: var(--muted); font-size: 1.1rem; }
+  .er-label { font-size: 0.75rem; color: var(--muted); background: var(--surface2); padding: 0.1rem 0.4rem; border-radius: 3px; }
+
+  /* Milestones */
+  .milestone { background: var(--surface); border: 1px solid var(--border); border-radius: 8px; padding: 1rem; margin: 0.75rem 0; }
+  .milestone-header { display: flex; align-items: center; gap: 0.75rem; margin-bottom: 0.5rem; }
+  .milestone-title { font-weight: bold; color: var(--text); }
+  .milestone-date { color: var(--muted); font-size: 0.8rem; }
+  .milestone-desc { font-size: 0.85rem; color: var(--muted); margin: 0.5rem 0; }
+  .milestone-items { display: grid; grid-template-columns: repeat(auto-fill, minmax(250px, 1fr)); gap: 0.5rem; margin-top: 0.75rem; }
+  .milestone-item { background: var(--surface2); border-radius: 4px; padding: 0.4rem 0.6rem; font-size: 0.8rem; display: flex; align-items: flex-start; gap: 0.4rem; }
+  .milestone-item::before { content: '✓'; color: var(--green); font-weight: bold; flex-shrink: 0; }
+
+  .section { margin: 1.5rem 0; }
+  .section table { width: 100%; border-collapse: collapse; font-size: 0.82rem; }
+  .section th { background: var(--surface2); text-align: left; padding: 0.4rem 0.6rem; }
+  .section td { padding: 0.35rem 0.6rem; border-bottom: 1px solid var(--border); vertical-align: top; }
+</style>
+</head>
+<body>
+
+<h1>🧹 MaidLedger — 專案歷史與 Schema 關係</h1>
+<p class="meta">更新日期：2026-05-25 | 來源：Git history + migrations/ | 維護：Developer Agent（每次完成工作後更新）</p>
+
+<div class="note">
+  <strong>📌 定位：</strong>本文檔記錄 MaidLedger 的演进历程和数据库结构关系。<br>
+  <strong>更新规则：</strong>每次完成重大 milestone（功能、架構變更、重大修復）後，Developer Agent 必須同步更新本文檔。<br>
+  <strong>分工：</strong>ARCHITECTURE.md = 地圖（靜態），SCHEMA.html = ERD（動態），PROJECT_HISTORY.html = 歷史（時間線）。各司其職，不混雜。
+</div>
+
+<h2 id="timeline">📅 專案時間線（Milestones）</h2>
+
+<div class="timeline">
+<div class="timeline-track">
+
+<!-- 2025-06 -->
+<div class="timeline-item">
+  <div class="timeline-dot done"></div>
+  <div class="timeline-date">2025-06</div>
+  <div class="timeline-content">
+    <h4>🎯 MVP Launch</h4>
+    <div class="timeline-tags">
+      <span class="tag tag-mvp">MVP</span>
+    </div>
+    <div class="timeline-desc">雇主 + 工人雙 Flutter App，基礎記帳功能，Supabase Auth + Realtime</div>
+  </div>
+</div>
+
+<!-- 2025-07 -->
+<div class="timeline-item">
+  <div class="timeline-dot done"></div>
+  <div class="timeline-date">2025-07</div>
+  <div class="timeline-content">
+    <h4>💬 AI Chat 記帳</h4>
+    <div class="timeline-tags">
+      <span class="tag tag-chat">Chat</span>
+    </div>
+    <div class="timeline-desc">chat-parser edge function，LLM 解析自然語言開支，Rate limiting</div>
+  </div>
+</div>
+
+<!-- 2025-09 -->
+<div class="timeline-item">
+  <div class="timeline-dot done"></div>
+  <div class="timeline-date">2025-09</div>
+  <div class="timeline-content">
+    <h4>📷 OCR Scan</h4>
+    <div class="timeline-tags">
+      <span class="tag tag-scan">Scan</span>
+    </div>
+    <div class="timeline-desc">ML Kit OCR + receipt-parser，Camera 掃描收據，notification-broadcast</div>
+  </div>
+</div>
+
+<!-- 2025-11 -->
+<div class="timeline-item">
+  <div class="timeline-dot done"></div>
+  <div class="timeline-date">2025-11</div>
+  <div class="timeline-content">
+    <h4>🔢 邀請碼系統</h4>
+    <div class="timeline-tags">
+      <span class="tag tag-mvp">MVP</span>
+    </div>
+    <div class="timeline-desc">short_code（6位），Relation link，employer_helper_relations</div>
+  </div>
+</div>
+
+<!-- 2026-01 -->
+<div class="timeline-item">
+  <div class="timeline-dot done"></div>
+  <div class="timeline-date">2026-01</div>
+  <div class="timeline-content">
+    <h4>🔔 即時通知</h4>
+    <div class="timeline-tags">
+      <span class="tag tag-chat">Chat</span>
+    </div>
+    <div class="timeline-desc">flutter_local_notifications，Realtime channel，僱主收到新收據推送</div>
+  </div>
+</div>
+
+<!-- 2026-02 -->
+<div class="timeline-item">
+  <div class="timeline-dot done"></div>
+  <div class="timeline-date">2026-02</div>
+  <div class="timeline-content">
+    <h4>🔄 OpenRouter 遷移</h4>
+    <div class="timeline-tags">
+      <span class="tag tag-arch">架構</span>
+    </div>
+    <div class="timeline-desc">Gemini → OpenRouter（DeepSeek V4 / GPT-4o），統一 LLM 介面</div>
+  </div>
+</div>
+
+<!-- 2026-03 -->
+<div class="timeline-item">
+  <div class="timeline-dot done"></div>
+  <div class="timeline-date">2026-03</div>
+  <div class="timeline-content">
+    <h4>🛒 眾包店舖標準化</h4>
+    <div class="timeline-tags">
+      <span class="tag tag-price">價格</span>
+    </div>
+    <div class="timeline-desc">shops + shop_aliases，canonical name matching，LLM store name 淨化</div>
+  </div>
+</div>
+
+<!-- 2026-04 -->
+<div class="timeline-item">
+  <div class="timeline-dot done"></div>
+  <div class="timeline-date">2026-04</div>
+  <div class="timeline-content">
+    <h4>📦 Product Matching</h4>
+    <div class="timeline-tags">
+      <span class="tag tag-price">價格</span>
+    </div>
+    <div class="timeline-desc">master_products + product_aliases，extracted_brand/name/spec，multi-language</div>
+  </div>
+</div>
+
+<!-- 2026-05 -->
+<div class="timeline-item">
+  <div class="timeline-dot current"></div>
+  <div class="timeline-date">2026-05</div>
+  <div class="timeline-content">
+    <h4>💰 統一價格系統</h4>
+    <div class="timeline-tags">
+      <span class="tag tag-price">價格</span>
+    </div>
+    <div class="timeline-desc">price_history（receipt + scraper），price-alert-engine，weather-check，LLM Vision receipt-parse</div>
+  </div>
+</div>
+
+<!-- 2026-06 -->
+<div class="timeline-item">
+  <div class="timeline-dot"></div>
+  <div class="timeline-date">2026-06</div>
+  <div class="timeline-content">
+    <h4>🔧 B2B 擴展（規劃中）</h4>
+    <div class="timeline-tags">
+      <span class="tag tag-arch">架構</span>
+    </div>
+    <div class="timeline-desc">employer_payments 滾動結餘，月結功能，scraper 全面接入</div>
+  </div>
+</div>
+
+</div>
+</div>
+
+<h2 id="milestones">📌 重大里程碑詳情</h2>
+
+<div class="milestone">
+  <div class="milestone-header">
+    <span class="tag tag-price">價格</span>
+    <span class="milestone-title">💰 統一價格系統</span>
+    <span class="milestone-date">2026-05</span>
+  </div>
+  <div class="milestone-desc">實現 receipt 和 scraper 寫入同一個 price_history 表，支援橫向 B2B 比價。</div>
+  <div class="milestone-items">
+    <div class="milestone-item">LLM Vision receipt-vision edge function（qwen3-vl-30b）</div>
+    <div class="milestone-item">receipt-orchestrate event-driven + cron fallback 雙模式</div>
+    <div class="milestone-item">price_history 表統一記錄（source_type: receipt / scraper）</div>
+    <div class="milestone-item">price-alert-engine + weather suppression（雨天不alert）</div>
+    <div class="milestone-item">weather-check edge function（HK Observatory API）</div>
+    <div class="milestone-item">receipt_items B2B v2 擴展（extracted_brand/name/spec）</div>
+    <div class="milestone-item">Atomic Lock（parse_status pending→processing）防 race condition</div>
+    <div class="milestone-item">product matching 每 item 獨立 try/catch（隔離失敗）</div>
+  </div>
+</div>
+
+<div class="milestone">
+  <div class="milestone-header">
+    <span class="tag tag-chat">Chat</span>
+    <span class="milestone-title">💬 AI Chat 記帳（v2）</span>
+    <span class="milestone-date">2025-07</span>
+  </div>
+  <div class="milestone-desc">從舊版 chat-parser 重構為 chat-orchestrate，支援圖片 attached_image_base64，統一解析流程。</div>
+  <div class="milestone-items">
+    <div class="milestone-item">chat-orchestrate 取代舊 chat-parser（主力整合點）</div>
+    <div class="milestone-item">Rate limiting（1分鐘>6次限速，2分鐘>5次 non-expense 封30分鐘）</div>
+    <div class="milestone-item">Receipt-writer createFromChat（含圖片上傳）</div>
+    <div class="milestone-item">Non-expense → friendly guidance（唔係 error）</div>
+  </div>
+</div>
+
+<div class="milestone">
+  <div class="milestone-header">
+    <span class="tag tag-migrate">數據</span>
+    <span class="milestone-title">🗄️ DB Migration 024 — B2B Schema 擴展</span>
+    <span class="milestone-date">2026-05</span>
+  </div>
+  <div class="milestone-desc">receipt_items 增加 extracted_brand、extracted_name、extracted_spec 三個結構化欄位。</div>
+  <div class="milestone-items">
+    <div class="milestone-item">extracted_brand（標準化品牌：759阿信屋/維記/雀巢）</div>
+    <div class="milestone-item">extracted_name（純產品核心名稱）</div>
+    <div class="milestone-item">extracted_spec（規格容量：946ml/60P/大號）</div>
+    <div class="milestone-item">price_history.price 改存單價（方便橫向比較）</div>
+    <div class="milestone-item">price_history.unit 改存 extracted_spec（唔係「件」）</div>
+    <div class="milestone-item">Matching 優先用 extracted_name，fail 時才 fallback item_name</div>
+  </div>
+</div>
+
+<h2 id="schema">🗄️ 核心 Schema 關係圖</h2>
+
+<div class="er-diagram">
+<h3>用戶身份 → 關係 → 收據 → 項目</h3>
+<div class="er-row">
+  <span class="er-box">👤 user_profiles</span>
+  <span class="er-arrow">──<span class="er-label">1:N</span>──</span>
+  <span class="er-box">🔗 employer_helper_relations</span>
+  <span class="er-arrow">──<span class="er-label">1:N</span>──</span>
+  <span class="er-box">🧾 receipts</span>
+  <span class="er-arrow">──<span class="er-label">1:N</span>──</span>
+  <span class="er-box">📦 receipt_items</span>
+</div>
+<div class="er-row" style="margin-left: 2rem;">
+  <span class="er-box">📦 receipt_items</span>
+  <span class="er-arrow">──<span class="er-label">→</span>──</span>
+  <span class="er-box">🛒 master_products</span>
+  <span class="er-arrow">──<span class="er-label">←</span>──</span>
+  <span class="er-box">🏷️ product_aliases</span>
+</div>
+<div class="er-row" style="margin-left: 2rem;">
+  <span class="er-box">🧾 receipts</span>
+  <span class="er-arrow">──<span class="er-label">→</span>──</span>
+  <span class="er-box">🏪 shops</span>
+  <span class="er-arrow">──<span class="er-label">←</span>──</span>
+  <span class="er-box">🏷️ shop_aliases</span>
+</div>
+</div>
+
+<div class="er-diagram">
+<h3>價格流向（Receipt + Scraper → 統一 price_history）</h3>
+<div class="er-row">
+  <span class="er-box">📷 Helper 掃描收據</span>
+  <span class="er-arrow">→</span>
+  <span class="er-box">🧾 receipts</span>
+  <span class="er-arrow">→</span>
+  <span class="er-box">📦 receipt_items</span>
+  <span class="er-arrow">→</span>
+  <span class="er-box">💰 price_history</span>
+  <span class="er-label" style="margin-left: 0.5rem;">source=receipt</span>
+</div>
+<div class="er-row">
+  <span class="er-box">🕷️ Scraper 爬蟲</span>
+  <span class="er-arrow">→</span>
+  <span class="er-box">💰 price_history</span>
+  <span class="er-label">source=scraper</span>
+</div>
+<div class="er-row" style="margin-left: 1rem;">
+  <span class="er-box">💰 price_history</span>
+  <span class="er-arrow">──<span class="er-label">→</span>──</span>
+  <span class="er-box">🛒 master_products</span>
+  <span class="er-arrow">──<span class="er-label">←</span>──</span>
+  <span class="er-box">🏪 shops</span>
+</div>
+</div>
+
+<div class="schema-grid">
+
+<div class="schema-card">
+<h4>👤 user_profiles</h4>
+<table>
+<tr><td class="pk">id</td><td>UUID PK</td><td>→ auth.users</td></tr>
+<tr><td></td><td>TEXT</td><td>role: employer|helper</td></tr>
+<tr><td></td><td>TEXT</td><td>name, phone</td></tr>
+<tr><td></td><td>VARCHAR(20)</td><td>short_code（唯一）</td></tr>
+</table>
+<p>系統身份 + 僱主邀請碼</p>
+</div>
+
+<div class="schema-card">
+<h4>🔗 employer_helper_relations</h4>
+<table>
+<tr><td class="pk">id</td><td>UUID PK</td><td></td></tr>
+<tr><td class="fk">employer_id</td><td>UUID FK</td><td>→ user_profiles</td></tr>
+<tr><td class="fk">helper_id</td><td>UUID FK</td><td>→ user_profiles</td></tr>
+<tr><td></td><td>TEXT</td><td>status: active|inactive|pending</td></tr>
+</table>
+<p>UNIQUE(employer_id, helper_id)</p>
+</div>
+
+<div class="schema-card">
+<h4>🧾 receipts</h4>
+<table>
+<tr><td class="pk">id</td><td>UUID PK</td><td></td></tr>
+<tr><td class="fk">employer_id</td><td>UUID FK</td><td>→ user_profiles</td></tr>
+<tr><td class="fk">helper_id</td><td>UUID FK</td><td>→ user_profiles</td></tr>
+<tr><td class="fk">relation_id</td><td>UUID FK</td><td>→ employer_helper_relations</td></tr>
+<tr><td class="fk">shop_id</td><td>UUID FK</td><td>→ shops（可為空）</td></tr>
+<tr><td></td><td>TEXT</td><td>store_name, store_cate, location</td></tr>
+<tr><td></td><td>DATE</td><td>transaction_date</td></tr>
+<tr><td></td><td>DECIMAL</td><td>amount（總額）</td></tr>
+<tr><td></td><td>TEXT</td><td>sync_status: pending|synced</td></tr>
+<tr><td></td><td>TEXT</td><td>parse_status: pending|processing|parsed|failed</td></tr>
+<tr><td></td><td>JSONB</td><td>parsed_data（LLM輸出）</td></tr>
+<tr><td></td><td>DECIMAL</td><td>parse_confidence</td></tr>
+</table>
+<p>收據主表。Chat 和 Scan 寫入相同欄位</p>
+</div>
+
+<div class="schema-card">
+<h4>📦 receipt_items（B2B v2）</h4>
+<table>
+<tr><td class="pk">id</td><td>UUID PK</td><td></td></tr>
+<tr><td class="fk">receipt_id</td><td>UUID FK</td><td>→ receipts ON DELETE CASCADE</td></tr>
+<tr><td class="fk">master_product_id</td><td>UUID FK</td><td>→ master_products（可為空）</td></tr>
+<tr><td></td><td>TEXT</td><td>item_name（LLM原始，含品牌/容量）</td></tr>
+<tr><td></td><td>TEXT</td><td>extracted_brand（標準化品牌）</td></tr>
+<tr><td></td><td>TEXT</td><td>extracted_name（純產品核心名稱）</td></tr>
+<tr><td></td><td>TEXT</td><td>extracted_spec（規格/容量）</td></tr>
+<tr><td></td><td>DECIMAL</td><td>qty, unit_price, line_total</td></tr>
+<tr><td></td><td>TEXT</td><td>prd_cate: 魚|豬肉|蔬菜|...</td></tr>
+</table>
+<p>Migration 024：B2B 擴展，結構化欄位</p>
+</div>
+
+<div class="schema-card">
+<h4>🏪 shops</h4>
+<table>
+<tr><td class="pk">id</td><td>UUID PK</td><td></td></tr>
+<tr><td></td><td>TEXT</td><td>canonical_name（標準化名稱）</td></tr>
+<tr><td></td><td>TEXT</td><td>shop_type: 超市|街市|藥房|...</td></tr>
+<tr><td></td><td>TEXT</td><td>region, district</td></tr>
+</table>
+<p>標準化店名。scraper + App 共用</p>
+</div>
+
+<div class="schema-card">
+<h4>🏷️ shop_aliases</h4>
+<table>
+<tr><td class="pk">id</td><td>UUID PK</td><td></td></tr>
+<tr><td></td><td>TEXT</td><td>raw_name（原始名稱，唯一）</td></tr>
+<tr><td class="fk">shop_id</td><td>UUID FK</td><td>→ shops ON DELETE CASCADE</td></tr>
+<tr><td></td><td>TEXT</td><td>source: ocr|crawler|manual|seed</td></tr>
+</table>
+<p>raw_name → canonical，支援 ILIKE 匹配</p>
+</div>
+
+<div class="schema-card">
+<h4>🛒 master_products</h4>
+<table>
+<tr><td class="pk">id</td><td>UUID PK</td><td></td></tr>
+<tr><td></td><td>TEXT</td><td>canonical_name（標準化名稱）</td></tr>
+<tr><td></td><td>TEXT</td><td>brand, prd_cate, default_unit</td></tr>
+<tr><td></td><td>TEXT[]</td><td>search_keywords（ILIKE 用）</td></tr>
+</table>
+<p>scraper + App 共用，extracted_name 匹配優先</p>
+</div>
+
+<div class="schema-card">
+<h4>🏷️ product_aliases</h4>
+<table>
+<tr><td class="pk">id</td><td>UUID PK</td><td></td></tr>
+<tr><td></td><td>TEXT</td><td>raw_name（原始，唯一）</td></tr>
+<tr><td class="fk">master_product_id</td><td>UUID FK</td><td>→ master_products ON DELETE CASCADE</td></tr>
+<tr><td></td><td>TEXT</td><td>source: ocr|crawler|manual|seed</td></tr>
+</table>
+<p>raw_name → canonical，exact match 用</p>
+</div>
+
+<div class="schema-card">
+<h4>💰 price_history</h4>
+<table>
+<tr><td class="pk">id</td><td>UUID PK</td><td></td></tr>
+<tr><td class="fk">master_product_id</td><td>UUID FK</td><td>→ master_products ON DELETE CASCADE</td></tr>
+<tr><td class="fk">shop_id</td><td>UUID FK</td><td>→ shops ON DELETE SET NULL</td></tr>
+<tr><td></td><td>TEXT</td><td>location, region</td></tr>
+<tr><td></td><td>DECIMAL</td><td>price（單價，方便B2B比較）</td></tr>
+<tr><td></td><td>TEXT</td><td>unit（extracted_spec，如 60P/946ml）</td></tr>
+<tr><td class="fk">source_receipt_id</td><td>UUID FK</td><td>→ receipts ON DELETE SET NULL</td></tr>
+<tr><td></td><td>DATE</td><td>recorded_at</td></tr>
+<tr><td></td><td>TEXT</td><td>source_type: receipt|scraper</td></tr>
+</table>
+<p>統一價格記錄，receipt + scraper 共用</p>
+</div>
+
+<div class="schema-card">
+<h4>💳 employer_payments</h4>
+<table>
+<tr><td class="pk">id</td><td>UUID PK</td><td></td></tr>
+<tr><td class="fk">relation_id</td><td>UUID FK</td><td>→ employer_helper_relations ON DELETE CASCADE</td></tr>
+<tr><td class="fk">employer_id</td><td>UUID FK</td><td>→ user_profiles</td></tr>
+<tr><td class="fk">helper_id</td><td>UUID FK</td><td>→ user_profiles</td></tr>
+<tr><td></td><td>DECIMAL(10,2)</td><td>amount（收到金額）</td></tr>
+<tr><td></td><td>DATE</td><td>payment_date</td></tr>
+<tr><td></td><td>TEXT</td><td>note（備註：6月零用/補貼）</td></tr>
+</table>
+<p>滾動結餘：Balance = 累計收入 − 累計支出</p>
+</div>
+
+</div>
+
+<h2 id="migrations">📁 Migration 檔案清單（chronological）</h2>
+
+<div class="section">
+<table>
+<tr><th>#</th><th>日期</th><th>檔案</th><th>說明</th></tr>
+<tr><td>001</td><td>早期</td><td>initial_schema.sql</td><td>user_profiles + employer_helper_relations</td></tr>
+<tr><td>002</td><td>早期</td><td>full_schema.sql</td><td>完整 schema v1</td></tr>
+<tr><td>003</td><td>早期</td><td>receipt_items.sql</td><td>receipt_items 子表</td></tr>
+<tr><td>004</td><td>早期</td><td>enable_rls.sql</td><td>開啟 RLS</td></tr>
+<tr><td>005</td><td>早期</td><td>add_owner_field.sql</td><td>新增 owner 欄位</td></tr>
+<tr><td>006</td><td>2025-11</td><td>add_short_code.sql</td><td>user_profiles 加 short_code（6位邀請碼）</td></tr>
+<tr><td>007</td><td>2026-01</td><td>enable_realtime.sql</td><td>開啟 Realtime 通知</td></tr>
+<tr><td>008</td><td>早期</td><td>fix_trigger_search_path.sql</td><td>觸發器設定 search_path</td></tr>
+<tr><td>009</td><td>早期</td><td>allow_no_relation_receipts.sql</td><td>允許無關聯 receipts 寫入</td></tr>
+<tr><td>010</td><td>2025-07</td><td>chat_logs.sql</td><td>chat_logs 表（LLM 調用審計）</td></tr>
+<tr><td>011</td><td>早期</td><td>fix_receipt_items_insert.sql</td><td>修復 receipt_items RLS insert policy</td></tr>
+<tr><td>012</td><td>2026-03</td><td>master_products_and_aliases.sql</td><td>master_products + product_aliases 表</td></tr>
+<tr><td>013</td><td>2026-03</td><td>shops_and_aliases.sql</td><td>shops + shop_aliases 表</td></tr>
+<tr><td>013b</td><td>2026-03</td><td>product_aliases_language_origin.sql</td><td>product_aliases 加 language_origin</td></tr>
+<tr><td>014</td><td>2026-04</td><td>price_history.sql</td><td>price_history 表（統一價格記錄）</td></tr>
+<tr><td>015</td><td>2026-04</td><td>price_alerts_enhanced.sql</td><td>加強版 price_alerts（關聯 receipt）</td></tr>
+<tr><td>016</td><td>早期</td><td>receipt_items_discount.sql</td><td>receipt_items 加 is_discounted、discount_note</td></tr>
+<tr><td>017</td><td>早期</td><td>storage_bucket.sql</td><td>建立 receipts 儲存桶</td></tr>
+<tr><td>018</td><td>2026-03</td><td>allow_authenticated_insert_master_products.sql</td><td>允許認證用戶寫入 master_products</td></tr>
+<tr><td>019</td><td>2026-04</td><td>drop_receipts_category_column.sql</td><td>移除 receipts.category（遷移到 receipt_items.prd_cate）</td></tr>
+<tr><td>020</td><td>2026-03</td><td>shops_and_aliases_rls.sql</td><td>shops 和 shop_aliases 加 RLS policies</td></tr>
+<tr><td>021</td><td>早期</td><td>app_errors_table.sql</td><td>app_errors 表（客戶端錯誤記錄）</td></tr>
+<tr><td>022</td><td>2026-05</td><td>receipt_parse_queue.sql</td><td>parse_status + needs_review 欄位</td></tr>
+<tr><td>023</td><td>2026-05</td><td>receipt_webhook_trigger.sql</td><td>DB Trigger（pg_net）觸發 receipt-orchestrate</td></tr>
+<tr><td>024</td><td>2026-05</td><td>receipt_items_brand_spec.sql</td><td>B2B 擴展：extracted_brand/name/spec 欄位</td></tr>
+</table>
+</div>
+
+<h2 id="workflows">🔄 主要工作流程</h2>
+
+<div class="section">
+<h3>Chat Flow（文字 → 收據）</h3>
+<table>
+<tr><th>步驟</th><th>Component</th><th>Action</th></tr>
+<tr><td>1</td><td>Helper App</td><td>用戶輸入「魚 30蚊」</td></tr>
+<tr><td>2</td><td>ai_booking_agent_service</td><td>→ chat-orchestrate</td></tr>
+<tr><td>3</td><td>chat-orchestrate</td><td>LLM 解析（is_expense?）</td></tr>
+<tr><td>4</td><td>chat-orchestrate</td><td>Rate limit check</td></tr>
+<tr><td>5</td><td>receipt-writer</td><td>createFromChat → receipts</td></tr>
+<tr><td>6</td><td>receipt-writer</td><td>writeItemsFromChat → receipt_items</td></tr>
+<tr><td>7</td><td>shop-manager</td><td>upsert → shops + shop_aliases</td></tr>
+<tr><td>8</td><td>product-manager</td><td>upsert → master_products + product_aliases</td></tr>
+<tr><td>9</td><td>receipt-writer</td><td>writePriceHistory → price_history</td></tr>
+<tr><td>10</td><td>notification-broadcast</td><td>→ Employer App（非阻塞）</td></tr>
+</table>
+</div>
+
+<div class="section">
+<h3>Scan Flow（圖片 → 收據，Event-Driven）</h3>
+<table>
+<tr><th>步驟</th><th>Component</th><th>Action</th></tr>
+<tr><td>1</td><td>Helper App</td><td>Camera → ML Kit OCR → receipt-parse</td></tr>
+<tr><td>2</td><td>receipt-parse</td><td>LLM Vision → receipt-orchestrate webhook</td></tr>
+<tr><td>3</td><td>receipt-orchestrate</td><td>DB Trigger → lock（parse_status: pending→processing）</td></tr>
+<tr><td>4</td><td>receipt-orchestrate</td><td>LLM Vision Parse（qwen3-vl-30b）</td></tr>
+<tr><td>5</td><td>receipt-orchestrate</td><td>Shop matching（Step 3b，早於 product）</td></tr>
+<tr><td>6</td><td>receipt-orchestrate</td><td>INSERT receipt_items（batch）</td></tr>
+<tr><td>7</td><td>receipt-orchestrate</td><td>Product matching + price_history（per item）</td></tr>
+<tr><td>8</td><td>notification-broadcast</td><td>→ Employer App</td></tr>
+<tr><td>—</td><td>Fallback Cron</td><td>每5分鐘撈取 parse_status=pending 記錄</td></tr>
+</table>
+</div>
+
+<div class="section">
+<h3>Scraper Flow（Python → price_history）</h3>
+<table>
+<tr><th>步驟</th><th>Component</th><th>Action</th></tr>
+<tr><td>1</td><td>scraper.py</td><td>Playwright 爬取 HKTVmall / 惠康 / 百佳</td></tr>
+<tr><td>2</td><td>scraper.py</td><td>→ shops + shop_aliases（insert/update）</td></tr>
+<tr><td>3</td><td>scraper.py</td><td>→ master_products + product_aliases（insert/update）</td></tr>
+<tr><td>4</td><td>scraper.py</td><td>→ price_history（source_type='scraper'）</td></tr>
+</table>
+</div>
+
+</body>
+</html>
