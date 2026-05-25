@@ -51,7 +51,8 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
   void initState() {
     super.initState();
     _agent = AIBookingAgent();
-    _messages.add(ChatMessage(text: AppStrings.greeting(_locale), isUser: false));
+    // Use ref.read here — ref.watch can't be used in initState (context not ready yet)
+    _messages.add(ChatMessage(text: AppStrings.greeting(ref.read(localeProvider)), isUser: false));
   }
 
   void _refreshGreeting() {
