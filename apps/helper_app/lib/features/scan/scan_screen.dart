@@ -53,7 +53,6 @@ class _ScanScreenState extends ConsumerState<ScanScreen> {
   bool _isProcessing = false;
 
   @override
-  @override
   void initState() {
     super.initState();
     _locale = ref.read(localeProvider);
