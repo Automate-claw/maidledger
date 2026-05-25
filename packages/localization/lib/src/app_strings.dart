@@ -15,7 +15,11 @@ class AppStrings {
       'album': '相片簿',
       'chat': 'Chat',
       'history': 'History',
-      'scan': 'Scan',
+      'scan': '掃描',
+      'upload_success': '✅ 上傳成功！',
+      'upload_success_desc': '1-2分鐘後會有結果',
+      'upload_failed': '上傳失敗',
+      'upload_failed_retry': '請重新拍攝',
       'save': '儲存',
       'cancel': '取消',
       'confirm': '確認',
@@ -128,6 +132,10 @@ class AppStrings {
       'chat': 'Chat',
       'history': 'History',
       'scan': 'Scan',
+      'upload_success': '✅ Upload successful!',
+      'upload_success_desc': 'Results in 1-2 minutes',
+      'upload_failed': 'Upload failed',
+      'upload_failed_retry': 'Please try again',
       'save': 'Save',
       'cancel': 'Cancel',
       'confirm': 'Confirm',
@@ -240,6 +248,10 @@ class AppStrings {
       'chat': 'Chat',
       'history': 'Riwayat',
       'scan': 'Pindai',
+      'upload_success': '✅ Berhasil diunggah!',
+      'upload_success_desc': 'Hasil dalam 1-2 menit',
+      'upload_failed': 'Unggah gagal',
+      'upload_failed_retry': 'Silakan coba lagi',
       'save': 'Simpan',
       'cancel': 'Batal',
       'confirm': 'Konfirmasi',
@@ -352,6 +364,10 @@ class AppStrings {
       'chat': 'Chat',
       'history': 'Kasaysayan',
       'scan': 'Scan',
+      'upload_success': '✅ Matagumpay na na-upload!',
+      'upload_success_desc': 'Mga resulta sa 1-2 minuto',
+      'upload_failed': 'Nabigo ang pag-upload',
+      'upload_failed_retry': 'Mangyaring subuking muli',
       'save': 'I-save',
       'cancel': 'Kanselahin',
       'confirm': 'Kumpirmahin',
@@ -557,4 +573,8 @@ class AppStrings {
   static String confirmDelete(AppLocale locale) => get(locale, 'confirm_delete');
   static String delete(AppLocale locale) => get(locale, 'delete');
   static String productCategory(AppLocale locale, String cate) => get(locale, 'product_$cate');
+  static String uploadSuccess(AppLocale locale) => get(locale, 'upload_success');
+  static String uploadSuccessDesc(AppLocale locale) => get(locale, 'upload_success_desc');
+  static String uploadFailed(AppLocale locale) => get(locale, 'upload_failed');
+  static String uploadFailedRetry(AppLocale locale) => get(locale, 'upload_failed_retry');
 }

@@ -24,7 +24,7 @@ import '../../core/services/shop_matching_service.dart';
 ///   Phase 1 (Camera): Live preview → tap capture
 ///   Phase 2 (Preview): Show image + OCR text → [Retake] / [Confirm]
 ///   Phase 3 (Processing): Parallel compress+upload+LLM → Save → Result
-enum ScanPhase { camera, preview, processing }
+enum ScanPhase { camera, preview, processing, success, failed }
 
 class ScanScreen extends ConsumerStatefulWidget {
   const ScanScreen({super.key});
@@ -253,29 +253,42 @@ class _ScanScreenState extends ConsumerState<ScanScreen> {
         reconstructedText: _ocrReconstructedText ?? '',
       );
 
-      // Show success feedback, then return to camera
-      _showSnackbar('✅ 已上傳！1-2分鐘後會有結果', isLoading: false);
-
-      await Future.delayed(const Duration(milliseconds: 1200));
+      // Success: full-page feedback, 3.5s delay, then return to camera
+      setState(() => _scanPhase = ScanPhase.success);
+      await Future.delayed(const Duration(milliseconds: 3500));
       if (!mounted) return;
-      setState(() {
-        _capturedImage = null;
-        _ocrRawText = null;
-        _ocrReconstructedText = null;
-        _compressedBytes = null;
-        _imageUrl = null;
-        _scanPhase = ScanPhase.camera;
-        _isProcessing = false;
-      });
+      _returnToCamera();
     } catch (e) {
       setState(() => _isProcessing = false);
       final errStr = e.toString();
       if (errStr.contains('NO_ACTIVE_RELATION')) {
         _showRelationRequiredDialog();
+        _returnToCamera();
       } else {
-        _showError('儲存失敗: $e');
+        // Failure: show error state
+        setState(() => _scanPhase = ScanPhase.failed);
       }
     }
+  }
+
+  void _returnToCamera() {
+    setState(() {
+      _capturedImage = null;
+      _ocrRawText = null;
+      _ocrReconstructedText = null;
+      _compressedBytes = null;
+      _imageUrl = null;
+      _scanPhase = ScanPhase.camera;
+      _isProcessing = false;
+    });
+  }
+
+  Future<bool> _onWillPop() async {
+    if (_scanPhase == ScanPhase.success || _scanPhase == ScanPhase.failed) {
+      _returnToCamera();
+      return false;
+    }
+    return true;
   }
 
   /// Save receipt immediately and trigger LLM parsing via receipt-orchestrate.
@@ -698,7 +711,14 @@ class _ScanScreenState extends ConsumerState<ScanScreen> {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
+    return PopScope(
+      canPop: false,
+      onPopInvokedWithResult: (didPop, result) {
+        if (!didPop && (_scanPhase == ScanPhase.success || _scanPhase == ScanPhase.failed)) {
+          _returnToCamera();
+        }
+      },
+      child: Scaffold(
       appBar: AppBar(
         title: Text(_getTitle()),
         centerTitle: true,
@@ -711,6 +731,7 @@ class _ScanScreenState extends ConsumerState<ScanScreen> {
             )
           : null,
       floatingActionButtonLocation: FloatingActionButtonLocation.centerFloat,
+      ),
     );
   }
 
@@ -722,6 +743,10 @@ class _ScanScreenState extends ConsumerState<ScanScreen> {
         return AppStrings.confirmExpense(_locale);
       case ScanPhase.processing:
         return AppStrings.aiThinking(_locale);
+      case ScanPhase.success:
+        return AppStrings.uploadSuccess(_locale);
+      case ScanPhase.failed:
+        return AppStrings.uploadFailed(_locale);
     }
   }
 
@@ -733,6 +758,10 @@ class _ScanScreenState extends ConsumerState<ScanScreen> {
         return _buildPreviewBody();
       case ScanPhase.processing:
         return _buildProcessingBody();
+      case ScanPhase.success:
+        return _buildSuccessBody();
+      case ScanPhase.failed:
+        return _buildFailedBody();
     }
   }
 
@@ -969,6 +998,80 @@ class _ScanScreenState extends ConsumerState<ScanScreen> {
               ),
             ),
           ],
+        ),
+      ),
+    );
+  }
+
+  // ============================================================
+  // SUCCESS — fire-and-forget, 3.5s auto-return
+  // ============================================================
+  Widget _buildSuccessBody() {
+    return Container(
+      color: Colors.green[50],
+      child: Center(
+        child: Padding(
+          padding: const EdgeInsets.all(32),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(Icons.check_circle, size: 80, color: Colors.green[600]),
+              const SizedBox(height: 24),
+              Text(
+                AppStrings.uploadSuccess(_locale),
+                style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold, color: Colors.green[800]),
+                textAlign: TextAlign.center,
+              ),
+              const SizedBox(height: 12),
+              Text(
+                AppStrings.uploadSuccessDesc(_locale),
+                style: TextStyle(fontSize: 16, color: Colors.green[700]),
+                textAlign: TextAlign.center,
+              ),
+              const SizedBox(height: 32),
+              OutlinedButton(
+                onPressed: () { if (mounted) _returnToCamera(); },
+                child: Text(AppStrings.scan(_locale)),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  // ============================================================
+  // FAILED — explain error, allow retry
+  // ============================================================
+  Widget _buildFailedBody() {
+    return Container(
+      color: Colors.red[50],
+      child: Center(
+        child: Padding(
+          padding: const EdgeInsets.all(32),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(Icons.error_outline, size: 80, color: Colors.red[600]),
+              const SizedBox(height: 24),
+              Text(
+                AppStrings.uploadFailed(_locale),
+                style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold, color: Colors.red[800]),
+                textAlign: TextAlign.center,
+              ),
+              const SizedBox(height: 12),
+              Text(
+                AppStrings.uploadFailedRetry(_locale),
+                style: TextStyle(fontSize: 16, color: Colors.red[700]),
+                textAlign: TextAlign.center,
+              ),
+              const SizedBox(height: 32),
+              FilledButton(
+                onPressed: () { if (mounted) _returnToCamera(); },
+                child: Text(AppStrings.scan(_locale)),
+              ),
+            ],
+          ),
         ),
       ),
     );
