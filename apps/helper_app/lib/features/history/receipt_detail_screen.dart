@@ -178,6 +178,30 @@ class _ReceiptDetailScreenState extends ConsumerState<ReceiptDetailScreen> {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
+                      if (_receipt?['date_anomaly'] == true) ...[
+                        Container(
+                          width: double.infinity,
+                          padding: const EdgeInsets.all(12),
+                          decoration: BoxDecoration(
+                            color: Colors.orange[50],
+                            borderRadius: BorderRadius.circular(8),
+                            border: Border.all(color: Colors.orange[200]!),
+                          ),
+                          child: Row(
+                            children: [
+                              Icon(Icons.warning_amber_rounded, color: Colors.orange[700], size: 20),
+                              const SizedBox(width: 8),
+                              Expanded(
+                                child: Text(
+                                  '⚠️ 系統懷疑這筆交易的日期有誤，請確認是否正確',
+                                  style: TextStyle(color: Colors.orange[900], fontSize: 13),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                        const SizedBox(height: 16),
+                      ],
                       _buildPhotoSection(),
                       const SizedBox(height: 24),
                       _buildSectionTitle('🏪 商戶資料'),
