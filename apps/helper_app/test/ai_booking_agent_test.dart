@@ -6,10 +6,7 @@ void main() {
     late AIBookingAgent agent;
 
     setUp(() {
-      agent = AIBookingAgent(
-        geminiApiKey: '', // No API key - will use keyword engine
-        translateApiKey: '',
-      );
+      agent = AIBookingAgent();
     });
 
     test('parseExpense detects food purchase in Chinese', () async {
