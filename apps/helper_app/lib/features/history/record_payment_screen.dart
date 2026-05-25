@@ -75,6 +75,7 @@ class _RecordPaymentScreenState extends ConsumerState<RecordPaymentScreen> {
         'amount': amount,
         'payment_date': DateFormat('yyyy-MM-dd').format(_paymentDate),
         'note': _noteController.text.trim().isEmpty ? null : _noteController.text.trim(),
+        'created_by': userId,
       });
 
       if (mounted) {

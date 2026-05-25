@@ -2,6 +2,7 @@ import 'package:maidledger_localization/maidledger_localization.dart';
 import 'dart:convert';
 import 'dart:io';
 import 'dart:typed_data';
+import 'package:intl/intl.dart';
 import 'package:camera/camera.dart';
 import 'package:connectivity_plus/connectivity_plus.dart';
 import 'package:flutter/material.dart';
@@ -322,6 +323,9 @@ class _ScanScreenState extends ConsumerState<ScanScreen> {
       'local_timestamp': now,
       'parse_status': 'pending',
       'created_at': DateTime.now().toIso8601String(),
+      'transaction_date': DateFormat('yyyy-MM-dd').format(DateTime.now()),
+      'date_anomaly': false,
+      'created_by': user.id,
     });
 
     // Step 2: Immediately trigger receipt-orchestrate (receipt-vision → write)
