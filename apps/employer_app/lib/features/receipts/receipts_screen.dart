@@ -1,17 +1,100 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
+import 'package:maidledger_localization/maidledger_localization.dart';
 import '../../core/services/supabase_client_provider.dart';
 import '../auth/auth_provider.dart';
 
-/// Provider for employer's receipts
+/// Provider for current relation (employer-helper link)
+final currentRelationProvider = FutureProvider<Map<String, dynamic>?>((ref) async {
+  final user = ref.watch(currentUserProvider);
+  if (user == null) return null;
+
+  final supabase = ref.read(supabaseClientProvider);
+  final relations = await supabase
+      .from('employer_helper_relations')
+      .select('id, helper_id, status')
+      .eq('employer_id', user.id)
+      .eq('status', 'active')
+      .maybeSingle();
+  return relations;
+});
+
+/// Provider for employer payments for current relation
+final employerPaymentsProvider = FutureProvider<List<Map<String, dynamic>>>((ref) async {
+  final user = ref.watch(currentUserProvider);
+  if (user == null) return [];
+
+  final supabase = ref.read(supabaseClientProvider);
+  final payments = await supabase
+      .from('employer_payments')
+      .select('id, amount, payment_date, note, helper_id, created_at')
+      .eq('employer_id', user.id)
+      .order('payment_date', ascending: false);
+  return (payments as List).cast<Map<String, dynamic>>();
+});
+
+/// Provider for receipts between two payment dates
+final receiptsBetweenPaymentsProvider = FutureProvider.family<List<Map<String, dynamic>>, _PeriodQuery>((ref, query) async {
+  final supabase = ref.read(supabaseClientProvider);
+  final receipts = await supabase
+      .from('receipts')
+      .select('''
+        id,
+        store_name,
+        store_cate,
+        location,
+        amount,
+        transaction_date,
+        raw_text,
+        image_local_path,
+        sync_status,
+        created_at,
+        helper_id
+      ''')
+      .eq('helper_id', query.helperId)
+      .gte('transaction_date', query.startDate)
+      .lt('transaction_date', query.endDate)
+      .order('transaction_date', ascending: false);
+  return (receipts as List).cast<Map<String, dynamic>>();
+});
+
+/// Query parameters for receipts between payments
+class _PeriodQuery {
+  final String helperId;
+  final String startDate; // payment date (inclusive)
+  final String endDate;   // next payment date or 'now'
+
+  _PeriodQuery({required this.helperId, required this.startDate, required this.endDate});
+
+  @override
+  bool operator ==(Object other) =>
+      other is _PeriodQuery &&
+      other.helperId == helperId &&
+      other.startDate == startDate &&
+      other.endDate == endDate;
+
+  @override
+  int get hashCode => Object.hash(helperId, startDate, endDate);
+}
+
+/// Provider for helper name (helper_id → name)
+final helperNamesProvider = FutureProvider.family<String?, String>((ref, helperId) async {
+  final supabase = ref.read(supabaseClientProvider);
+  final profile = await supabase
+      .from('user_profiles')
+      .select('name')
+      .eq('id', helperId)
+      .maybeSingle();
+  return profile?['name'] as String?;
+});
+
+/// Provider for employer's receipts (all, for display)
 final employerReceiptsProvider = FutureProvider<List<Map<String, dynamic>>>((ref) async {
   final user = ref.watch(currentUserProvider);
   if (user == null) return [];
 
   final supabase = ref.read(supabaseClientProvider);
-  
-  // Get receipts where employer_id matches current user
   final receipts = await supabase
       .from('receipts')
       .select('''
@@ -34,412 +117,399 @@ final employerReceiptsProvider = FutureProvider<List<Map<String, dynamic>>>((ref
   return (receipts as List).cast<Map<String, dynamic>>();
 });
 
-/// Provider for helper name (helper_id → name)
-final helperNamesProvider = FutureProvider.family<String?, String>((ref, helperId) async {
-  final supabase = ref.read(supabaseClientProvider);
-  final profile = await supabase
-      .from('user_profiles')
-      .select('name')
-      .eq('id', helperId)
-      .maybeSingle();
-  return profile?['name'] as String?;
-});
-
 class ReceiptsScreen extends ConsumerWidget {
   const ReceiptsScreen({super.key});
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final receiptsAsync = ref.watch(employerReceiptsProvider);
+    final locale = ref.watch(localeProvider);
+    final paymentsAsync = ref.watch(employerPaymentsProvider);
 
     return Scaffold(
       appBar: AppBar(
-        title: const Text('收據列表'),
+        title: Text(AppStrings.receipts(locale)),
         centerTitle: true,
       ),
-      body: receiptsAsync.when(
-        data: (receipts) {
-          if (receipts.isEmpty) {
-            return const Center(
-              child: Column(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  Icon(Icons.receipt_long, size: 64, color: Colors.grey),
-                  SizedBox(height: 16),
-                  Text(
-                    '暫時沒有收據',
-                    style: TextStyle(color: Colors.grey, fontSize: 16),
-                  ),
-                  SizedBox(height: 8),
-                  Text(
-                    '工人上傳後會在這裡顯示',
-                    style: TextStyle(color: Colors.grey, fontSize: 14),
-                  ),
-                ],
-              ),
-            );
+      body: paymentsAsync.when(
+        data: (payments) {
+          if (payments.isEmpty) {
+            return _EmptyState(locale: locale);
           }
-
           return RefreshIndicator(
-            onRefresh: () => ref.refresh(employerReceiptsProvider.future),
-            child: ListView.builder(
+            onRefresh: () async {
+              ref.invalidate(employerPaymentsProvider);
+              ref.invalidate(employerReceiptsProvider);
+            },
+            child: ListView(
               padding: const EdgeInsets.all(16),
-              itemCount: receipts.length,
-              itemBuilder: (context, index) {
-                final receipt = receipts[index];
-                return _ReceiptCard(receipt: receipt);
-              },
+              children: [
+                _BalanceCard(locale: locale),
+                const SizedBox(height: 16),
+                _PaymentsSection(payments: payments, locale: locale),
+              ],
             ),
           );
         },
         loading: () => const Center(child: CircularProgressIndicator()),
-        error: (err, _) => Center(child: Text('載入失敗：$err')),
+        error: (err, _) => Center(child: Text('${AppStrings.loadingFailed(locale)}: $err')),
       ),
     );
   }
 }
 
-class _ReceiptCard extends ConsumerWidget {
-  final Map<String, dynamic> receipt;
+class _EmptyState extends StatelessWidget {
+  final AppLocale locale;
+  const _EmptyState({required this.locale});
 
-  const _ReceiptCard({required this.receipt});
+  @override
+  Widget build(BuildContext context) {
+    return Center(
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          const Icon(Icons.receipt_long, size: 64, color: Colors.grey),
+          const SizedBox(height: 16),
+          Text(
+            AppStrings.noReceipts(locale),
+            style: const TextStyle(color: Colors.grey, fontSize: 16),
+          ),
+          const SizedBox(height: 8),
+          Text(
+            AppStrings.noReceiptsHint(locale),
+            style: const TextStyle(color: Colors.grey, fontSize: 14),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _BalanceCard extends ConsumerWidget {
+  final AppLocale locale;
+  const _BalanceCard({required this.locale});
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final storeName = receipt['store_name'] ?? '未知商戶';
-    final storeCate = receipt['store_cate'] ?? 'other';
-    final amount = receipt['amount'];
-    final transactionDate = receipt['transaction_date'];
-    final imageUrl = receipt['image_local_path'];
-    final syncStatus = receipt['sync_status'] ?? 'pending';
+    final relationAsync = ref.watch(currentRelationProvider);
+    final paymentsAsync = ref.watch(employerPaymentsProvider);
 
-    final helperNameAsync = ref.watch(helperNamesProvider(receipt['helper_id'] ?? ''));
+    return relationAsync.when(
+      data: (relation) {
+        final income = paymentsAsync.valueOrNull?.fold<double>(0, (sum, p) => sum + ((p['amount'] as num?)?.toDouble() ?? 0)) ?? 0;
+        // Balance = SUM(employer_payments) - SUM(receipts for this helper)
+        // We'll compute this with a separate query in a later step
+        return _BalanceCardContent(
+          income: income,
+          expense: 0, // will be updated
+          locale: locale,
+          hasRelation: relation != null,
+        );
+      },
+      loading: () => const Card(
+        child: Padding(padding: EdgeInsets.all(24), child: Center(child: CircularProgressIndicator())),
+      ),
+      error: (_, __) => const SizedBox(),
+    );
+  }
+}
+
+class _BalanceCardContent extends StatefulWidget {
+  final double income;
+  final double expense;
+  final AppLocale locale;
+  final bool hasRelation;
+
+  const _BalanceCardContent({
+    required this.income,
+    required this.expense,
+    required this.locale,
+    required this.hasRelation,
+  });
+
+  @override
+  State<_BalanceCardContent> createState() => _BalanceCardContentState();
+}
+
+class _BalanceCardContentState extends State<_BalanceCardContent> {
+  double _computedExpense = 0;
+  bool _expenseLoaded = false;
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    if (!_expenseLoaded && widget.hasRelation) {
+      _loadExpense();
+    }
+  }
+
+  Future<void> _loadExpense() async {
+    final relation = await ref.read(currentRelationProvider.future);
+    if (relation == null) return;
+
+    final supabase = ref.read(supabaseClientProvider);
+    final receipts = await supabase
+        .from('receipts')
+        .select('amount')
+        .eq('helper_id', relation['helper_id']);
+    final expense = (receipts as List).fold<double>(0, (sum, r) => sum + ((r['amount'] as num?)?.toDouble() ?? 0));
+    if (mounted) {
+      setState(() {
+        _computedExpense = expense;
+        _expenseLoaded = true;
+      });
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final balance = widget.income - _computedExpense;
+    final isPositive = balance >= 0;
+
+    return Container(
+      padding: const EdgeInsets.all(20),
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          colors: isPositive ? [Colors.green[700]!, Colors.green[500]!] : [Colors.red[700]!, Colors.red[500]!],
+        ),
+        borderRadius: BorderRadius.circular(16),
+        boxShadow: [BoxShadow(color: (isPositive ? Colors.green : Colors.red).withValues(alpha: 0.3), blurRadius: 8, offset: const Offset(0, 4))],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            AppStrings.cashBalance(widget.locale),
+            style: const TextStyle(color: Colors.white70, fontSize: 13),
+          ),
+          const SizedBox(height: 4),
+          Text(
+            '\$${balance.abs().toStringAsFixed(0)}',
+            style: const TextStyle(color: Colors.white, fontSize: 36, fontWeight: FontWeight.bold),
+          ),
+          if (!isPositive)
+            Text(AppStrings.overdraft(widget.locale), style: const TextStyle(color: Colors.white60, fontSize: 12)),
+          const SizedBox(height: 12),
+          Row(
+            children: [
+              _buildBalanceRow(AppStrings.received(widget.locale), widget.income, Icons.arrow_downward),
+              const SizedBox(width: 24),
+              _buildBalanceRow(AppStrings.spent(widget.locale), _computedExpense, Icons.arrow_upward),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildBalanceRow(String label, double amount, IconData icon) {
+    return Row(
+      children: [
+        Icon(icon, color: Colors.white70, size: 14),
+        const SizedBox(width: 4),
+        Text(
+          '$label \$${amount.toStringAsFixed(0)}',
+          style: const TextStyle(color: Colors.white70, fontSize: 12),
+        ),
+      ],
+    );
+  }
+}
+
+class _PaymentsSection extends StatelessWidget {
+  final List<Map<String, dynamic>> payments;
+  final AppLocale locale;
+
+  const _PaymentsSection({required this.payments, required this.locale});
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          AppStrings.payments(locale),
+          style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+        ),
+        const SizedBox(height: 12),
+        ...payments.asMap().entries.map((entry) {
+          final index = entry.key;
+          final payment = entry.value;
+          final isLast = index == payments.length - 1;
+          return _PaymentTile(
+            payment: payment,
+            nextPaymentDate: isLast ? null : payments[index + 1]['payment_date'] as String?,
+            locale: locale,
+          );
+        }),
+      ],
+    );
+  }
+}
+
+class _PaymentTile extends StatefulWidget {
+  final Map<String, dynamic> payment;
+  final String? nextPaymentDate;
+  final AppLocale locale;
+
+  const _PaymentTile({
+    required this.payment,
+    this.nextPaymentDate,
+    required this.locale,
+  });
+
+  @override
+  State<_PaymentTile> createState() => _PaymentTileState();
+}
+
+class _PaymentTileState extends State<_PaymentTile> {
+  bool _expanded = false;
+
+  @override
+  Widget build(BuildContext context) {
+    final amount = (widget.payment['amount'] as num?)?.toDouble() ?? 0;
+    final paymentDate = widget.payment['payment_date'] as String?;
+    final dateStr = paymentDate != null ? DateFormat('yyyy-MM-dd').format(DateTime.parse(paymentDate)) : '-';
+    final endDate = widget.nextPaymentDate ?? DateFormat('yyyy-MM-dd').format(DateTime.now().add(const Duration(days: 1)));
 
     return Card(
-      margin: const EdgeInsets.only(bottom: 12),
-      child: InkWell(
-        onTap: () => _showReceiptDetail(context, receipt),
-        borderRadius: BorderRadius.circular(12),
-        child: Padding(
-          padding: const EdgeInsets.all(16),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              // Header row
-              Row(
+      margin: const EdgeInsets.only(bottom: 8),
+      child: Column(
+        children: [
+          InkWell(
+            onTap: () => setState(() => _expanded = !_expanded),
+            borderRadius: BorderRadius.circular(12),
+            child: Padding(
+              padding: const EdgeInsets.all(16),
+              child: Row(
                 children: [
-                  _buildCategoryIcon(storeCate),
+                  Container(
+                    padding: const EdgeInsets.all(10),
+                    decoration: BoxDecoration(
+                      color: Colors.green.withValues(alpha: 0.1),
+                      borderRadius: BorderRadius.circular(10),
+                    ),
+                    child: const Icon(Icons.arrow_downward, color: Colors.green, size: 20),
+                  ),
                   const SizedBox(width: 12),
                   Expanded(
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         Text(
-                          storeName,
-                          style: const TextStyle(
-                            fontWeight: FontWeight.bold,
-                            fontSize: 16,
-                          ),
+                          AppStrings.fromPayment(widget.locale, dateStr),
+                          style: const TextStyle(fontWeight: FontWeight.w500),
                         ),
-                        if (transactionDate != null)
+                        if (widget.nextPaymentDate == null)
                           Text(
-                            DateFormat('yyyy-MM-dd').format(
-                              DateTime.parse(transactionDate),
-                            ),
-                            style: const TextStyle(
-                              color: Colors.grey,
-                              fontSize: 12,
-                            ),
+                            '至現在',
+                            style: TextStyle(color: Colors.grey[600], fontSize: 12),
                           ),
                       ],
                     ),
                   ),
-                  if (amount != null)
-                    Text(
-                      '\$${(amount as num).toStringAsFixed(0)}',
-                      style: const TextStyle(
-                        fontWeight: FontWeight.bold,
-                        fontSize: 20,
-                        color: Colors.green,
-                      ),
-                    ),
-                ],
-              ),
-              const SizedBox(height: 12),
-              // Footer row
-              Row(
-                children: [
-                  helperNameAsync.when(
-                    data: (name) => Text(
-                      name != null ? '工人：$name' : '',
-                      style: const TextStyle(fontSize: 12, color: Colors.grey),
-                    ),
-                    loading: () => const SizedBox(width: 12, height: 12, child: CircularProgressIndicator(strokeWidth: 1)),
-                    error: (_, __) => const SizedBox(),
-                  ),
-                  const Spacer(),
-                  _buildStatusChip(syncStatus),
-                  if (imageUrl != null)
-                    const Padding(
-                      padding: EdgeInsets.only(left: 8),
-                      child: Icon(Icons.photo, size: 16, color: Colors.grey),
-                    ),
-                ],
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-
-  Widget _buildCategoryIcon(String cate) {
-    IconData icon;
-    Color color;
-
-    switch (cate) {
-      case 'supermarket':
-        icon = Icons.shopping_cart;
-        color = Colors.blue;
-        break;
-      case 'wet_market':
-        icon = Icons.storefront;
-        color = Colors.orange;
-        break;
-      case 'pharmacy':
-        icon = Icons.local_pharmacy;
-        color = Colors.red;
-        break;
-      case 'cafe':
-      case 'restaurant':
-        icon = Icons.restaurant;
-        color = Colors.purple;
-        break;
-      case 'takeaway':
-        icon = Icons.takeout_dining;
-        color = Colors.brown;
-        break;
-      default:
-        icon = Icons.receipt;
-        color = Colors.grey;
-    }
-
-    return Container(
-      padding: const EdgeInsets.all(8),
-      decoration: BoxDecoration(
-        color: color.withAlpha(26),
-        borderRadius: BorderRadius.circular(8),
-      ),
-      child: Icon(icon, color: color, size: 24),
-    );
-  }
-
-  Widget _buildStatusChip(String status) {
-    Color color;
-    String label;
-
-    switch (status) {
-      case 'synced':
-        color = Colors.green;
-        label = '已同步';
-        break;
-      case 'pending':
-        color = Colors.orange;
-        label = '待確認';
-        break;
-      default:
-        color = Colors.grey;
-        label = status;
-    }
-
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
-      decoration: BoxDecoration(
-        color: color.withAlpha(26),
-        borderRadius: BorderRadius.circular(8),
-      ),
-      child: Text(
-        label,
-        style: TextStyle(fontSize: 11, color: color),
-      ),
-    );
-  }
-
-  void _showReceiptDetail(BuildContext context, Map<String, dynamic> receipt) {
-    showModalBottomSheet(
-      context: context,
-      isScrollControlled: true,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
-      ),
-      builder: (context) => _ReceiptDetailSheet(receipt: receipt),
-    );
-  }
-}
-
-class _ReceiptDetailSheet extends ConsumerWidget {
-  final Map<String, dynamic> receipt;
-
-  const _ReceiptDetailSheet({required this.receipt});
-
-  @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final imageUrl = receipt['image_local_path'];
-    final rawText = receipt['raw_text'] ?? '';
-    final itemsAsync = ref.watch(_receiptItemsProvider(receipt['id']));
-
-    return DraggableScrollableSheet(
-      initialChildSize: 0.7,
-      minChildSize: 0.4,
-      maxChildSize: 0.95,
-      expand: false,
-      builder: (context, scrollController) {
-        return SingleChildScrollView(
-          controller: scrollController,
-          padding: const EdgeInsets.all(24),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              // Handle bar
-              Center(
-                child: Container(
-                  width: 40,
-                  height: 4,
-                  margin: const EdgeInsets.only(bottom: 20),
-                  decoration: BoxDecoration(
-                    color: Colors.grey.shade300,
-                    borderRadius: BorderRadius.circular(2),
-                  ),
-                ),
-              ),
-              // Title
-              Row(
-                children: [
-                  const Icon(Icons.receipt, size: 28),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: Text(
-                      receipt['store_name'] ?? '未知商戶',
-                      style: const TextStyle(
-                        fontSize: 20,
-                        fontWeight: FontWeight.bold,
-                      ),
-                    ),
-                  ),
                   Text(
-                    '\$${(receipt['amount'] as num?)?.toStringAsFixed(0) ?? '-'}',
+                    '+\$${amount.toStringAsFixed(0)}',
                     style: const TextStyle(
-                      fontSize: 24,
                       fontWeight: FontWeight.bold,
+                      fontSize: 16,
                       color: Colors.green,
                     ),
                   ),
+                  const SizedBox(width: 8),
+                  Icon(
+                    _expanded ? Icons.expand_less : Icons.expand_more,
+                    color: Colors.grey,
+                  ),
                 ],
               ),
-              const SizedBox(height: 16),
-              // Image if available
-              if (imageUrl != null) ...[
-                ClipRRect(
-                  borderRadius: BorderRadius.circular(12),
-                  child: Image.network(
-                    imageUrl,
-                    height: 200,
-                    width: double.infinity,
-                    fit: BoxFit.cover,
-                    errorBuilder: (_, __, ___) => const SizedBox(),
-                  ),
-                ),
-                const SizedBox(height: 16),
-              ],
-              // Info chips
-              Wrap(
-                spacing: 8,
-                runSpacing: 8,
-                children: [
-                  Chip(
-                    avatar: const Icon(Icons.category, size: 16),
-                    label: Text(receipt['store_cate'] ?? 'other'),
-                  ),
-                  if (receipt['location'] != null)
-                    Chip(
-                      avatar: const Icon(Icons.location_on, size: 16),
-                      label: Text(receipt['location']!),
-                    ),
-                  if (receipt['transaction_date'] != null)
-                    Chip(
-                      avatar: const Icon(Icons.calendar_today, size: 16),
-                      label: Text(receipt['transaction_date']!),
-                    ),
-                ],
-              ),
-              const SizedBox(height: 16),
-              // Items
-              const Text(
-                '項目',
-                style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
-              ),
-              const SizedBox(height: 8),
-              itemsAsync.when(
-                data: (items) {
-                  if (items.isEmpty) {
-                    return const Text('無項目資料', style: TextStyle(color: Colors.grey));
-                  }
-                  return Column(
-                    children: items.map((item) => _ItemRow(item: item)).toList(),
-                  );
-                },
-                loading: () => const CircularProgressIndicator(),
-                error: (_, __) => const Text('無法載入項目'),
-              ),
-              const SizedBox(height: 16),
-              // Raw OCR text
-              const Text(
-                'OCR 原文',
-                style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
-              ),
-              const SizedBox(height: 8),
-              Container(
-                width: double.infinity,
-                padding: const EdgeInsets.all(12),
-                decoration: BoxDecoration(
-                  color: Colors.grey.shade100,
-                  borderRadius: BorderRadius.circular(8),
-                ),
-                child: Text(
-                  rawText,
-                  style: const TextStyle(fontSize: 12, fontFamily: 'monospace'),
-                ),
-              ),
-            ],
+            ),
           ),
-        );
-      },
+          if (_expanded)
+            _PeriodReceipts(
+              helperId: widget.payment['helper_id'] as String,
+              startDate: paymentDate!,
+              endDate: endDate,
+              locale: widget.locale,
+            ),
+        ],
+      ),
     );
   }
 }
 
-class _ItemRow extends StatelessWidget {
-  final Map<String, dynamic> item;
+class _PeriodReceipts extends ConsumerWidget {
+  final String helperId;
+  final String startDate;
+  final String endDate;
+  final AppLocale locale;
 
-  const _ItemRow({required this.item});
+  const _PeriodReceipts({
+    required this.helperId,
+    required this.startDate,
+    required this.endDate,
+    required this.locale,
+  });
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final receiptsAsync = ref.watch(receiptsBetweenPaymentsProvider(
+      _PeriodQuery(helperId: helperId, startDate: startDate, endDate: endDate),
+    ));
+
+    return receiptsAsync.when(
+      data: (receipts) {
+        if (receipts.isEmpty) {
+          return Padding(
+            padding: const EdgeInsets.all(16),
+            child: Text(
+              AppStrings.noReceiptsHint(locale),
+              style: const TextStyle(color: Colors.grey, fontSize: 13),
+            ),
+          );
+        }
+        return Column(
+          children: [
+            const Divider(height: 1),
+            ...receipts.map((r) => _PeriodReceiptTile(receipt: r, locale: locale)),
+          ],
+        );
+      },
+      loading: () => const Padding(
+        padding: EdgeInsets.all(16),
+        child: Center(child: CircularProgressIndicator(strokeWidth: 2)),
+      ),
+      error: (_, __) => Padding(
+        padding: const EdgeInsets.all(16),
+        child: Text(AppStrings.loadingFailed(locale), style: const TextStyle(color: Colors.red, fontSize: 13)),
+      ),
+    );
+  }
+}
+
+class _PeriodReceiptTile extends StatelessWidget {
+  final Map<String, dynamic> receipt;
+  final AppLocale locale;
+
+  const _PeriodReceiptTile({required this.receipt, required this.locale});
 
   @override
   Widget build(BuildContext context) {
+    final storeName = receipt['store_name'] ?? '未知商戶';
+    final amount = (receipt['amount'] as num?)?.toDouble() ?? 0;
+    final transactionDate = receipt['transaction_date'] as String?;
+    final dateStr = transactionDate != null ? DateFormat('MM-dd').format(DateTime.parse(transactionDate)) : '-';
+
     return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 4),
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
       child: Row(
         children: [
-          Expanded(
-            child: Text(
-              item['item_name'] ?? '',
-              style: const TextStyle(fontSize: 14),
-            ),
+          Text(dateStr, style: const TextStyle(fontSize: 12, color: Colors.grey)),
+          const SizedBox(width: 12),
+          Expanded(child: Text(storeName, style: const TextStyle(fontSize: 14))),
+          Text(
+            '\$${amount.toStringAsFixed(0)}',
+            style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w500),
           ),
-          if (item['unit_price'] != null)
-            Text(
-              '\$${(item['unit_price'] as num).toStringAsFixed(0)}',
-              style: const TextStyle(fontWeight: FontWeight.w500),
-            ),
         ],
       ),
     );

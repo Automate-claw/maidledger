@@ -19,6 +19,20 @@ class AppStrings {
       'save': '儲存',
       'cancel': '取消',
       'confirm': '確認',
+      'cash_balance': '現金餘額',
+      'balance': '餘額',
+      'overdraft': '透支',
+      'received': '已收',
+      'spent': '已用',
+      'no_relation_hint': '連接僱主以追蹤可用額',
+      'receipts': '收據列表',
+      'no_receipts': '暫時沒有收據',
+      'no_receipts_hint': '工人上傳後會在這裡顯示',
+      'payments': '付款記錄',
+      'loading_failed': '載入失敗',
+      'period_summary': '期間摘要',
+      'from_payment': '由 {date} 的付款',
+      'items_count': '{count} 項消費',
       'expense_saved': '✅ 記帳已保存！',
       'expense_save_failed': '❌ 保存失敗',
       'confirm_expense': '💾 確認記帳？',
@@ -82,6 +96,20 @@ class AppStrings {
       'save': 'Save',
       'cancel': 'Cancel',
       'confirm': 'Confirm',
+      'cash_balance': 'Cash Balance',
+      'balance': 'Balance',
+      'overdraft': 'overdraft',
+      'received': 'Received',
+      'spent': 'Spent',
+      'no_relation_hint': 'Link employer to track balance',
+      'receipts': 'Receipts',
+      'no_receipts': 'No receipts yet',
+      'no_receipts_hint': 'Receipts from helper will appear here',
+      'payments': 'Payments',
+      'loading_failed': 'Loading failed',
+      'period_summary': 'Period Summary',
+      'from_payment': 'From payment on {date}',
+      'items_count': '{count} items',
       'expense_saved': '✅ Expense saved!',
       'expense_save_failed': '❌ Failed to save expense',
       'confirm_expense': '💾 Confirm expense?',
@@ -145,6 +173,20 @@ class AppStrings {
       'save': 'Simpan',
       'cancel': 'Batal',
       'confirm': 'Konfirmasi',
+      'cash_balance': 'Saldo Tunai',
+      'balance': 'Saldo',
+      'overdraft': 'kurang',
+      'received': 'Diterima',
+      'spent': 'Dikeluarkan',
+      'no_relation_hint': 'Tautkan majikan untuk lacak saldo',
+      'receipts': 'Daftar Resibo',
+      'no_receipts': 'Belum ada resibo',
+      'no_receipts_hint': 'Resibo dari kasambahay akan muncul di sini',
+      'payments': 'Pembayaran',
+      'loading_failed': 'Gagal memuat',
+      'period_summary': 'Ringkasan Periodik',
+      'from_payment': 'Dari pembayaran pada {date}',
+      'items_count': '{count} item',
       'expense_saved': '✅ Biaya disimpan!',
       'expense_save_failed': '❌ Gagal menyimpan biaya',
       'confirm_expense': '💾 Konfirmasi biaya?',
@@ -208,6 +250,20 @@ class AppStrings {
       'save': 'I-save',
       'cancel': 'Kanselahin',
       'confirm': 'Kumpirmahin',
+      'cash_balance': 'Cash Balance',
+      'balance': 'Balance',
+      'overdraft': 'overdraft',
+      'received': 'Natanggap',
+      'spent': 'Ginasta',
+      'no_relation_hint': 'I-link ang employer para subaybayan ang balance',
+      'receipts': 'Listahan ng Resibo',
+      'no_receipts': 'Wala pang resibo',
+      'no_receipts_hint': 'Ang resibo mula sa kasambahay ay lalabas dito',
+      'payments': 'Mga Pagbabayad',
+      'loading_failed': 'Nabigo ang pag-load',
+      'period_summary': 'Buod ng Periodiko',
+      'from_payment': 'Mula sa pagbabayad noong {date}',
+      'items_count': '{count} na item',
       'expense_saved': '✅ Na-save ang gastusin!',
       'expense_save_failed': '❌ Hindi nagtagumpay ang pag-save ng gastusin',
       'confirm_expense': '💾 Kumpirmahin ang gastusin?',
@@ -311,4 +367,18 @@ class AppStrings {
   static String chat(AppLocale locale) => get(locale, 'chat');
   static String history(AppLocale locale) => get(locale, 'history');
   static String scan(AppLocale locale) => get(locale, 'scan');
+  static String cashBalance(AppLocale locale) => get(locale, 'cash_balance');
+  static String balance(AppLocale locale) => get(locale, 'balance');
+  static String overdraft(AppLocale locale) => get(locale, 'overdraft');
+  static String received(AppLocale locale) => get(locale, 'received');
+  static String spent(AppLocale locale) => get(locale, 'spent');
+  static String noRelationHint(AppLocale locale) => get(locale, 'no_relation_hint');
+  static String receipts(AppLocale locale) => get(locale, 'receipts');
+  static String noReceipts(AppLocale locale) => get(locale, 'no_receipts');
+  static String noReceiptsHint(AppLocale locale) => get(locale, 'no_receipts_hint');
+  static String payments(AppLocale locale) => get(locale, 'payments');
+  static String loadingFailed(AppLocale locale) => get(locale, 'loading_failed');
+  static String periodSummary(AppLocale locale) => get(locale, 'period_summary');
+  static String fromPayment(AppLocale locale, String date) => getWith(locale, 'from_payment', {'{date}': date});
+  static String itemsCount(AppLocale locale, String count) => getWith(locale, 'items_count', {'{count}': count});
 }

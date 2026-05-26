@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:table_calendar/table_calendar.dart';
 import 'package:intl/intl.dart';
+import 'package:maidledger_localization/maidledger_localization.dart';
 import '../../core/services/supabase_client_provider.dart';
 import 'receipt_detail_screen.dart';
 import 'record_payment_screen.dart';
@@ -25,6 +26,9 @@ class _HistoryScreenState extends ConsumerState<HistoryScreen> {
   String? _error;
   double _totalIncome = 0;
   double _totalExpense = 0;
+  double _balance = 0;
+
+  AppLocale get _locale => ref.watch(localeProvider);
 
   @override
   void initState() {
@@ -100,6 +104,21 @@ class _HistoryScreenState extends ConsumerState<HistoryScreen> {
         ));
       }
 
+      // Compute balance via SQL
+      final incomeRes = await supabase
+          .from('employer_payments')
+          .select('amount')
+          .eq('helper_id', userId);
+      final expenseRes = await supabase
+          .from('receipts')
+          .select('amount')
+          .eq('helper_id', userId);
+      final income = (incomeRes as List)
+          .fold<double>(0, (sum, r) => sum + ((r['amount'] as num?)?.toDouble() ?? 0));
+      final expense = (expenseRes as List)
+          .fold<double>(0, (sum, r) => sum + ((r['amount'] as num?)?.toDouble() ?? 0));
+      _balance = income - expense;
+
       setState(() {
         _payments = payments;
         _receiptsByDay = byDay;
@@ -112,7 +131,6 @@ class _HistoryScreenState extends ConsumerState<HistoryScreen> {
     }
   }
 
-  double get _balance => _totalIncome - _totalExpense;
   bool get _isPositiveBalance => _balance >= 0;
 
   List<ReceiptDayItem> _getReceiptsForDay(DateTime day) {
@@ -181,7 +199,7 @@ class _HistoryScreenState extends ConsumerState<HistoryScreen> {
 
   Widget _buildBalanceCard() {
     final balanceColor = _isPositiveBalance ? Colors.green : Colors.red;
-    final balanceLabel = _balance >= 0 ? 'Balance' : 'Overdraft';
+    final balanceLabel = _balance >= 0 ? AppStrings.balance(_locale) : AppStrings.overdraft(_locale);
 
     return Container(
       margin: const EdgeInsets.all(12),
@@ -203,7 +221,7 @@ class _HistoryScreenState extends ConsumerState<HistoryScreen> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                const Text('Cash Balance', style: TextStyle(color: Colors.white70, fontSize: 13)),
+                Text(AppStrings.cashBalance(_locale), style: const TextStyle(color: Colors.white70, fontSize: 13)),
                 const SizedBox(height: 4),
                 Text(
                   '\$${_balance.abs().toStringAsFixed(0)}',
@@ -214,16 +232,16 @@ class _HistoryScreenState extends ConsumerState<HistoryScreen> {
                   ),
                 ),
                 if (!_isPositiveBalance)
-                  const Text('overdraft', style: TextStyle(color: Colors.white60, fontSize: 12)),
+                  Text(AppStrings.overdraft(_locale), style: const TextStyle(color: Colors.white60, fontSize: 12)),
               ],
             ),
           ),
           Column(
             crossAxisAlignment: CrossAxisAlignment.end,
             children: [
-              _buildBalanceRow('Received', _totalIncome, Icons.arrow_downward),
+              _buildBalanceRow(AppStrings.received(_locale), _totalIncome, Icons.arrow_downward),
               const SizedBox(height: 4),
-              _buildBalanceRow('Spent', _totalExpense, Icons.arrow_upward),
+              _buildBalanceRow(AppStrings.spent(_locale), _totalExpense, Icons.arrow_upward),
             ],
           ),
         ],
