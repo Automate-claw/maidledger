@@ -5,6 +5,7 @@ import 'package:maidledger_localization/maidledger_localization.dart';
 import '../../core/services/supabase_client_provider.dart';
 import '../../core/services/relation_service.dart';
 import '../auth/auth_provider.dart';
+import '../auth/relation_gate.dart';
 
 /// Settings screen with logout + language switch + employer link
 class SettingsScreen extends ConsumerWidget {

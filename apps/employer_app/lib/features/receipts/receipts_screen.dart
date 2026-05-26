@@ -71,8 +71,8 @@ class _PeriodQuery {
   bool operator ==(Object other) =>
       other is _PeriodQuery &&
       other.helperId == helperId &&
-      other.startDate == startDate &&
-      other.endDate == endDate;
+      other.startDate == other.startDate &&
+      other.endDate == other.endDate;
 
   @override
   int get hashCode => Object.hash(helperId, startDate, endDate);
@@ -190,20 +190,12 @@ class _BalanceCard extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final relationAsync = ref.watch(currentRelationProvider);
     final paymentsAsync = ref.watch(employerPaymentsProvider);
 
-    return relationAsync.when(
-      data: (relation) {
-        final income = paymentsAsync.valueOrNull?.fold<double>(0, (sum, p) => sum + ((p['amount'] as num?)?.toDouble() ?? 0)) ?? 0;
-        // Balance = SUM(employer_payments) - SUM(receipts for this helper)
-        // We'll compute this with a separate query in a later step
-        return _BalanceCardContent(
-          income: income,
-          expense: 0, // will be updated
-          locale: locale,
-          hasRelation: relation != null,
-        );
+    return paymentsAsync.when(
+      data: (payments) {
+        final income = payments.fold<double>(0, (sum, p) => sum + ((p['amount'] as num?)?.toDouble() ?? 0));
+        return _BalanceCardContent(income: income, locale: locale);
       },
       loading: () => const Card(
         child: Padding(padding: EdgeInsets.all(24), child: Center(child: CircularProgressIndicator())),
@@ -213,38 +205,30 @@ class _BalanceCard extends ConsumerWidget {
   }
 }
 
-class _BalanceCardContent extends StatefulWidget {
+class _BalanceCardContent extends ConsumerStatefulWidget {
   final double income;
-  final double expense;
   final AppLocale locale;
-  final bool hasRelation;
 
-  const _BalanceCardContent({
-    required this.income,
-    required this.expense,
-    required this.locale,
-    required this.hasRelation,
-  });
+  const _BalanceCardContent({required this.income, required this.locale});
 
   @override
-  State<_BalanceCardContent> createState() => _BalanceCardContentState();
+  ConsumerState<_BalanceCardContent> createState() => _BalanceCardContentState();
 }
 
-class _BalanceCardContentState extends State<_BalanceCardContent> {
+class _BalanceCardContentState extends ConsumerState<_BalanceCardContent> {
   double _computedExpense = 0;
   bool _expenseLoaded = false;
 
   @override
-  void didChangeDependencies() {
-    super.didChangeDependencies();
-    if (!_expenseLoaded && widget.hasRelation) {
-      _loadExpense();
-    }
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) => _loadExpense());
   }
 
   Future<void> _loadExpense() async {
     final relation = await ref.read(currentRelationProvider.future);
     if (relation == null) return;
+    if (!mounted) return;
 
     final supabase = ref.read(supabaseClientProvider);
     final receipts = await supabase
@@ -400,26 +384,16 @@ class _PaymentTileState extends State<_PaymentTile> {
                           style: const TextStyle(fontWeight: FontWeight.w500),
                         ),
                         if (widget.nextPaymentDate == null)
-                          Text(
-                            '至現在',
-                            style: TextStyle(color: Colors.grey[600], fontSize: 12),
-                          ),
+                          const Text('至現在', style: TextStyle(color: Colors.grey, fontSize: 12)),
                       ],
                     ),
                   ),
                   Text(
                     '+\$${amount.toStringAsFixed(0)}',
-                    style: const TextStyle(
-                      fontWeight: FontWeight.bold,
-                      fontSize: 16,
-                      color: Colors.green,
-                    ),
+                    style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16, color: Colors.green),
                   ),
                   const SizedBox(width: 8),
-                  Icon(
-                    _expanded ? Icons.expand_less : Icons.expand_more,
-                    color: Colors.grey,
-                  ),
+                  Icon(_expanded ? Icons.expand_less : Icons.expand_more, color: Colors.grey),
                 ],
               ),
             ),
@@ -461,10 +435,7 @@ class _PeriodReceipts extends ConsumerWidget {
         if (receipts.isEmpty) {
           return Padding(
             padding: const EdgeInsets.all(16),
-            child: Text(
-              AppStrings.noReceiptsHint(locale),
-              style: const TextStyle(color: Colors.grey, fontSize: 13),
-            ),
+            child: Text(AppStrings.noReceiptsHint(locale), style: const TextStyle(color: Colors.grey, fontSize: 13)),
           );
         }
         return Column(
@@ -474,14 +445,8 @@ class _PeriodReceipts extends ConsumerWidget {
           ],
         );
       },
-      loading: () => const Padding(
-        padding: EdgeInsets.all(16),
-        child: Center(child: CircularProgressIndicator(strokeWidth: 2)),
-      ),
-      error: (_, __) => Padding(
-        padding: const EdgeInsets.all(16),
-        child: Text(AppStrings.loadingFailed(locale), style: const TextStyle(color: Colors.red, fontSize: 13)),
-      ),
+      loading: () => const Padding(padding: EdgeInsets.all(16), child: Center(child: CircularProgressIndicator(strokeWidth: 2))),
+      error: (_, __) => Padding(padding: const EdgeInsets.all(16), child: Text(AppStrings.loadingFailed(locale), style: const TextStyle(color: Colors.red, fontSize: 13))),
     );
   }
 }
@@ -506,10 +471,7 @@ class _PeriodReceiptTile extends StatelessWidget {
           Text(dateStr, style: const TextStyle(fontSize: 12, color: Colors.grey)),
           const SizedBox(width: 12),
           Expanded(child: Text(storeName, style: const TextStyle(fontSize: 14))),
-          Text(
-            '\$${amount.toStringAsFixed(0)}',
-            style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w500),
-          ),
+          Text('\$${amount.toStringAsFixed(0)}', style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w500)),
         ],
       ),
     );
@@ -519,9 +481,6 @@ class _PeriodReceiptTile extends StatelessWidget {
 /// Provider for receipt items
 final _receiptItemsProvider = FutureProvider.family<List<Map<String, dynamic>>, String>((ref, receiptId) async {
   final supabase = ref.read(supabaseClientProvider);
-  final items = await supabase
-      .from('receipt_items')
-      .select()
-      .eq('receipt_id', receiptId);
+  final items = await supabase.from('receipt_items').select().eq('receipt_id', receiptId);
   return (items as List).cast<Map<String, dynamic>>();
 });

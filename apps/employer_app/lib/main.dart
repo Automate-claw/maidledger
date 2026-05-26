@@ -12,17 +12,19 @@ import 'features/receipts/receipts_screen.dart';
 import 'features/mycode/my_code_screen.dart';
 import 'features/settings/settings_screen.dart';
 
-/// Notification settings provider (stored locally)
-final notificationEnabledProvider = StateNotifierProvider<NotificationEnabledNotifier, bool>((ref) {
+/// Notification settings provider (stored locally) - Riverpod 3.x Notifier API
+final notificationEnabledProvider = NotifierProvider<NotificationEnabledNotifier, bool>(() {
   return NotificationEnabledNotifier();
 });
 
-class NotificationEnabledNotifier extends StateNotifier<bool> {
-  NotificationEnabledNotifier() : super(true) {
-    _load();
-  }
-
+class NotificationEnabledNotifier extends Notifier<bool> {
   static const _key = 'notification_enabled';
+
+  @override
+  bool build() {
+    _load();
+    return true;
+  }
 
   Future<void> _load() async {
     final prefs = await SharedPreferences.getInstance();

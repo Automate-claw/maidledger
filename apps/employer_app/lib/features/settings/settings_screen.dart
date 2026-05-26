@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:maidledger_localization/maidledger_localization.dart';
+import '../../core/services/supabase_client_provider.dart';
 import '../auth/auth_provider.dart';
 import '../../main.dart';
 
