@@ -43,10 +43,6 @@ class _RelationGateState extends ConsumerState<RelationGate> {
         _hasActiveRelation = status.hasActiveRelation;
         _status = status;
       });
-
-      if (!status.hasActiveRelation && !_dismissed) {
-        _showLinkingDialog();
-      }
     }
   }
 

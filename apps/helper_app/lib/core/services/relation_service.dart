@@ -138,6 +138,25 @@ class RelationService {
     }
   }
 
+  /// End/disconnect an active relation
+  Future<LinkResult> endRelation({
+    required String helperId,
+    required String employerId,
+  }) async {
+    try {
+      await _supabase
+          .from('employer_helper_relations')
+          .update({'status': 'inactive'})
+          .eq('helper_id', helperId)
+          .eq('employer_id', employerId)
+          .eq('status', 'active');
+
+      return LinkResult(success: true);
+    } catch (e) {
+      return LinkResult(success: false, error: '断开连接失败：$e');
+    }
+  }
+
   /// Get all active relations for a helper
   Future<List<Map<String, dynamic>>> getActiveRelations(String helperId) async {
     final relations = await _supabase

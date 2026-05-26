@@ -3,9 +3,10 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:maidledger_localization/maidledger_localization.dart';
 import '../../core/services/supabase_client_provider.dart';
+import '../../core/services/relation_service.dart';
 import '../auth/auth_provider.dart';
 
-/// Settings screen with logout + language switch
+/// Settings screen with logout + language switch + employer link
 class SettingsScreen extends ConsumerWidget {
   const SettingsScreen({super.key});
 
@@ -16,6 +17,7 @@ class SettingsScreen extends ConsumerWidget {
 
     // Fetch profile directly
     final profileAsync = ref.watch(_helperProfileProvider(user?.id ?? ''));
+    final relationAsync = ref.watch(relationStatusProvider);
 
     return Scaffold(
       appBar: AppBar(
@@ -67,6 +69,25 @@ class SettingsScreen extends ConsumerWidget {
                 ),
               ),
               const SizedBox(height: 16),
+
+              // Employer link section
+              relationAsync.when(
+                data: (status) => _EmployerLinkCard(
+                  status: status,
+                  locale: locale,
+                  onLinked: () => ref.invalidate(relationStatusProvider),
+                ),
+                loading: () => const Card(
+                  child: ListTile(
+                    leading: Icon(Icons.link),
+                    title: Text('载入中...'),
+                  ),
+                ),
+                error: (_, __) => const SizedBox(),
+              ),
+
+              const SizedBox(height: 16),
+
               // Language section
               Card(
                 child: Column(
@@ -88,6 +109,7 @@ class SettingsScreen extends ConsumerWidget {
                 ),
               ),
               const SizedBox(height: 16),
+
               // Account section
               Card(
                 child: Column(
@@ -164,6 +186,174 @@ class SettingsScreen extends ConsumerWidget {
             onPressed: () {
               Navigator.pop(ctx);
               ref.read(authStateProvider.notifier).signOut();
+            },
+            child: Text(AppStrings.confirm(locale)),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _EmployerLinkCard extends ConsumerWidget {
+  final RelationStatus status;
+  final AppLocale locale;
+  final VoidCallback onLinked;
+
+  const _EmployerLinkCard({
+    required this.status,
+    required this.locale,
+    required this.onLinked,
+  });
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    if (status.hasActiveRelation && status.relations.isNotEmpty) {
+      final relation = status.relations.first;
+      final employer = relation['employer'];
+      final employerName = employer is Map ? employer['name'] ?? '僱主' : '僱主';
+      final employerId = relation['employer_id'] as String;
+
+      return Card(
+        child: ListTile(
+          leading: const CircleAvatar(
+            backgroundColor: Colors.green,
+            child: Icon(Icons.people, color: Colors.white),
+          ),
+          title: Text(AppStrings.get(locale, 'employer')),
+          subtitle: Text(employerName),
+          trailing: TextButton(
+            onPressed: () => _confirmDisconnect(context, ref, employerId),
+            child: Text(
+              AppStrings.disconnectEmployer(locale),
+              style: const TextStyle(color: Colors.red),
+            ),
+          ),
+        ),
+      );
+    }
+
+    // Not linked — show link button
+    return Card(
+      child: ListTile(
+        leading: const CircleAvatar(
+          backgroundColor: Colors.grey,
+          child: Icon(Icons.link_off, color: Colors.white),
+        ),
+        title: Text(AppStrings.linkEmployer(locale)),
+        subtitle: Text(AppStrings.noRelationHint(locale)),
+        trailing: FilledButton(
+          onPressed: () => _showLinkDialog(context, ref),
+          child: Text(AppStrings.linkEmployer(locale)),
+        ),
+      ),
+    );
+  }
+
+  void _showLinkDialog(BuildContext context, WidgetRef ref) {
+    final codeCtrl = TextEditingController();
+    final codeKey = GlobalKey<FormState>();
+
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: Text(AppStrings.linkEmployer(locale)),
+        content: Form(
+          key: codeKey,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Text(AppStrings.employerCodeHint(locale)),
+              const SizedBox(height: 16),
+              TextFormField(
+                controller: codeCtrl,
+                decoration: InputDecoration(
+                  labelText: AppStrings.inviteCode(locale),
+                  hintText: '例如 DEMO01',
+                  border: const OutlineInputBorder(),
+                ),
+                textCapitalization: TextCapitalization.characters,
+                maxLength: 6,
+                validator: (v) => v == null || v.trim().isEmpty ? 'Required' : null,
+              ),
+            ],
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: Text(AppStrings.cancel(locale)),
+          ),
+          FilledButton(
+            onPressed: () async {
+              if (!codeKey.currentState!.validate()) return;
+              final user = supabase.auth.currentUser;
+              if (user == null) return;
+
+              final service = RelationService(supabase);
+              final result = await service.linkToEmployer(
+                helperId: user.id,
+                employerCode: codeCtrl.text.trim(),
+              );
+
+              if (ctx.mounted) Navigator.pop(ctx);
+
+              if (result.success) {
+                onLinked();
+                if (context.mounted) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(
+                      content: Text('✅ 已連接到 ${result.employerName ?? "僱主"}'),
+                      backgroundColor: Colors.green,
+                    ),
+                  );
+                }
+              } else {
+                if (context.mounted) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(
+                      content: Text('❌ ${result.error}'),
+                      backgroundColor: Colors.red,
+                    ),
+                  );
+                }
+              }
+            },
+            child: Text(AppStrings.confirm(locale)),
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _confirmDisconnect(BuildContext context, WidgetRef ref, String employerId) {
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: Text(AppStrings.disconnectEmployer(locale)),
+        content: Text(AppStrings.disconnectConfirm(locale)),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: Text(AppStrings.cancel(locale)),
+          ),
+          FilledButton(
+            style: FilledButton.styleFrom(backgroundColor: Colors.red),
+            onPressed: () async {
+              Navigator.pop(ctx);
+              final user = supabase.auth.currentUser;
+              if (user == null) return;
+
+              final service = RelationService(supabase);
+              final result = await service.endRelation(
+                helperId: user.id,
+                employerId: employerId,
+              );
+
+              if (result.success) {
+                onLinked();
+              }
             },
             child: Text(AppStrings.confirm(locale)),
           ),

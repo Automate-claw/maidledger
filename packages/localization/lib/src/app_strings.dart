@@ -35,6 +35,11 @@ class AppStrings {
       'items_count': '{count} 項消費',
       'expense_saved': '✅ 記帳已保存！',
 ,
+      'link_employer': '連接僱主',
+      'disconnect_employer': '断开僱主連接',
+      'disconnect_confirm': '確定要断开與僱主的連接嗎？你的歷史記錄將會保留。',
+      'invite_code': '邀請碼',
+      'employer_code_hint': '請輸入僱主的6位邀請碼',,
       'delete': '刪除',
       'delete_receipt': '刪除收據',
       'delete_receipt_confirm': '確定刪除這張收據？此操作無法撤銷。',      'expense_save_failed': '❌ 保存失敗',
@@ -115,6 +120,11 @@ class AppStrings {
       'items_count': '{count} items',
       'expense_saved': '✅ Expense saved!',
 ,
+      'link_employer': 'Link Employer',
+      'disconnect_employer': 'Disconnect Employer',
+      'disconnect_confirm': 'Are you sure you want to disconnect from this employer? Your history will be kept.',
+      'invite_code': 'Invite Code',
+      'employer_code_hint': 'Enter employer's 6-character invite code',,
       'delete': 'Delete',
       'delete_receipt': 'Delete Receipt',
       'delete_receipt_confirm': 'Are you sure you want to delete this receipt? This cannot be undone.',      'expense_save_failed': '❌ Failed to save expense',
@@ -195,6 +205,11 @@ class AppStrings {
       'items_count': '{count} item',
       'expense_saved': '✅ Biaya disimpan!',
 ,
+      'link_employer': 'Tautkan Majikan',
+      'disconnect_employer': 'Putuskan Hubungan Majikan',
+      'disconnect_confirm': 'Apakah Anda yakin ingin memutuskan hubungan dengan majikan ini? Riwayat Anda akan disimpan.',
+      'invite_code': 'Kode Undangan',
+      'employer_code_hint': 'Masukkan kode undangan 6 karakter majikan',,
       'delete': 'Hapus',
       'delete_receipt': 'Hapus Resibo',
       'delete_receipt_confirm': 'Apakah Anda yakin ingin menghapus resibo ini? Tindakan ini tidak dapat dibatalkan.',      'expense_save_failed': '❌ Gagal menyimpan biaya',
@@ -275,6 +290,11 @@ class AppStrings {
       'items_count': '{count} na item',
       'expense_saved': '✅ Na-save ang gastusin!',
 ,
+      'link_employer': 'I-link ang Employer',
+      'disconnect_employer': 'Alisin ang Koneksyon sa Employer',
+      'disconnect_confirm': 'Sigurado ka bang gusto mong alisin ang koneksyon sa employer na ito? Itatago ang iyong kasaysayan.',
+      'invite_code': 'Invite Code',
+      'employer_code_hint': 'Ilagay ang 6-character invite code ng employer',,
       'delete': 'Burahin',
       'delete_receipt': 'Burahin ang Resibo',
       'delete_receipt_confirm': 'Sigurado ka bang gusto mong burahin ang resibong ito? Hindi ito mababawi.',      'expense_save_failed': '❌ Hindi nagtagumpay ang pag-save ng gastusin',
@@ -396,4 +416,9 @@ class AppStrings {
   static String delete(AppLocale locale) => get(locale, 'delete');
   static String deleteReceipt(AppLocale locale) => get(locale, 'delete_receipt');
   static String deleteReceiptConfirm(AppLocale locale) => get(locale, 'delete_receipt_confirm');
+  static String linkEmployer(AppLocale locale) => get(locale, 'link_employer');
+  static String disconnectEmployer(AppLocale locale) => get(locale, 'disconnect_employer');
+  static String disconnectConfirm(AppLocale locale) => get(locale, 'disconnect_confirm');
+  static String inviteCode(AppLocale locale) => get(locale, 'invite_code');
+  static String employerCodeHint(AppLocale locale) => get(locale, 'employer_code_hint');
 }
