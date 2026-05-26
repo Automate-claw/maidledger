@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:table_calendar/table_calendar.dart';
 import 'package:intl/intl.dart';
+import 'package:share_plus/share_plus.dart';
 import 'package:maidledger_localization/maidledger_localization.dart';
 import '../../core/services/supabase_client_provider.dart';
 import 'receipt_detail_screen.dart';
@@ -27,6 +28,43 @@ class _HistoryScreenState extends ConsumerState<HistoryScreen> {
   String? _error;
   double _totalIncome = 0;
   double _totalExpense = 0;
+
+  Future<void> _shareDailySummary() async {
+    // Show loading indicator
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) => const Center(child: CircularProgressIndicator()),
+    );
+
+    try {
+      final response = await supabase.functions.invoke('daily-summary');
+
+      Navigator.pop(context);
+
+      if (response.data == null || response.data['text'] == null) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('無法獲取摘要')),
+          );
+        }
+        return;
+      }
+
+      final text = response.data['text'] as String;
+
+      // Use share_plus to open system share sheet
+      await Share.share(text);
+
+    } catch (e) {
+      Navigator.pop(context);
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('錯誤：$e')),
+        );
+      }
+    }
+  }
 
   @override
   void initState() {
@@ -159,6 +197,11 @@ class _HistoryScreenState extends ConsumerState<HistoryScreen> {
           IconButton(
             icon: const Icon(Icons.refresh),
             onPressed: _loadData,
+          ),
+          IconButton(
+            icon: const Icon(Icons.share),
+            tooltip: '分享今日摘要',
+            onPressed: _shareDailySummary,
           ),
           IconButton(
             icon: const Icon(Icons.history),
