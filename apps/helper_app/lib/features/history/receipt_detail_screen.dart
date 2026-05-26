@@ -153,13 +153,13 @@ class _ReceiptDetailScreenState extends ConsumerState<ReceiptDetailScreen> {
       }
       // Delete receipt (cascades to receipt_items via FK)
       final result = await supabase.from('receipts').delete().eq('id', widget.receiptId);
-      debugPrint('Delete result: $result');
-      if (mounted) Navigator.pop(context, true);
+      debugPrint('Delete result type: ${result.runtimeType} value: $result');
+      if (mounted) Navigator.pop(context, result);
     } catch (e) {
       debugPrint('Delete receipt error: $e');
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('刪除失敗：$e')),
+          SnackBar(content: Text('刪除失敗： $e')),
         );
       }
     }

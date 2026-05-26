@@ -446,13 +446,13 @@ class _HistoryScreenState extends ConsumerState<HistoryScreen> {
           ],
         ),
         onTap: () async {
-          final changed = await Navigator.push<bool>(
+          await Navigator.push(
             context,
             MaterialPageRoute(
               builder: (_) => ReceiptDetailScreen(receiptId: r.id),
             ),
           );
-          if (changed == true) _loadData();
+          _loadData();
         },
       ),
     );
