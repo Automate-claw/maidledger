@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
-import 'package:share_plus/share_plus.dart';
 import '../../core/services/supabase_client_provider.dart';
 import '../auth/auth_provider.dart';
 
@@ -49,50 +48,6 @@ final helperNamesProvider = FutureProvider.family<String?, String>((ref, helperI
 class ReceiptsScreen extends ConsumerWidget {
   const ReceiptsScreen({super.key});
 
-  void _shareDailySummary(BuildContext context, WidgetRef ref) async {
-    // Show loading indicator
-    showDialog(
-      context: context,
-      barrierDismissible: false,
-      builder: (context) => const Center(child: CircularProgressIndicator()),
-    );
-
-    try {
-      final supabase = ref.read(supabaseClientProvider);
-      final user = ref.read(currentUserProvider);
-      if (user == null) {
-        Navigator.pop(context);
-        return;
-      }
-
-      final response = await supabase.functions.invoke('daily-summary');
-
-      Navigator.pop(context);
-
-      if (response.data == null || response.data['text'] == null) {
-        if (context.mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('無法獲取摘要')),
-          );
-        }
-        return;
-      }
-
-      final text = response.data['text'] as String;
-
-      // Use share_plus to open system share sheet
-      await Share.share(text);
-
-    } catch (e) {
-      Navigator.pop(context);
-      if (context.mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('錯誤：$e')),
-        );
-      }
-    }
-  }
-
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final receiptsAsync = ref.watch(employerReceiptsProvider);
@@ -101,13 +56,6 @@ class ReceiptsScreen extends ConsumerWidget {
       appBar: AppBar(
         title: const Text('收據列表'),
         centerTitle: true,
-        actions: [
-          IconButton(
-            icon: const Icon(Icons.share),
-            tooltip: '分享今日摘要',
-            onPressed: () => _shareDailySummary(context, ref),
-          ),
-        ],
       ),
       body: receiptsAsync.when(
         data: (receipts) {
