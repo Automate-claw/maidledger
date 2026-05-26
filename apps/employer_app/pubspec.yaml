@@ -24,6 +24,9 @@ dependencies:
   maidledger_localization:
     path: ../../packages/localization
 
+  # Share
+  share_plus: ^10.0.0
+
 dev_dependencies:
   flutter_test:
     sdk: flutter
