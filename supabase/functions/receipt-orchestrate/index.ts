@@ -179,6 +179,17 @@ async function processReceipt(receiptId: string): Promise<{ success: boolean; re
     return { success: false, receipt_id: receiptId, needs_review: false, errors: allErrors };
   }
 
+  // ── Early rejection: not a receipt ──────────────────────────────────────
+  if (parseResult.is_receipt === false) {
+    console.log(`[receipt-orchestrate] receipt ${receiptId} rejected — not a valid receipt`);
+    await fetch(`${SUPABASE_URL}/rest/v1/receipts?id=eq.${receiptId}`, {
+      method: "PATCH",
+      headers: { apikey: SUPABASE_SERVICE_KEY, Authorization: `Bearer ${SUPABASE_SERVICE_KEY}`, "Content-Type": "application/json" },
+      body: JSON.stringify({ parse_status: "rejected" }),
+    });
+    return { success: false, receipt_id: receiptId, needs_review: false, errors: ["not a receipt"] };
+  }
+
   const { storeCodes, prdCodes } = await getValidCodes();
   const confidence = parseResult.parse_confidence ?? 0;
   const needsReview = confidence < 0.7 || (parseResult.total_amount ?? 0) > HIGH_AMOUNT_THRESHOLD;

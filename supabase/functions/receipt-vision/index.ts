@@ -92,7 +92,7 @@ ${PRD_CATEGORIES.map((c) => `- ${c.code} = ${c.name_tc}`).join("\n")}
 
 ## 輸出格式（只輸出JSON）：
 {
-  "store_name": "店舖名稱（從圖片中識別）",
+  "is_receipt": true或false，" "store_name": "店舖名稱（從圖片中識別）",
   "store_cate": "有效的store_cate code",
   "location": "地區名稱",
   "total_amount": 數字或null,
@@ -114,6 +114,8 @@ ${PRD_CATEGORIES.map((c) => `- ${c.code} = ${c.name_tc}`).join("\n")}
 }
 
 ### 分析規則
+- 首先判斷圖片係唔係一張收據（包含商店名稱、商品項目、金額等元素）
+- 如果唔係收據（例如風景照、證件、随意拍的相片），set `is_receipt: false` 並且其他欄位填null
 - 直接睇圖片，唔需要假設 OCR 文字格式
 - item + price 靠視覺上的位置關係配對（通常左邊係項目名，右邊係價格）
 - 識別所有可見的產品，唔只係總額附近嘅項目
