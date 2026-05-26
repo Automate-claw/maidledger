@@ -82,8 +82,8 @@ serve(async (req) => {
       throw receiptsError
     }
 
-    // Get employer's name for the header
-    let employerName = '僱主'
+    // Get employer's name for the header (if linked)
+    let employerDisplay = ''
     if (receipts && receipts.length > 0 && receipts[0].employer_id) {
       const { data: employerProfile } = await supabase
         .from('user_profiles')
@@ -91,7 +91,7 @@ serve(async (req) => {
         .eq('id', receipts[0].employer_id)
         .maybeSingle()
       if (employerProfile?.name) {
-        employerName = employerProfile.name
+        employerDisplay = `👤 僱主：${employerProfile.name}\n`
       }
     }
 
@@ -136,7 +136,7 @@ serve(async (req) => {
     // Build formatted text
     const dateStr = _formatDate(windowStart)
     let text = `📋 每日採購摘要\n🗓️ ${dateStr}\n`
-    text += `👤 僱主：${employerName}\n\n`
+    if (employerDisplay) text += employerDisplay + '\n'
 
     let totalAmount = 0
 
