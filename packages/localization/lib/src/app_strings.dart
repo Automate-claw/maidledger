@@ -34,7 +34,10 @@ class AppStrings {
       'from_payment': '由 {date} 的付款',
       'items_count': '{count} 項消費',
       'expense_saved': '✅ 記帳已保存！',
-      'expense_save_failed': '❌ 保存失敗',
+,
+      'delete': '刪除',
+      'delete_receipt': '刪除收據',
+      'delete_receipt_confirm': '確定刪除這張收據？此操作無法撤銷。',      'expense_save_failed': '❌ 保存失敗',
       'confirm_expense': '💾 確認記帳？',
       'input': '輸入',
       'category': '類別',
@@ -111,7 +114,10 @@ class AppStrings {
       'from_payment': 'From payment on {date}',
       'items_count': '{count} items',
       'expense_saved': '✅ Expense saved!',
-      'expense_save_failed': '❌ Failed to save expense',
+,
+      'delete': 'Delete',
+      'delete_receipt': 'Delete Receipt',
+      'delete_receipt_confirm': 'Are you sure you want to delete this receipt? This cannot be undone.',      'expense_save_failed': '❌ Failed to save expense',
       'confirm_expense': '💾 Confirm expense?',
       'input': 'Input',
       'category': 'Category',
@@ -188,7 +194,10 @@ class AppStrings {
       'from_payment': 'Dari pembayaran pada {date}',
       'items_count': '{count} item',
       'expense_saved': '✅ Biaya disimpan!',
-      'expense_save_failed': '❌ Gagal menyimpan biaya',
+,
+      'delete': 'Hapus',
+      'delete_receipt': 'Hapus Resibo',
+      'delete_receipt_confirm': 'Apakah Anda yakin ingin menghapus resibo ini? Tindakan ini tidak dapat dibatalkan.',      'expense_save_failed': '❌ Gagal menyimpan biaya',
       'confirm_expense': '💾 Konfirmasi biaya?',
       'input': 'Input',
       'category': 'Kategori',
@@ -265,7 +274,10 @@ class AppStrings {
       'from_payment': 'Mula sa pagbabayad noong {date}',
       'items_count': '{count} na item',
       'expense_saved': '✅ Na-save ang gastusin!',
-      'expense_save_failed': '❌ Hindi nagtagumpay ang pag-save ng gastusin',
+,
+      'delete': 'Burahin',
+      'delete_receipt': 'Burahin ang Resibo',
+      'delete_receipt_confirm': 'Sigurado ka bang gusto mong burahin ang resibong ito? Hindi ito mababawi.',      'expense_save_failed': '❌ Hindi nagtagumpay ang pag-save ng gastusin',
       'confirm_expense': '💾 Kumpirmahin ang gastusin?',
       'input': 'Input',
       'category': 'Kategorya',
@@ -381,4 +393,7 @@ class AppStrings {
   static String periodSummary(AppLocale locale) => get(locale, 'period_summary');
   static String fromPayment(AppLocale locale, String date) => getWith(locale, 'from_payment', {'{date}': date});
   static String itemsCount(AppLocale locale, String count) => getWith(locale, 'items_count', {'{count}': count});
+  static String delete(AppLocale locale) => get(locale, 'delete');
+  static String deleteReceipt(AppLocale locale) => get(locale, 'delete_receipt');
+  static String deleteReceiptConfirm(AppLocale locale) => get(locale, 'delete_receipt_confirm');
 }

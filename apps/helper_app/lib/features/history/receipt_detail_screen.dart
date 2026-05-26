@@ -1,6 +1,7 @@
 import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:maidledger_localization/maidledger_localization.dart';
 import '../../core/services/supabase_client_provider.dart';
 
 /// Receipt detail screen — shows photo, items, editable fields
@@ -19,6 +20,7 @@ class _ReceiptDetailScreenState extends ConsumerState<ReceiptDetailScreen> {
   bool _isLoading = true;
   String? _error;
   bool _isSaving = false;
+  AppLocale get _locale => ref.watch(localeProvider);
 
   late TextEditingController _storeNameController;
   late TextEditingController _locationController;
@@ -137,6 +139,55 @@ class _ReceiptDetailScreenState extends ConsumerState<ReceiptDetailScreen> {
     }
   }
 
+  Future<void> _deleteReceipt() async {
+    if (_receipt == null) return;
+    try {
+      // Delete storage image first
+      final imagePath = _receipt!['image_local_path'] as String?;
+      if (imagePath != null && imagePath.contains('receipts/')) {
+        try {
+          await supabase.storage.from('receipts').remove([imagePath]);
+        } catch (e) {
+          debugPrint('Storage delete error (ignoring): $e');
+        }
+      }
+      // Delete receipt (cascades to receipt_items via FK)
+      await supabase.from('receipts').delete().eq('id', widget.receiptId);
+      if (mounted) Navigator.pop(context, 'deleted');
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('刪除失敗：$e')),
+        );
+      }
+    }
+  }
+
+
+  void _confirmDeleteReceipt() {
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: Text(AppStrings.deleteReceipt(_locale)),
+        content: Text(AppStrings.deleteReceiptConfirm(_locale)),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: Text(AppStrings.cancel(_locale)),
+          ),
+          FilledButton(
+            style: FilledButton.styleFrom(backgroundColor: Colors.red),
+            onPressed: () {
+              Navigator.pop(ctx);
+              _deleteReceipt();
+            },
+            child: Text(AppStrings.delete(_locale)),
+          ),
+        ],
+      ),
+    );
+  }
+
   Future<void> _deleteItem(int index) async {
     final item = _items[index];
     try {
@@ -165,6 +216,10 @@ class _ReceiptDetailScreenState extends ConsumerState<ReceiptDetailScreen> {
                   : const Icon(Icons.save),
               label: Text(_isSaving ? '儲存中…' : '儲存'),
             ),
+          IconButton(
+            icon: const Icon(Icons.delete, color: Colors.red),
+            onPressed: () => _confirmDeleteReceipt(),
+          ),
         ],
       ),
       body: _isLoading
