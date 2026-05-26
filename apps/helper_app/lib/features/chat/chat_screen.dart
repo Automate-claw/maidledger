@@ -58,13 +58,13 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
-    final currentLocaleCode = ref.read(localeProvider).code;
+    final currentLocaleCode = _locale.code;
     // Refresh greeting when locale changes (not just first mount)
     if (!_greetingSet || currentLocaleCode != _previousLocaleCode) {
       _previousLocaleCode = currentLocaleCode;
       _greetingSet = true;
       _messages.clear();
-      _messages.add(ChatMessage(text: AppStrings.greeting(ref.read(localeProvider)), isUser: false));
+      _messages.add(ChatMessage(text: AppStrings.greeting(_locale), isUser: false));
     }
   }
 
