@@ -58,14 +58,8 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
-    final currentLocaleCode = _locale.code;
-    // Refresh greeting when locale changes (not just first mount)
-    if (!_greetingSet || currentLocaleCode != _previousLocaleCode) {
-      _previousLocaleCode = currentLocaleCode;
-      _greetingSet = true;
-      _messages.clear();
-      _messages.add(ChatMessage(text: AppStrings.greeting(_locale), isUser: false));
-    }
+    // Simply reset greeting flag — actual greeting logic is in build() via ref.watch
+    _greetingSet = false;
   }
 
   void _refreshGreeting() {
@@ -818,6 +812,15 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
 
   @override
   Widget build(BuildContext context) {
+    // Refresh greeting if locale changed
+    final currentLocaleCode = _locale.code;
+    if (!_greetingSet || currentLocaleCode != _previousLocaleCode) {
+      _previousLocaleCode = currentLocaleCode;
+      _greetingSet = true;
+      _messages.clear();
+      _messages.add(ChatMessage(text: AppStrings.greeting(_locale), isUser: false));
+    }
+
     final locale = ref.watch(localeProvider);
     return Scaffold(
       appBar: AppBar(

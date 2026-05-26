@@ -82,6 +82,15 @@ class AppStrings {
       'delete_item': '刪除項目',
       'confirm_delete': '確認刪除',
       'delete': '刪除',
+      'store_info': '商戶資料',
+      'store_name': '商戶名稱',
+      'store_category': '商戶類別',
+      'item_name': '項目名稱',
+      'quantity': '數量',
+      'unit_price': '單價 (HK$)',
+      'select_date': '請選擇日期',
+      'amount_date': '金額與日期',
+      'item_details': '項目明細',
       'need_link_employer': '🔗 需要先連接僱主',
       'enter_invite_code': '請先輸入僱主的邀請碼來連接。',
       'ok': '確定',
@@ -235,6 +244,15 @@ class AppStrings {
       'delete_item': 'Delete Item',
       'confirm_delete': 'Confirm delete',
       'delete': 'Delete',
+      'store_info': 'Store Info',
+      'store_name': 'Store Name',
+      'store_category': 'Store Category',
+      'item_name': 'Item Name',
+      'quantity': 'Quantity',
+      'unit_price': 'Unit Price (HK$)',
+      'select_date': 'Select Date',
+      'amount_date': 'Amount & Date',
+      'item_details': 'Item Details',
     },
     AppLocale.indonesian: {
       'settings': 'Pengaturan',
@@ -351,6 +369,15 @@ class AppStrings {
       'delete_item': 'Hapus Item',
       'confirm_delete': 'Konfirmasi hapus',
       'delete': 'Hapus',
+      'store_info': 'Info Toko',
+      'store_name': 'Nama Toko',
+      'store_category': 'Kategori Toko',
+      'item_name': 'Nama Item',
+      'quantity': 'Jumlah',
+      'unit_price': 'Harga Satuan',
+      'select_date': 'Pilih Tanggal',
+      'amount_date': 'Jumlah & Tanggal',
+      'item_details': 'Detail Item',
     },
     AppLocale.filipino: {
       'settings': 'Mga Setting',
@@ -467,6 +494,15 @@ class AppStrings {
       'delete_item': 'Burahin ang Item',
       'confirm_delete': 'Kumpirmahin ang pagbura',
       'delete': 'Burahin',
+      'store_info': 'Info ng Store',
+      'store_name': 'Pangalan ng Store',
+      'store_category': 'Kategorya ng Store',
+      'item_name': 'Pangalan ng Item',
+      'quantity': 'Dami',
+      'unit_price': 'Presyo sa Unit',
+      'select_date': 'Pumili ng Petsa',
+      'amount_date': 'Halaga at Petsa',
+      'item_details': 'Detalye ng Item',
     },
   };
 
@@ -572,6 +608,15 @@ class AppStrings {
   static String deleteItem(AppLocale locale) => get(locale, 'delete_item');
   static String confirmDelete(AppLocale locale) => get(locale, 'confirm_delete');
   static String delete(AppLocale locale) => get(locale, 'delete');
+  static String storeInfo(AppLocale locale) => get(locale, 'store_info');
+  static String storeName(AppLocale locale) => get(locale, 'store_name');
+  static String storeCategory(AppLocale locale) => get(locale, 'store_category');
+  static String itemName(AppLocale locale) => get(locale, 'item_name');
+  static String quantity(AppLocale locale) => get(locale, 'quantity');
+  static String unitPrice(AppLocale locale) => get(locale, 'unit_price');
+  static String selectDate(AppLocale locale) => get(locale, 'select_date');
+  static String amountDate(AppLocale locale) => get(locale, 'amount_date');
+  static String itemDetails(AppLocale locale) => get(locale, 'item_details');
   static String productCategory(AppLocale locale, String cate) => get(locale, 'product_$cate');
   static String uploadSuccess(AppLocale locale) => get(locale, 'upload_success');
   static String uploadSuccessDesc(AppLocale locale) => get(locale, 'upload_success_desc');

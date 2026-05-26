@@ -225,23 +225,23 @@ class _ReceiptDetailScreenState extends ConsumerState<ReceiptDetailScreen> {
                       ],
                       _buildPhotoSection(),
                       const SizedBox(height: 24),
-                      _buildSectionTitle('🏪 商戶資料'),
+                      _buildSectionTitle(AppStrings.storeInfo(_locale)),
                       const SizedBox(height: 12),
                       TextField(
                         controller: _storeNameController,
-                        decoration: const InputDecoration(
-                          labelText: '商戶名稱',
-                          border: OutlineInputBorder(),
-                          prefixIcon: Icon(Icons.store),
+                        decoration: InputDecoration(
+                          labelText: AppStrings.storeName(_locale),
+                          border: const OutlineInputBorder(),
+                          prefixIcon: const Icon(Icons.store),
                         ),
                       ),
                       const SizedBox(height: 12),
                       DropdownButtonFormField<String>(
                         value: _storeCate,
-                        decoration: const InputDecoration(
-                          labelText: '商戶類別',
-                          border: OutlineInputBorder(),
-                          prefixIcon: Icon(Icons.category),
+                        decoration: InputDecoration(
+                          labelText: AppStrings.storeCategory(_locale),
+                          border: const OutlineInputBorder(),
+                          prefixIcon: const Icon(Icons.category),
                         ),
                         items: [
                           DropdownMenuItem(value: 'supermarket', child: Text(AppStrings.supermarket(_locale))),
@@ -259,14 +259,14 @@ class _ReceiptDetailScreenState extends ConsumerState<ReceiptDetailScreen> {
                       const SizedBox(height: 12),
                       TextField(
                         controller: _locationController,
-                        decoration: const InputDecoration(
-                          labelText: '地址 / 地區',
-                          border: OutlineInputBorder(),
-                          prefixIcon: Icon(Icons.location_on),
+                        decoration: InputDecoration(
+                          labelText: AppStrings.location(_locale),
+                          border: const OutlineInputBorder(),
+                          prefixIcon: const Icon(Icons.location_on),
                         ),
                       ),
                       const SizedBox(height: 24),
-                      _buildSectionTitle('💰 金額與日期'),
+                      _buildSectionTitle(AppStrings.amountDate(_locale)),
                       const SizedBox(height: 12),
                       Row(
                         children: [
@@ -274,10 +274,10 @@ class _ReceiptDetailScreenState extends ConsumerState<ReceiptDetailScreen> {
                             child: TextField(
                               controller: _amountController,
                               keyboardType: TextInputType.number,
-                              decoration: const InputDecoration(
-                                labelText: '總金額 (HK\$)',
-                                border: OutlineInputBorder(),
-                                prefixIcon: Icon(Icons.attach_money),
+                              decoration: InputDecoration(
+                                labelText: AppStrings.amount(_locale),
+                                border: const OutlineInputBorder(),
+                                prefixIcon: const Icon(Icons.attach_money),
                               ),
                             ),
                           ),
@@ -286,15 +286,15 @@ class _ReceiptDetailScreenState extends ConsumerState<ReceiptDetailScreen> {
                             child: InkWell(
                               onTap: _pickDate,
                               child: InputDecorator(
-                                decoration: const InputDecoration(
-                                  labelText: '消費日期',
-                                  border: OutlineInputBorder(),
-                                  prefixIcon: Icon(Icons.calendar_today),
+                                decoration: InputDecoration(
+                                  labelText: AppStrings.date(_locale),
+                                  border: const OutlineInputBorder(),
+                                  prefixIcon: const Icon(Icons.calendar_today),
                                 ),
                                 child: Text(
                                   _transactionDate != null
                                       ? '${_transactionDate!.year}-${_transactionDate!.month.toString().padLeft(2, '0')}-${_transactionDate!.day.toString().padLeft(2, '0')}'
-                                      : '請選擇日期',
+                                      : AppStrings.selectDate(_locale),
                                 ),
                               ),
                             ),
@@ -302,7 +302,7 @@ class _ReceiptDetailScreenState extends ConsumerState<ReceiptDetailScreen> {
                         ],
                       ),
                       const SizedBox(height: 24),
-                      _buildSectionTitle('🛒 項目明細'),
+                      _buildSectionTitle(AppStrings.itemDetails(_locale)),
                       const SizedBox(height: 12),
                       if (_items.isEmpty)
                         Container(
@@ -480,7 +480,7 @@ class _ReceiptDetailScreenState extends ConsumerState<ReceiptDetailScreen> {
                   ),
                   const SizedBox(height: 4),
                   Text(
-                    '單價: ${unitPrice != null ? 'HK\$$unitPrice' : '-'}  ×  $qty  =  ${lineTotal != null ? 'HK\$$lineTotal' : '-'}',
+                    '${AppStrings.unitPrice(_locale)}: ${unitPrice != null ? 'HK\$$unitPrice' : '-'}  ×  $qty  =  ${lineTotal != null ? 'HK\$$lineTotal' : '-'}',
                     style: TextStyle(color: Colors.grey[600], fontSize: 13),
                   ),
                   const SizedBox(height: 4),
@@ -531,7 +531,7 @@ class _ReceiptDetailScreenState extends ConsumerState<ReceiptDetailScreen> {
             children: [
               TextField(
                 controller: nameCtrl,
-                decoration: const InputDecoration(labelText: '項目名稱', border: OutlineInputBorder()),
+                decoration: InputDecoration(labelText: AppStrings.itemName(_locale), border: const OutlineInputBorder()),
               ),
               const SizedBox(height: 12),
               Row(
@@ -540,7 +540,7 @@ class _ReceiptDetailScreenState extends ConsumerState<ReceiptDetailScreen> {
                     child: TextField(
                       controller: qtyCtrl,
                       keyboardType: TextInputType.number,
-                      decoration: const InputDecoration(labelText: '數量', border: OutlineInputBorder()),
+                      decoration: InputDecoration(labelText: AppStrings.quantity(_locale), border: const OutlineInputBorder()),
                     ),
                   ),
                   const SizedBox(width: 12),
@@ -548,7 +548,7 @@ class _ReceiptDetailScreenState extends ConsumerState<ReceiptDetailScreen> {
                     child: TextField(
                       controller: priceCtrl,
                       keyboardType: TextInputType.number,
-                      decoration: const InputDecoration(labelText: '單價 (HK\$)', border: OutlineInputBorder()),
+                      decoration: InputDecoration(labelText: AppStrings.unitPrice(_locale), border: const OutlineInputBorder()),
                     ),
                   ),
                 ],
@@ -556,7 +556,7 @@ class _ReceiptDetailScreenState extends ConsumerState<ReceiptDetailScreen> {
               const SizedBox(height: 12),
               DropdownButtonFormField<String>(
                 value: prdCate,
-                decoration: const InputDecoration(labelText: '類別', border: OutlineInputBorder()),
+                decoration: InputDecoration(labelText: '類別', border: OutlineInputBorder()),
                 items: [
                   DropdownMenuItem(value: 'fish', child: Text(AppStrings.fish(_locale))),
                   DropdownMenuItem(value: 'pork', child: Text(AppStrings.pork(_locale))),
