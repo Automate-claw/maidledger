@@ -78,6 +78,7 @@ async function processChatInput(
   userId: string,
   location?: string,
   attachedImageBase64?: string,
+  selectedWeights?: Record<string, number | null>,
 ): Promise<{ success: boolean; receipt_id: string | null; needs_review: boolean; errors: string[] }> {
   const allErrors: string[] = [];
 
@@ -193,6 +194,7 @@ async function processChatInput(
         receipt_id: receiptId,
         items,
         validPrdCodes: prdCodes,
+        selected_weights: selectedWeights,
       });
       if (!r.ok || !r.data?.success) {
         allErrors.push(`receipt-writer (writeItems) warning: ${JSON.stringify(r.data)}`);
@@ -279,6 +281,7 @@ serve(async (req) => {
     const userId = body.user_id ?? "anonymous";
     const location = body.location ?? undefined;
     const attachedImageBase64 = body.attached_image_base64 ?? undefined;
+    const selectedWeights = body.selected_weights ?? undefined;
 
     if (!text.trim()) {
       return new Response(JSON.stringify({ error: "text is required" }), {
@@ -287,7 +290,7 @@ serve(async (req) => {
       });
     }
 
-    const result = await processChatInput(text, userId, location, attachedImageBase64);
+    const result = await processChatInput(text, userId, location, attachedImageBase64, selectedWeights);
 
     return new Response(JSON.stringify(result), {
       headers: { ...corsHeaders, "Content-Type": "application/json" },

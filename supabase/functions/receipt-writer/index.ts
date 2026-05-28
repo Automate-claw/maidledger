@@ -231,18 +231,23 @@ serve(async (req) => {
       }
 
       const validPrdCodes: string[] = body.validPrdCodes ?? [];
-      const itemRows = body.items.map((item: any) => ({
-        receipt_id: body.receipt_id,
-        item_name: item.item_name ?? item.item_raw_text ?? "",
-        extracted_brand: null,
-        extracted_name: item.item_name ?? item.item_raw_text ?? "",
-        extracted_spec: null,
-        item_raw_text: item.item_raw_text ?? item.item_name ?? "",
-        qty: item.qty ?? 1,
-        unit_price: item.unit_price ?? null,
-        line_total: item.actual_price ?? (item.unit_price != null && item.qty != null ? item.unit_price * item.qty : null),
-        prd_cate: validPrdCodes.includes(item.prd_cate) ? item.prd_cate : "other",
-      }));
+      const itemRows = body.items.map((item: any, idx: number) => {
+        const selectedWeight = body.selected_weights?.[idx.toString()];
+        return {
+          receipt_id: body.receipt_id,
+          item_name: item.item_name ?? item.item_raw_text ?? "",
+          extracted_brand: null,
+          extracted_name: item.item_name ?? item.item_raw_text ?? "",
+          extracted_spec: null,
+          item_raw_text: item.item_raw_text ?? item.item_name ?? "",
+          qty: item.qty ?? 1,
+          unit_price: item.unit_price ?? null,
+          line_total: item.actual_price ?? (item.unit_price != null && item.qty != null ? item.unit_price * item.qty : null),
+          prd_cate: validPrdCodes.includes(item.prd_cate) ? item.prd_cate : "other",
+          subcategory_code: item.subcategory_code ?? null,
+          weight_grams: selectedWeight ?? null,
+        };
+      });
 
       const resp = await fetch(`${supabaseUrl}/rest/v1/receipt_items`, {
         method: "POST",
