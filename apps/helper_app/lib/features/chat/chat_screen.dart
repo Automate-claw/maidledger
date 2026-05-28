@@ -511,6 +511,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
           : intent.rawText;
       final price = _extractPriceForItem(intent.rawText, itemName) ?? intent.amount;
       final prdCate = _mapToPrdCate(intent.category, itemName);
+      final subcategoryCode = i < intent.subcategoryCodes.length ? intent.subcategoryCodes[i] : null;
 
       return {
         'item_name': itemName,         // LLM-translated Chinese name
@@ -519,6 +520,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
         'unit_price': price,
         'actual_price': price,
         'prd_cate': prdCate,
+        'subcategory_code': subcategoryCode,
         'line_total': price,
       };
     });
