@@ -24,7 +24,7 @@ import '../../core/services/shop_matching_service.dart';
 ///   Phase 1 (Camera): Live preview → tap capture
 ///   Phase 2 (Preview): Show image + OCR text → [Retake] / [Confirm]
 ///   Phase 3 (Processing): Parallel compress+upload+LLM → Save → Result
-enum ScanPhase { camera, preview, processing }
+enum ScanPhase { camera, preview, processing, success, failed }
 
 class ScanScreen extends ConsumerStatefulWidget {
   const ScanScreen({super.key});
@@ -145,16 +145,25 @@ class _ScanScreenState extends ConsumerState<ScanScreen> {
       setState(() {
         _capturedImage = image;
         _scanPhase = ScanPhase.preview;
-        _ocrRawText = null;
-        _ocrReconstructedText = null;
         _compressedBytes = null;
         _imageUrl = null;
       });
 
-      // Step 2: Run OCR + Compress in parallel (background, non-blocking)
-      _runOcrAndCompressInBackground(image);
+      // Step 2: Compress in background (preparing for upload when confirmed)
+      _compressInBackground(image);
     } catch (e) {
       _showError('Capture failed: $e');
+    }
+  }
+
+  Future<void> _compressInBackground(XFile image) async {
+    try {
+      final compressed = await _compressImage(image);
+      if (mounted) {
+        setState(() => _compressedBytes = compressed);
+      }
+    } catch (e) {
+      debugPrint('Background compress failed: $e');
     }
   }
 
@@ -236,56 +245,61 @@ class _ScanScreenState extends ConsumerState<ScanScreen> {
 
     if (!await _checkConnectivity()) return;
 
-    // Fire-and-forget: save receipt immediately, return to camera < 1s
-    // LLM parse + matching runs in background via receipt-processor cron
+    setState(() => _isProcessing = true);
+
+    // Show processing state
+    setState(() => _scanPhase = ScanPhase.processing);
+
     try {
-      // Ensure we have compressed bytes (should be ready from background)
+      // Compress + upload
       Uint8List? bytes = _compressedBytes;
       String? imageUrl = _imageUrl;
-
-      // If background upload didn't complete, do it now (blocking but fast)
       if (bytes == null || imageUrl == null) {
         bytes ??= await _compressImage(_capturedImage!);
         imageUrl ??= await _uploadToStorage(bytes, _capturedImage!.path);
       }
 
-      final rawText = _ocrRawText ?? '';
-      final reconstructed = _ocrReconstructedText ?? '';
-
-      if (rawText.isEmpty) {
-        _showError('未能識別文字，請重新拍攝');
-        await _onRetake();
-        return;
-      }
-
-      // Immediate save: parse_status=pending, background job does LLM later
       await _saveReceiptImmediate(
         imageUrl: imageUrl,
-        rawText: rawText,
-        reconstructedText: reconstructed,
+        rawText: '',
+        reconstructedText: '',
       );
 
-      // Instant return to camera - user can continue scanning
-      setState(() {
-        _capturedImage = null;
-        _ocrRawText = null;
-        _ocrReconstructedText = null;
-        _compressedBytes = null;
-        _imageUrl = null;
-        _scanPhase = ScanPhase.camera;
-        _isProcessing = false;
-      });
-
-      _showSnackbar('已保存，後台處理緊...', isLoading: false);
+      // Success: full-page feedback, 3.5s delay, then return to camera
+      setState(() => _scanPhase = ScanPhase.success);
+      await Future.delayed(const Duration(milliseconds: 3500));
+      if (!mounted) return;
+      _returnToCamera();
     } catch (e) {
-      setState(() => _isProcessing = false);
       final errStr = e.toString();
       if (errStr.contains('NO_ACTIVE_RELATION')) {
         _showRelationRequiredDialog();
+        _returnToCamera();
       } else {
-        _showError('儲存失敗: $e');
+        setState(() => _scanPhase = ScanPhase.failed);
+        _isProcessing = false;
       }
     }
+  }
+
+  void _returnToCamera() {
+    setState(() {
+      _capturedImage = null;
+      _ocrRawText = null;
+      _ocrReconstructedText = null;
+      _compressedBytes = null;
+      _imageUrl = null;
+      _scanPhase = ScanPhase.camera;
+      _isProcessing = false;
+    });
+  }
+
+  Future<bool> _onWillPop() async {
+    if (_scanPhase == ScanPhase.success || _scanPhase == ScanPhase.failed) {
+      _returnToCamera();
+      return false;
+    }
+    return true;
   }
 
   /// Save receipt immediately and trigger LLM parsing via receipt-orchestrate.
@@ -708,7 +722,14 @@ class _ScanScreenState extends ConsumerState<ScanScreen> {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
+    return PopScope(
+      canPop: false,
+      onPopInvokedWithResult: (didPop, result) {
+        if (!didPop && (_scanPhase == ScanPhase.success || _scanPhase == ScanPhase.failed)) {
+          _returnToCamera();
+        }
+      },
+      child: Scaffold(
       appBar: AppBar(
         title: Text(_getTitle()),
         centerTitle: true,
@@ -721,6 +742,7 @@ class _ScanScreenState extends ConsumerState<ScanScreen> {
             )
           : null,
       floatingActionButtonLocation: FloatingActionButtonLocation.centerFloat,
+      ),
     );
   }
 
@@ -732,6 +754,10 @@ class _ScanScreenState extends ConsumerState<ScanScreen> {
         return AppStrings.confirmExpense(_locale);
       case ScanPhase.processing:
         return AppStrings.aiThinking(_locale);
+      case ScanPhase.success:
+        return AppStrings.uploadSuccess(_locale);
+      case ScanPhase.failed:
+        return AppStrings.uploadFailed(_locale);
     }
   }
 
@@ -743,6 +769,10 @@ class _ScanScreenState extends ConsumerState<ScanScreen> {
         return _buildPreviewBody();
       case ScanPhase.processing:
         return _buildProcessingBody();
+      case ScanPhase.success:
+        return _buildSuccessBody();
+      case ScanPhase.failed:
+        return _buildFailedBody();
     }
   }
 
@@ -796,9 +826,8 @@ class _ScanScreenState extends ConsumerState<ScanScreen> {
   }
 
   // ============================================================
-  // PHASE 2: Preview with OCR Text + Retake / Confirm buttons
+  // PHASE 2: Image preview — user judges clarity → Confirm
   // ============================================================
-
   Widget _buildPreviewBody() {
     if (_capturedImage == null) {
       return const Center(child: CircularProgressIndicator());
@@ -808,9 +837,8 @@ class _ScanScreenState extends ConsumerState<ScanScreen> {
 
     return Column(
       children: [
-        // Image preview (tappable to zoom)
+        // Image preview (tappable to zoom full screen)
         Expanded(
-          flex: 3,
           child: GestureDetector(
             onTap: () => _showImageFullScreen(imageBytes),
             child: Container(
@@ -822,89 +850,13 @@ class _ScanScreenState extends ConsumerState<ScanScreen> {
                   fit: BoxFit.contain,
                 ),
               ),
-              child: Stack(
-                children: [
-                  // Quality indicator badge
-                  Positioned(
-                    top: 12,
-                    right: 12,
-                    child: _buildQualityBadge(),
-                  ),
-                ],
-              ),
-            ),
-          ),
-        ),
-
-        // OCR Text section
-        Expanded(
-          flex: 2,
-          child: Container(
-            margin: const EdgeInsets.symmetric(horizontal: 16),
-            padding: const EdgeInsets.all(12),
-            decoration: BoxDecoration(
-              color: Colors.grey[100],
-              borderRadius: BorderRadius.circular(12),
-            ),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Row(
-                  children: [
-                    const Icon(Icons.text_fields, size: 16, color: Colors.grey),
-                    const SizedBox(width: 6),
-                    Text(
-                      '📝 識別文字',
-                      style: TextStyle(
-                        fontSize: 13,
-                        fontWeight: FontWeight.w600,
-                        color: Colors.grey[700],
-                      ),
-                    ),
-                    const Spacer(),
-                    if (_ocrRawText == null)
-                      const SizedBox(
-                        width: 14,
-                        height: 14,
-                        child: CircularProgressIndicator(strokeWidth: 2),
-                      )
-                    else if (_ocrRawText!.isEmpty)
-                      Text(
-                        '⚠️ 未識別到文字',
-                        style: TextStyle(fontSize: 12, color: Colors.orange[700]),
-                      )
-                    else
-                      Text(
-                        '✓ 已識別',
-                        style: TextStyle(fontSize: 12, color: Colors.green[700]),
-                      ),
-                  ],
-                ),
-                const SizedBox(height: 8),
-                Expanded(
-                  child: _ocrRawText != null
-                      ? SingleChildScrollView(
-                          child: Text(
-                            _ocrRawText!.isEmpty
-                                ? '（未能識別文字，請嘗試重新拍攝）'
-                                : _ocrRawText!,
-                            style: TextStyle(
-                              fontSize: 12,
-                              color: _ocrRawText!.isEmpty ? Colors.grey : Colors.black87,
-                              fontFamily: 'monospace',
-                            ),
-                          ),
-                        )
-                      : const Center(child: Text('正在識別文字...', style: TextStyle(color: Colors.grey))),
-                ),
-              ],
             ),
           ),
         ),
 
         // Action buttons
         Padding(
-          padding: const EdgeInsets.all(16),
+          padding: const EdgeInsets.fromLTRB(16, 0, 16, 32),
           child: Row(
             children: [
               Expanded(
@@ -913,18 +865,18 @@ class _ScanScreenState extends ConsumerState<ScanScreen> {
                   icon: const Icon(Icons.refresh),
                   label: Text(AppStrings.scan(_locale)),
                   style: OutlinedButton.styleFrom(
-                    padding: const EdgeInsets.symmetric(vertical: 14),
+                    padding: const EdgeInsets.symmetric(vertical: 16),
                   ),
                 ),
               ),
               const SizedBox(width: 12),
               Expanded(
                 child: FilledButton.icon(
-                  onPressed: (_isProcessing || _ocrRawText == null) ? null : _onConfirm,
+                  onPressed: _isProcessing ? null : _onConfirm,
                   icon: const Icon(Icons.check),
                   label: Text(AppStrings.confirm(_locale)),
                   style: FilledButton.styleFrom(
-                    padding: const EdgeInsets.symmetric(vertical: 14),
+                    padding: const EdgeInsets.symmetric(vertical: 16),
                   ),
                 ),
               ),
@@ -979,6 +931,80 @@ class _ScanScreenState extends ConsumerState<ScanScreen> {
               ),
             ),
           ],
+        ),
+      ),
+    );
+  }
+
+  // ============================================================
+  // SUCCESS — fire-and-forget, 3.5s auto-return
+  // ============================================================
+  Widget _buildSuccessBody() {
+    return Container(
+      color: Colors.green[50],
+      child: Center(
+        child: Padding(
+          padding: const EdgeInsets.all(32),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(Icons.check_circle, size: 80, color: Colors.green[600]),
+              const SizedBox(height: 24),
+              Text(
+                AppStrings.uploadSuccess(_locale),
+                style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold, color: Colors.green[800]),
+                textAlign: TextAlign.center,
+              ),
+              const SizedBox(height: 12),
+              Text(
+                AppStrings.uploadSuccessDesc(_locale),
+                style: TextStyle(fontSize: 16, color: Colors.green[700]),
+                textAlign: TextAlign.center,
+              ),
+              const SizedBox(height: 32),
+              OutlinedButton(
+                onPressed: () { if (mounted) _returnToCamera(); },
+                child: Text(AppStrings.scan(_locale)),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  // ============================================================
+  // FAILED — explain error, allow retry
+  // ============================================================
+  Widget _buildFailedBody() {
+    return Container(
+      color: Colors.red[50],
+      child: Center(
+        child: Padding(
+          padding: const EdgeInsets.all(32),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(Icons.error_outline, size: 80, color: Colors.red[600]),
+              const SizedBox(height: 24),
+              Text(
+                AppStrings.uploadFailed(_locale),
+                style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold, color: Colors.red[800]),
+                textAlign: TextAlign.center,
+              ),
+              const SizedBox(height: 12),
+              Text(
+                AppStrings.uploadFailedRetry(_locale),
+                style: TextStyle(fontSize: 16, color: Colors.red[700]),
+                textAlign: TextAlign.center,
+              ),
+              const SizedBox(height: 32),
+              FilledButton(
+                onPressed: () { if (mounted) _returnToCamera(); },
+                child: Text(AppStrings.scan(_locale)),
+              ),
+            ],
+          ),
         ),
       ),
     );

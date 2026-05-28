@@ -32,6 +32,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
   final List<ChatMessage> _messages = [];
   bool _isTyping = false;
   bool _greetingSet = false;
+  String _previousLocaleCode = '';
 
   // Attached image state
   XFile? _attachedImage;
@@ -58,11 +59,8 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
-    // Locale is now available via ref.watch - set greeting when locale first loads
-    if (!_greetingSet) {
-      _greetingSet = true;
-      _messages.add(ChatMessage(text: AppStrings.greeting(ref.read(localeProvider)), isUser: false));
-    }
+    // Simply reset greeting flag — actual greeting logic is in build() via ref.watch
+    _greetingSet = false;
   }
 
   void _refreshGreeting() {
@@ -854,6 +852,15 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
 
   @override
   Widget build(BuildContext context) {
+    // Refresh greeting if locale changed
+    final currentLocaleCode = _locale.code;
+    if (!_greetingSet || currentLocaleCode != _previousLocaleCode) {
+      _previousLocaleCode = currentLocaleCode;
+      _greetingSet = true;
+      _messages.clear();
+      _messages.add(ChatMessage(text: AppStrings.greeting(_locale), isUser: false));
+    }
+
     final locale = ref.watch(localeProvider);
     return Scaffold(
       appBar: AppBar(

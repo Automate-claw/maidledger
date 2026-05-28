@@ -14,7 +14,11 @@ class AppStrings {
       'album': '相片簿',
       'chat': 'Chat',
       'history': 'History',
-      'scan': 'Scan',
+      'scan': '掃描',
+      'upload_success': '✅ 上傳成功！',
+      'upload_success_desc': '1-2分鐘後會有結果',
+      'upload_failed': '上傳失敗',
+      'upload_failed_retry': '請重新拍攝',
       'save': '儲存',
       'cancel': '取消',
       'confirm': '確認',
@@ -46,6 +50,14 @@ class AppStrings {
       'input': '輸入',
       'category': '類別',
       'amount': '金額',
+      'date': '日期',
+      'note': '備註',
+      'note_hint': '例如：6月零用 / 補貼 / 其他',
+      'save_payment': '儲存收款記錄',
+      'record_payment': '記錄收款',
+      'enter_valid_amount': '請輸入有效金額',
+      'payment_saved': '✅ 收款記錄已儲存',
+      'payment_failed': '儲存失敗',
       'confidence': '信心度',
       'items': '貨品',
       'location': '地點',
@@ -91,6 +103,15 @@ class AppStrings {
       'delete_item': '刪除項目',
       'confirm_delete': '確認刪除',
       'delete': '刪除',
+      'store_info': '商戶資料',
+      'store_name': '商戶名稱',
+      'store_category': '商戶類別',
+      'item_name': '項目名稱',
+      'quantity': '數量',
+      'unit_price': '單價 (HK\$)',
+      'select_date': '請選擇日期',
+      'amount_date': '金額與日期',
+      'item_details': '項目明細',
       'need_link_employer': '🔗 需要先連接僱主',
       'enter_invite_code': '請先輸入僱主的邀請碼來連接。',
       'ok': '確定',
@@ -141,6 +162,10 @@ class AppStrings {
       'chat': 'Chat',
       'history': 'History',
       'scan': 'Scan',
+      'upload_success': '✅ Upload successful!',
+      'upload_success_desc': 'Results in 1-2 minutes',
+      'upload_failed': 'Upload failed',
+      'upload_failed_retry': 'Please try again',
       'save': 'Save',
       'cancel': 'Cancel',
       'confirm': 'Confirm',
@@ -172,6 +197,14 @@ class AppStrings {
       'input': 'Input',
       'category': 'Category',
       'amount': 'Amount',
+      'date': 'Date',
+      'note': 'Note',
+      'note_hint': 'e.g. June allowance / allowance / other',
+      'save_payment': 'Save Payment Record',
+      'record_payment': 'Record Payment',
+      'enter_valid_amount': 'Please enter a valid amount',
+      'payment_saved': '✅ Payment record saved',
+      'payment_failed': 'Save failed',
       'confidence': 'Confidence',
       'items': 'Items',
       'location': 'Location',
@@ -254,6 +287,15 @@ class AppStrings {
       'delete_item': 'Delete Item',
       'confirm_delete': 'Confirm delete',
       'delete': 'Delete',
+      'store_info': 'Store Info',
+      'store_name': 'Store Name',
+      'store_category': 'Store Category',
+      'item_name': 'Item Name',
+      'quantity': 'Quantity',
+      'unit_price': 'Unit Price (HK\$)',
+      'select_date': 'Select Date',
+      'amount_date': 'Amount & Date',
+      'item_details': 'Item Details',
     },
     AppLocale.indonesian: {
       'settings': 'Pengaturan',
@@ -267,6 +309,10 @@ class AppStrings {
       'chat': 'Chat',
       'history': 'Riwayat',
       'scan': 'Pindai',
+      'upload_success': '✅ Berhasil diunggah!',
+      'upload_success_desc': 'Hasil dalam 1-2 menit',
+      'upload_failed': 'Unggah gagal',
+      'upload_failed_retry': 'Silakan coba lagi',
       'save': 'Simpan',
       'cancel': 'Batal',
       'confirm': 'Konfirmasi',
@@ -298,6 +344,14 @@ class AppStrings {
       'input': 'Input',
       'category': 'Kategori',
       'amount': 'Jumlah',
+      'date': 'Tanggal',
+      'note': 'Catatan',
+      'note_hint': 'contoh: uang bulanan / tunjangan / lain',
+      'save_payment': 'Simpan Catatan Pembayaran',
+      'record_payment': 'Catat Pembayaran',
+      'enter_valid_amount': 'Silakan masukkan jumlah yang valid',
+      'payment_saved': '✅ Catatan pembayaran tersimpan',
+      'payment_failed': 'Gagal menyimpan',
       'confidence': 'Kepercayaan',
       'items': 'Barang',
       'location': 'Lokasi',
@@ -380,6 +434,15 @@ class AppStrings {
       'delete_item': 'Hapus Item',
       'confirm_delete': 'Konfirmasi hapus',
       'delete': 'Hapus',
+      'store_info': 'Info Toko',
+      'store_name': 'Nama Toko',
+      'store_category': 'Kategori Toko',
+      'item_name': 'Nama Item',
+      'quantity': 'Jumlah',
+      'unit_price': 'Harga Satuan',
+      'select_date': 'Pilih Tanggal',
+      'amount_date': 'Jumlah & Tanggal',
+      'item_details': 'Detail Item',
     },
     AppLocale.filipino: {
       'settings': 'Mga Setting',
@@ -393,6 +456,10 @@ class AppStrings {
       'chat': 'Chat',
       'history': 'Kasaysayan',
       'scan': 'Scan',
+      'upload_success': '✅ Matagumpay na na-upload!',
+      'upload_success_desc': 'Mga resulta sa 1-2 minuto',
+      'upload_failed': 'Nabigo ang pag-upload',
+      'upload_failed_retry': 'Mangyaring subuking muli',
       'save': 'I-save',
       'cancel': 'Kanselahin',
       'confirm': 'Kumpirmahin',
@@ -424,6 +491,14 @@ class AppStrings {
       'input': 'Input',
       'category': 'Kategorya',
       'amount': 'Halaga',
+      'date': 'Petsa',
+      'note': 'Talaan',
+      'note_hint': 'hal. buwanang allowance / subsidy / iba pa',
+      'save_payment': 'I-save ang Record ng Pagbabayad',
+      'record_payment': 'Mag-record ng Pagbabayad',
+      'enter_valid_amount': 'Mangyaring magpasok ng wastong halaga',
+      'payment_saved': '✅ Na-save ang record ng pagbabayad',
+      'payment_failed': 'Nabigo ang pag-save',
       'confidence': 'Kumpyansa',
       'items': 'Mga bagay',
       'location': 'Lokasyon',
@@ -506,6 +581,15 @@ class AppStrings {
       'delete_item': 'Burahin ang Item',
       'confirm_delete': 'Kumpirmahin ang pagbura',
       'delete': 'Burahin',
+      'store_info': 'Info ng Store',
+      'store_name': 'Pangalan ng Store',
+      'store_category': 'Kategorya ng Store',
+      'item_name': 'Pangalan ng Item',
+      'quantity': 'Dami',
+      'unit_price': 'Presyo sa Unit',
+      'select_date': 'Pumili ng Petsa',
+      'amount_date': 'Halaga at Petsa',
+      'item_details': 'Detalye ng Item',
     },
   };
 
@@ -553,6 +637,14 @@ class AppStrings {
   static String input(AppLocale locale) => get(locale, 'input');
   static String category(AppLocale locale) => get(locale, 'category');
   static String amount(AppLocale locale) => get(locale, 'amount');
+  static String date(AppLocale locale) => get(locale, 'date');
+  static String note(AppLocale locale) => get(locale, 'note');
+  static String noteHint(AppLocale locale) => get(locale, 'note_hint');
+  static String savePayment(AppLocale locale) => get(locale, 'save_payment');
+  static String recordPayment(AppLocale locale) => get(locale, 'record_payment');
+  static String enterValidAmount(AppLocale locale) => get(locale, 'enter_valid_amount');
+  static String paymentSaved(AppLocale locale) => get(locale, 'payment_saved');
+  static String paymentFailed(AppLocale locale) => get(locale, 'payment_failed');
   static String confidence(AppLocale locale) => get(locale, 'confidence');
   static String items(AppLocale locale) => get(locale, 'items');
   static String location(AppLocale locale) => get(locale, 'location');
@@ -622,5 +714,18 @@ class AppStrings {
   static String daily(AppLocale locale) => get(locale, 'daily');
   static String deleteItem(AppLocale locale) => get(locale, 'delete_item');
   static String confirmDelete(AppLocale locale) => get(locale, 'confirm_delete');
+  static String storeInfo(AppLocale locale) => get(locale, 'store_info');
+  static String storeName(AppLocale locale) => get(locale, 'store_name');
+  static String storeCategory(AppLocale locale) => get(locale, 'store_category');
+  static String itemName(AppLocale locale) => get(locale, 'item_name');
+  static String quantity(AppLocale locale) => get(locale, 'quantity');
+  static String unitPrice(AppLocale locale) => get(locale, 'unit_price');
+  static String selectDate(AppLocale locale) => get(locale, 'select_date');
+  static String amountDate(AppLocale locale) => get(locale, 'amount_date');
+  static String itemDetails(AppLocale locale) => get(locale, 'item_details');
   static String productCategory(AppLocale locale, String cate) => get(locale, 'product_$cate');
+  static String uploadSuccess(AppLocale locale) => get(locale, 'upload_success');
+  static String uploadSuccessDesc(AppLocale locale) => get(locale, 'upload_success_desc');
+  static String uploadFailed(AppLocale locale) => get(locale, 'upload_failed');
+  static String uploadFailedRetry(AppLocale locale) => get(locale, 'upload_failed_retry');
 }

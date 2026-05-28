@@ -141,10 +141,11 @@ class SettingsScreen extends ConsumerWidget {
   }
 
   void _showLanguagePicker(BuildContext context, WidgetRef ref) {
+    final currentLocale = ref.read(localeProvider);
     showDialog(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: Text(AppStrings.selectLanguage(ref.read(localeProvider))),
+        title: Text(AppStrings.selectLanguage(currentLocale)),
         content: Column(
           mainAxisSize: MainAxisSize.min,
           children: AppLocale.values.map((l) {

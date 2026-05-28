@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:table_calendar/table_calendar.dart';
 import 'package:intl/intl.dart';
+import 'package:share_plus/share_plus.dart';
 import 'package:maidledger_localization/maidledger_localization.dart';
 import '../../core/services/supabase_client_provider.dart';
 import 'receipt_detail_screen.dart';
@@ -30,6 +31,43 @@ class _HistoryScreenState extends ConsumerState<HistoryScreen> {
   double _balance = 0;
 
   AppLocale get _locale => ref.watch(localeProvider);
+
+  Future<void> _shareDailySummary() async {
+    // Show loading indicator
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) => const Center(child: CircularProgressIndicator()),
+    );
+
+    try {
+      final response = await supabase.functions.invoke('daily-summary');
+
+      Navigator.pop(context);
+
+      if (response.data == null || response.data['text'] == null) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('無法獲取摘要')),
+          );
+        }
+        return;
+      }
+
+      final text = response.data['text'] as String;
+
+      // Use share_plus to open system share sheet
+      await Share.share(text);
+
+    } catch (e) {
+      Navigator.pop(context);
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('錯誤：$e')),
+        );
+      }
+    }
+  }
 
   @override
   void initState() {
@@ -70,19 +108,21 @@ class _HistoryScreenState extends ConsumerState<HistoryScreen> {
       double totalIncome = 0;
       final paymentsRes = await supabase
           .from('employer_payments')
-          .select('id, amount, payment_date, note, employer_id')
+          .select('id, amount, payment_date, note, employer_id, created_by')
           .eq('helper_id', userId)
           .order('payment_date', ascending: false);
       final paymentsList = List<Map<String, dynamic>>.from(paymentsRes as List);
       for (final p in paymentsList) {
         final amount = (p['amount'] as num).toDouble();
         totalIncome += amount;
+        final isRecordedByHelper = p['created_by'] == userId;
         payments.add(PaymentRecord(
           id: p['id'] as String,
           amount: amount,
           date: DateTime.parse(p['payment_date'] as String),
           note: p['note'] as String?,
           isEmployer: p['employer_id'] == employerId,
+          recordedByHelper: isRecordedByHelper,
         ));
       }
 
@@ -176,6 +216,11 @@ class _HistoryScreenState extends ConsumerState<HistoryScreen> {
           IconButton(
             icon: const Icon(Icons.refresh),
             onPressed: _loadData,
+          ),
+          IconButton(
+            icon: const Icon(Icons.share),
+            tooltip: '分享今日摘要',
+            onPressed: _shareDailySummary,
           ),
           IconButton(
             icon: const Icon(Icons.history),
@@ -405,6 +450,7 @@ class _HistoryScreenState extends ConsumerState<HistoryScreen> {
   }
 
   Widget _buildPaymentTile(PaymentRecord p) {
+    final recordedBy = p.recordedByHelper ? '你' : '僱主';
     return Card(
       margin: const EdgeInsets.only(bottom: 6),
       color: Colors.amber.withValues(alpha: 0.08),
@@ -418,12 +464,22 @@ class _HistoryScreenState extends ConsumerState<HistoryScreen> {
           style: TextStyle(color: Colors.amber[800], fontWeight: FontWeight.bold, fontSize: 16),
         ),
         subtitle: Text(
-          p.note ?? (p.isEmployer ? 'Employer payment' : 'Payment recorded'),
+          p.note ?? (p.isEmployer ? '僱主付款 ($recordedBy 記錄)' : 'Payment recorded'),
           style: const TextStyle(fontSize: 12),
         ),
-        trailing: Text(
-          DateFormat('HH:mm').format(p.date),
-          style: TextStyle(color: Colors.grey[500], fontSize: 12),
+        trailing: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          crossAxisAlignment: CrossAxisAlignment.end,
+          children: [
+            Text(
+              DateFormat('HH:mm').format(p.date),
+              style: TextStyle(color: Colors.grey[500], fontSize: 12),
+            ),
+            Text(
+              recordedBy,
+              style: TextStyle(fontSize: 10, color: Colors.grey[400]),
+            ),
+          ],
         ),
       ),
     );
@@ -492,7 +548,7 @@ class _HistoryScreenState extends ConsumerState<HistoryScreen> {
     // Fetch recent payments
     final paymentsRes = await supabase
         .from('employer_payments')
-        .select('id, amount, payment_date, created_at')
+        .select('id, amount, payment_date, created_at, created_by')
         .eq('helper_id', userId)
         .order('created_at', ascending: false)
         .limit(10);
@@ -539,12 +595,15 @@ class _HistoryScreenState extends ConsumerState<HistoryScreen> {
                         style: TextStyle(fontSize: 13, color: Colors.grey[600], fontWeight: FontWeight.w500),
                       ),
                     ),
-                    ...payments.map((p) => ListTile(
-                      dense: true,
-                      leading: const Icon(Icons.add_circle, color: Colors.green, size: 20),
-                      title: Text('+\$${(p['amount'] as num).toStringAsFixed(2)}'),
-                      subtitle: Text('${p['payment_date'] ?? p['created_at']}'),
-                    )),
+                    ...payments.map((p) {
+                      final recordedBy = p['created_by'] == userId ? '你' : '僱主';
+                      return ListTile(
+                        dense: true,
+                        leading: const Icon(Icons.add_circle, color: Colors.green, size: 20),
+                        title: Text('+\$${(p['amount'] as num).toStringAsFixed(2)}'),
+                        subtitle: Text('${p['payment_date'] ?? p['created_at']} ($recordedBy 記錄)'),
+                      );
+                    }),
                   ],
                   // Receipts section
                   if (receipts.isNotEmpty) ...[
@@ -652,6 +711,7 @@ class PaymentRecord {
   final DateTime date;
   final String? note;
   final bool isEmployer;
+  final bool recordedByHelper; // true = helper recorded it, false = employer recorded it
 
   PaymentRecord({
     required this.id,
@@ -659,5 +719,6 @@ class PaymentRecord {
     required this.date,
     this.note,
     required this.isEmployer,
+    required this.recordedByHelper,
   });
 }
