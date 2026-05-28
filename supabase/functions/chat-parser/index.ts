@@ -227,9 +227,13 @@ serve(async (req) => {
     const prdFetch = await fetch(`${supabaseUrl}/rest/v1/prd_categories?select=code,name_tc&order=display_order.asc`, {
       headers: { "apikey": supabaseKey, "Authorization": `Bearer ${supabaseKey}` },
     });
+    const subcategoryFetch = await fetch(`${supabaseUrl}/rest/v1/subcategories?select=code,name_tc,parent_cate&order=display_order.asc`, {
+      headers: { "apikey": supabaseKey, "Authorization": `Bearer ${supabaseKey}` },
+    });
 
     const storeCategories = await storeFetch.json();
     const prdCategories = await prdFetch.json();
+    const subcategories = await subcategoryFetch.json();
 
 // ─── Extract raw amount BEFORE LLM ───
     const rawAmount = extractRawAmount(text);
@@ -284,7 +288,7 @@ serve(async (req) => {
   "completeness": "invalid"|"insufficient"|"partial"|"good",
   "reason": "當is_expense=false或completeness=insufficient時填寫原因",
   "store_name": "店舖名稱或null",
-  "store_cate": "supermarket|wet_market|pharmacy|convenience|online|restaurant|cafe|takeaway|other",
+  "store_cate": "supermarket|wet_market|pharmacy|convenience|online|restaurant|cafe|other",
   "location": "地區名稱或null",
   "total_amount": 總金額（數字）或null,
   "items": [
@@ -293,7 +297,8 @@ serve(async (req) => {
       "item_raw_text": "用戶輸入的原始文字（唔好翻譯，直接複製）",
       "qty": 數量（預設1）,
       "unit_price": 單價或null,
-      "prd_cate": "fish|pork|beef|chicken|vegetables|rice|oil|seasoning|snack|drink|daily|takeaway|other"
+      "prd_cate": "fish|pork|beef|chicken|vegetables|rice|oil|seasoning|snack|drink|daily|other",
+      "subcategory_code": "subcategory代碼或null（例如fresh_fish, fish_ball, veg_leafy）"
     }
   ],
   "parse_confidence": 0.0-1.0
@@ -304,6 +309,11 @@ ${prdCategories.map((c: { code: string; name_tc: string }) => `- ${c.code} = ${c
 
 ## 有效商店類別：
 ${storeCategories.map((c: { code: string; name_tc: string }) => `- ${c.code} = ${c.name_tc}`).join("\n")}
+
+## 有效 Subcategory（用於 weight 分析）：
+留意：呢個係產品的子類別，用於更精確嘅 weight 和物價分析。
+例如：魚肉丸 → fish_ball，黃立鯧 → fresh_fish
+${subcategories.map((c: { code: string; name_tc: string; parent_cate: string }) => `- ${c.code} (parent: ${c.parent_cate}) = ${c.name_tc}`).join("\n")}
 
 ## 金額處理（重要）
 - raw_amount（用戶明確輸入的金額）: ${rawAmount !== null ? rawAmount : 'null'}
@@ -461,6 +471,7 @@ ${text}
 
     const validStoreCodes = storeCategories.map((c: { code: string }) => c.code);
     const validPrdCodes = prdCategories.map((c: { code: string }) => c.code);
+    const validSubcategoryCodes = subcategories.map((c: { code: string }) => c.code);
 
     const result = {
       is_expense: parsed.is_expense ?? false,
@@ -481,10 +492,11 @@ ${text}
           is_discounted: isDiscounted,
           discount_note: item.discount_note ?? null,
           prd_cate: validPrdCodes.includes(item.prd_cate) ? item.prd_cate : "other",
+          subcategory_code: validSubcategoryCodes.includes(item.subcategory_code) ? item.subcategory_code : null,
         };
       }),
       parse_confidence: parsed.parse_confidence ?? 0.5,
-      raw_amount: rawAmount, // include for debugging
+      raw_amount: rawAmount,
     };
 
     // Non-expense → friendly guidance (never error)
