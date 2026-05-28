@@ -16,6 +16,7 @@ class HistoryScreen extends ConsumerStatefulWidget {
 }
 
 class _HistoryScreenState extends ConsumerState<HistoryScreen> {
+  AppLocale get _locale => ref.watch(localeProvider);
   CalendarFormat _calendarFormat = CalendarFormat.month;
   DateTime _focusedDay = DateTime.now();
   DateTime? _selectedDay;
@@ -48,7 +49,7 @@ class _HistoryScreenState extends ConsumerState<HistoryScreen> {
       // This ensures we show receipts even if relation_id is null or different
       final receiptsRes = await supabase
           .from('receipts')
-          .select('id, amount, transaction_date, created_at, store_name, store_cate, parse_status, relation_id')
+          .select('id, amount, transaction_date, created_at, store_name, store_cate, parse_status, relation_id, date_anomaly')
           .eq('helper_id', userId)
           .order('transaction_date', ascending: false);
 
@@ -101,6 +102,7 @@ class _HistoryScreenState extends ConsumerState<HistoryScreen> {
           storeName: r['store_name'] as String?,
           storeCate: r['store_cate'] as String? ?? 'other',
           createdAt: date,
+          dateAnomaly: r['date_anomaly'] as bool? ?? false,
         ));
       }
 
@@ -168,19 +170,24 @@ class _HistoryScreenState extends ConsumerState<HistoryScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text('History'),
+        title: Text(AppStrings.historyTitle(_locale)),
         centerTitle: true,
         actions: [
           IconButton(
             icon: const Icon(Icons.refresh),
             onPressed: _loadData,
           ),
+          IconButton(
+            icon: const Icon(Icons.history),
+            tooltip: AppStrings.recentRecords(_locale),
+            onPressed: () => _showRecentRecords(context),
+          ),
         ],
       ),
       body: _isLoading
           ? const Center(child: CircularProgressIndicator())
           : _error != null
-              ? Center(child: Text('Error: $_error'))
+              ? Center(child: Text('${AppStrings.error(_locale)}: $_error'))
               : Column(
                   children: [
                     _buildBalanceCard(),
@@ -294,7 +301,7 @@ class _HistoryScreenState extends ConsumerState<HistoryScreen> {
                 Container(
                   width: 6, height: 6,
                   decoration: const BoxDecoration(
-                    color: Colors.amber, shape: BoxShape.circle,
+                    color: Colors.green, shape: BoxShape.circle,
                   ),
                 ),
               if (payments.isNotEmpty && receipts.isNotEmpty) const SizedBox(width: 2),
@@ -302,7 +309,10 @@ class _HistoryScreenState extends ConsumerState<HistoryScreen> {
                 Container(
                   width: 6, height: 6,
                   decoration: BoxDecoration(
-                    color: Colors.red[400], shape: BoxShape.circle,
+                    color: receipts.any((r) => r.dateAnomaly)
+                        ? Colors.orange
+                        : Colors.red[400],
+                    shape: BoxShape.circle,
                   ),
                 ),
             ],
@@ -465,6 +475,144 @@ class _HistoryScreenState extends ConsumerState<HistoryScreen> {
     ).then((_) => _loadData());
   }
 
+  void _showRecentRecords(BuildContext context) async {
+    final user = supabase.auth.currentUser;
+    if (user == null) return;
+
+    final userId = user.id;
+
+    // Fetch recent receipts
+    final receiptsRes = await supabase
+        .from('receipts')
+        .select('id, amount, transaction_date, store_name, date_anomaly, created_at')
+        .eq('helper_id', userId)
+        .order('created_at', ascending: false)
+        .limit(10);
+
+    // Fetch recent payments
+    final paymentsRes = await supabase
+        .from('employer_payments')
+        .select('id, amount, payment_date, created_at')
+        .eq('helper_id', userId)
+        .order('created_at', ascending: false)
+        .limit(10);
+
+    final receipts = List<Map<String, dynamic>>.from(receiptsRes as List);
+    final payments = List<Map<String, dynamic>>.from(paymentsRes as List);
+
+    if (!context.mounted) return;
+
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      builder: (ctx) => DraggableScrollableSheet(
+        initialChildSize: 0.6,
+        minChildSize: 0.3,
+        maxChildSize: 0.9,
+        expand: false,
+        builder: (_, scrollController) => Column(
+          children: [
+            Padding(
+              padding: const EdgeInsets.all(16),
+              child: Row(
+                children: [
+                  const Icon(Icons.history, size: 20),
+                  const SizedBox(width: 8),
+                  Text(
+                    AppStrings.recentRecords(_locale),
+                    style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                  ),
+                ],
+              ),
+            ),
+            const Divider(height: 1),
+            Expanded(
+              child: ListView(
+                controller: scrollController,
+                children: [
+                  // Payments section
+                  if (payments.isNotEmpty) ...[
+                    Padding(
+                      padding: const EdgeInsets.fromLTRB(16, 12, 16, 4),
+                      child: Text(
+                        '💰 ${AppStrings.cashBalance(_locale)}',
+                        style: TextStyle(fontSize: 13, color: Colors.grey[600], fontWeight: FontWeight.w500),
+                      ),
+                    ),
+                    ...payments.map((p) => ListTile(
+                      dense: true,
+                      leading: const Icon(Icons.add_circle, color: Colors.green, size: 20),
+                      title: Text('+\$${(p['amount'] as num).toStringAsFixed(2)}'),
+                      subtitle: Text('${p['payment_date'] ?? p['created_at']}'),
+                    )),
+                  ],
+                  // Receipts section
+                  if (receipts.isNotEmpty) ...[
+                    Padding(
+                      padding: const EdgeInsets.fromLTRB(16, 12, 16, 4),
+                      child: Text(
+                        '🧾 Receipts',
+                        style: TextStyle(fontSize: 13, color: Colors.grey[600], fontWeight: FontWeight.w500),
+                      ),
+                    ),
+                    ...receipts.map((r) {
+                      final isAnomaly = r['date_anomaly'] as bool? ?? false;
+                      return ListTile(
+                        dense: true,
+                        leading: Icon(
+                          Icons.receipt,
+                          color: isAnomaly ? Colors.orange : Colors.red[400],
+                          size: 20,
+                        ),
+                        title: Row(
+                          children: [
+                            Text('- \$${(r['amount'] as num?)?.toStringAsFixed(2) ?? '0.00'}'),
+                            if (isAnomaly) ...[
+                              const SizedBox(width: 6),
+                              Container(
+                                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                                decoration: BoxDecoration(
+                                  color: Colors.orange[100],
+                                  borderRadius: BorderRadius.circular(4),
+                                ),
+                                child: const Text('⚠️', style: TextStyle(fontSize: 10)),
+                              ),
+                            ],
+                          ],
+                        ),
+                        subtitle: Text('${r['store_name'] ?? '未知商戶'} — ${r['transaction_date'] ?? r['created_at']}'),
+                        onTap: () {
+                          Navigator.pop(ctx);
+                          // Navigate to receipt detail
+                          Navigator.push(
+                            context,
+                            MaterialPageRoute(
+                              builder: (_) => ReceiptDetailScreen(receiptId: r['id'] as String),
+                            ),
+                          );
+                        },
+                      );
+                    }),
+                  ],
+                  if (receipts.isEmpty && payments.isEmpty)
+                    Padding(
+                      padding: const EdgeInsets.all(32),
+                      child: Center(
+                        child: Text(
+                          AppStrings.noItems(_locale),
+                          style: TextStyle(color: Colors.grey[500]),
+                        ),
+                      ),
+                    ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
   String _getCategoryName(String category) {
     const names = {
       'supermarket': '超市',
@@ -486,6 +634,7 @@ class ReceiptDayItem {
   final String? storeName;
   final String storeCate;
   final DateTime createdAt;
+  final bool dateAnomaly;
 
   ReceiptDayItem({
     required this.id,
@@ -493,6 +642,7 @@ class ReceiptDayItem {
     this.storeName,
     required this.storeCate,
     required this.createdAt,
+    this.dateAnomaly = false,
   });
 }
 

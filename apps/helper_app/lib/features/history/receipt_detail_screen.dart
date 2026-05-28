@@ -15,6 +15,7 @@ class ReceiptDetailScreen extends ConsumerStatefulWidget {
 }
 
 class _ReceiptDetailScreenState extends ConsumerState<ReceiptDetailScreen> {
+  AppLocale get _locale => ref.watch(localeProvider);
   Map<String, dynamic>? _receipt;
   List<Map<String, dynamic>> _items = [];
   bool _isLoading = true;
@@ -104,14 +105,14 @@ class _ReceiptDetailScreenState extends ConsumerState<ReceiptDetailScreen> {
 
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('✅ 已儲存'), backgroundColor: Colors.green),
+          SnackBar(content: Text(AppStrings.itemSaved(_locale)), backgroundColor: Colors.green),
         );
         Navigator.pop(context, true);
       }
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('❌ 儲存失敗: $e'), backgroundColor: Colors.red),
+          SnackBar(content: Text('❌ ${AppStrings.saveFailed(_locale)}'), backgroundColor: Colors.red),
         );
       }
     } finally {
@@ -133,7 +134,7 @@ class _ReceiptDetailScreenState extends ConsumerState<ReceiptDetailScreen> {
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('❌ 更新失敗: $e'), backgroundColor: Colors.red),
+          SnackBar(content: Text('❌ ${AppStrings.updateFailed(_locale)}'), backgroundColor: Colors.red),
         );
       }
     }
@@ -198,7 +199,7 @@ class _ReceiptDetailScreenState extends ConsumerState<ReceiptDetailScreen> {
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('❌ 刪除失敗: $e'), backgroundColor: Colors.red),
+          SnackBar(content: Text('❌ ${AppStrings.deleteFailed(_locale)}'), backgroundColor: Colors.red),
         );
       }
     }
@@ -208,7 +209,7 @@ class _ReceiptDetailScreenState extends ConsumerState<ReceiptDetailScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text('收據詳情'),
+        title: Text(AppStrings.receiptDetail(_locale)),
         actions: [
           if (!_isLoading)
             TextButton.icon(
@@ -216,7 +217,7 @@ class _ReceiptDetailScreenState extends ConsumerState<ReceiptDetailScreen> {
               icon: _isSaving
                   ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2))
                   : const Icon(Icons.save),
-              label: Text(_isSaving ? '儲存中…' : '儲存'),
+              label: Text(_isSaving ? AppStrings.saving(_locale) : AppStrings.save(_locale)),
             ),
           IconButton(
             icon: const Icon(Icons.delete, color: Colors.red),
@@ -233,6 +234,30 @@ class _ReceiptDetailScreenState extends ConsumerState<ReceiptDetailScreen> {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
+                      if (_receipt?['date_anomaly'] == true) ...[
+                        Container(
+                          width: double.infinity,
+                          padding: const EdgeInsets.all(12),
+                          decoration: BoxDecoration(
+                            color: Colors.orange[50],
+                            borderRadius: BorderRadius.circular(8),
+                            border: Border.all(color: Colors.orange[200]!),
+                          ),
+                          child: Row(
+                            children: [
+                              Icon(Icons.warning_amber_rounded, color: Colors.orange[700], size: 20),
+                              const SizedBox(width: 8),
+                              Expanded(
+                                child: Text(
+                                  '⚠️ 系統懷疑這筆交易的日期有誤，請確認是否正確',
+                                  style: TextStyle(color: Colors.orange[900], fontSize: 13),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                        const SizedBox(height: 16),
+                      ],
                       _buildPhotoSection(),
                       const SizedBox(height: 24),
                       _buildSectionTitle('🏪 商戶資料'),
@@ -253,16 +278,16 @@ class _ReceiptDetailScreenState extends ConsumerState<ReceiptDetailScreen> {
                           border: OutlineInputBorder(),
                           prefixIcon: Icon(Icons.category),
                         ),
-                        items: const [
-                          DropdownMenuItem(value: 'supermarket', child: Text('超市')),
-                          DropdownMenuItem(value: 'wet_market', child: Text('街市')),
-                          DropdownMenuItem(value: 'pharmacy', child: Text('藥房')),
-                          DropdownMenuItem(value: 'convenience', child: Text('便利店')),
-                          DropdownMenuItem(value: 'online', child: Text('網購')),
-                          DropdownMenuItem(value: 'restaurant', child: Text('餐廳')),
-                          DropdownMenuItem(value: 'cafe', child: Text('茶餐廳')),
-                          DropdownMenuItem(value: 'takeaway', child: Text('外賣')),
-                          DropdownMenuItem(value: 'other', child: Text('其他')),
+                        items: [
+                          DropdownMenuItem(value: 'supermarket', child: Text(AppStrings.supermarket(_locale))),
+                          DropdownMenuItem(value: 'wet_market', child: Text(AppStrings.wetMarket(_locale))),
+                          DropdownMenuItem(value: 'pharmacy', child: Text(AppStrings.pharmacy(_locale))),
+                          DropdownMenuItem(value: 'convenience', child: Text(AppStrings.convenience(_locale))),
+                          DropdownMenuItem(value: 'online', child: Text(AppStrings.online(_locale))),
+                          DropdownMenuItem(value: 'restaurant', child: Text(AppStrings.restaurant(_locale))),
+                          DropdownMenuItem(value: 'cafe', child: Text(AppStrings.cafe(_locale))),
+                          DropdownMenuItem(value: 'takeaway', child: Text(AppStrings.takeaway(_locale))),
+                          DropdownMenuItem(value: 'other', child: Text(AppStrings.otherStore(_locale))),
                         ],
                         onChanged: (v) => setState(() => _storeCate = v ?? 'other'),
                       ),
@@ -321,8 +346,8 @@ class _ReceiptDetailScreenState extends ConsumerState<ReceiptDetailScreen> {
                             color: Colors.grey[100],
                             borderRadius: BorderRadius.circular(12),
                           ),
-                          child: const Center(
-                            child: Text('暫無項目', style: TextStyle(color: Colors.grey)),
+                          child: Center(
+                            child: Text(AppStrings.noItems(_locale), style: TextStyle(color: Colors.grey)),
                           ),
                         )
                       else
@@ -348,13 +373,13 @@ class _ReceiptDetailScreenState extends ConsumerState<ReceiptDetailScreen> {
           color: Colors.grey[200],
           borderRadius: BorderRadius.circular(12),
         ),
-        child: const Center(
+        child: Center(
           child: Column(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
               Icon(Icons.receipt_long, size: 48, color: Colors.grey),
               SizedBox(height: 8),
-              Text('沒有收據相片', style: TextStyle(color: Colors.grey)),
+              Text(AppStrings.noReceiptPhoto(_locale), style: TextStyle(color: Colors.grey)),
             ],
           ),
         ),
@@ -404,13 +429,13 @@ class _ReceiptDetailScreenState extends ConsumerState<ReceiptDetailScreen> {
         color: Colors.grey[200],
         borderRadius: BorderRadius.circular(12),
       ),
-      child: const Center(
+      child: Center(
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
             Icon(Icons.broken_image, size: 48, color: Colors.grey),
             SizedBox(height: 8),
-            Text('無法顯示相片', style: TextStyle(color: Colors.grey)),
+            Text(AppStrings.cannotDisplayPhoto(_locale), style: TextStyle(color: Colors.grey)),
           ],
         ),
       ),
@@ -534,7 +559,7 @@ class _ReceiptDetailScreenState extends ConsumerState<ReceiptDetailScreen> {
     showDialog(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: const Text('✏️ 編輯項目'),
+        title: Text(AppStrings.editItem(_locale)),
         content: SingleChildScrollView(
           child: Column(
             mainAxisSize: MainAxisSize.min,
@@ -567,20 +592,20 @@ class _ReceiptDetailScreenState extends ConsumerState<ReceiptDetailScreen> {
               DropdownButtonFormField<String>(
                 value: prdCate,
                 decoration: const InputDecoration(labelText: '類別', border: OutlineInputBorder()),
-                items: const [
-                  DropdownMenuItem(value: 'fish', child: Text('魚')),
-                  DropdownMenuItem(value: 'pork', child: Text('豬肉')),
-                  DropdownMenuItem(value: 'beef', child: Text('牛肉')),
-                  DropdownMenuItem(value: 'chicken', child: Text('雞')),
-                  DropdownMenuItem(value: 'vegetables', child: Text('蔬菜')),
-                  DropdownMenuItem(value: 'rice', child: Text('米')),
-                  DropdownMenuItem(value: 'oil', child: Text('油')),
-                  DropdownMenuItem(value: 'seasoning', child: Text('調味料')),
-                  DropdownMenuItem(value: 'snack', child: Text('零食')),
-                  DropdownMenuItem(value: 'drink', child: Text('飲料')),
-                  DropdownMenuItem(value: 'daily', child: Text('日用品')),
-                  DropdownMenuItem(value: 'takeaway', child: Text('外賣')),
-                  DropdownMenuItem(value: 'other', child: Text('其他')),
+                items: [
+                  DropdownMenuItem(value: 'fish', child: Text(AppStrings.fish(_locale))),
+                  DropdownMenuItem(value: 'pork', child: Text(AppStrings.pork(_locale))),
+                  DropdownMenuItem(value: 'beef', child: Text(AppStrings.beef(_locale))),
+                  DropdownMenuItem(value: 'chicken', child: Text(AppStrings.chicken(_locale))),
+                  DropdownMenuItem(value: 'vegetables', child: Text(AppStrings.vegetables(_locale))),
+                  DropdownMenuItem(value: 'rice', child: Text(AppStrings.rice(_locale))),
+                  DropdownMenuItem(value: 'oil', child: Text(AppStrings.oil(_locale))),
+                  DropdownMenuItem(value: 'seasoning', child: Text(AppStrings.seasoning(_locale))),
+                  DropdownMenuItem(value: 'snack', child: Text(AppStrings.snack(_locale))),
+                  DropdownMenuItem(value: 'drink', child: Text(AppStrings.drink(_locale))),
+                  DropdownMenuItem(value: 'daily', child: Text(AppStrings.daily(_locale))),
+                  DropdownMenuItem(value: 'takeaway', child: Text(AppStrings.takeaway(_locale))),
+                  DropdownMenuItem(value: 'other', child: Text(AppStrings.otherStore(_locale))),
                 ],
                 onChanged: (v) => prdCate = v ?? 'other',
               ),
@@ -588,7 +613,7 @@ class _ReceiptDetailScreenState extends ConsumerState<ReceiptDetailScreen> {
           ),
         ),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('取消')),
+          TextButton(onPressed: () => Navigator.pop(ctx), child: Text(AppStrings.cancel(_locale))),
           FilledButton(
             onPressed: () {
               Navigator.pop(ctx);
@@ -604,7 +629,7 @@ class _ReceiptDetailScreenState extends ConsumerState<ReceiptDetailScreen> {
                 'line_total': lineTotal,
               });
             },
-            child: const Text('儲存'),
+            child: Text(AppStrings.save(_locale)),
           ),
         ],
       ),
@@ -615,17 +640,17 @@ class _ReceiptDetailScreenState extends ConsumerState<ReceiptDetailScreen> {
     showDialog(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: const Text('🗑️ 刪除項目？'),
-        content: Text('確定要刪除「${_items[index]['item_name']}」？'),
+        title: Text('🗑️ ${AppStrings.deleteItem(_locale)}'),
+        content: Text('${AppStrings.confirmDelete(_locale)}「${_items[index]['item_name']}」？'),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('取消')),
+          TextButton(onPressed: () => Navigator.pop(ctx), child: Text(AppStrings.cancel(_locale))),
           FilledButton(
             style: FilledButton.styleFrom(backgroundColor: Colors.red),
             onPressed: () {
               Navigator.pop(ctx);
               _deleteItem(index);
             },
-            child: const Text('刪除'),
+            child: Text(AppStrings.delete(_locale)),
           ),
         ],
       ),
@@ -651,21 +676,6 @@ class _ReceiptDetailScreenState extends ConsumerState<ReceiptDetailScreen> {
   }
 
   String _getPrdCateName(String cate) {
-    const map = {
-      'fish': '魚',
-      'pork': '豬肉',
-      'beef': '牛肉',
-      'chicken': '雞',
-      'vegetables': '蔬菜',
-      'rice': '米',
-      'oil': '油',
-      'seasoning': '調味料',
-      'snack': '零食',
-      'drink': '飲料',
-      'daily': '日用品',
-      'takeaway': '外賣',
-      'other': '其他',
-    };
-    return map[cate] ?? '其他';
+    return AppStrings.productCategory(_locale, cate);
   }
 }

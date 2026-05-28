@@ -104,6 +104,8 @@
 <tr><td></td><td>DATE</td><td>交易日期</td></tr>
 <tr><td></td><td>TEXT</td><td>raw_text（完整 OCR/Chat 文字）</td></tr>
 <tr><td></td><td>DECIMAL</td><td>amount（總額）</td></tr>
+<tr><td></td><td>BOOLEAN</td><td>date_anomaly（日期可疑標記，LLM 自動判斷 >3日差異）</td></tr>
+<tr><td></td><td>UUID</td><td>created_by → user_profiles（操作者審計）</td></tr>
 <tr><td></td><td>TEXT</td><td>sync_status: pending|synced</td></tr>
 <tr><td></td><td>BIGINT</td><td>local_timestamp（本地時間戳）</td></tr>
 <tr><td></td><td>TEXT</td><td>image_local_path（本地路徑，未上傳）</td></tr>

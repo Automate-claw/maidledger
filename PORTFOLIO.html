@@ -1,0 +1,346 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>MaidLedger — O2O 家政管理平台</title>
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
+    body {
+      font-family: 'Segoe UI', 'PingFang TC', 'Microsoft JhengHei', sans-serif;
+      background: linear(135deg, #1a1a2e 0%, #16213e 50%, #0f3460 100%);
+      min-height: 100vh;
+      padding: 40px 20px;
+      color: #e8e8e8;
+    }
+
+    .portfolio-container {
+      max-width: 900px;
+      margin: 0 auto;
+      background: rgba(255, 255, 255, 0.03);
+      border-radius: 24px;
+      border: 1px solid rgba(255, 255, 255, 0.1);
+      backdrop-filter: blur(10px);
+      overflow: hidden;
+      box-shadow: 0 20px 60px rgba(0, 0, 0, 0.4);
+    }
+
+    .header {
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      padding: 40px 40px 30px;
+      text-align: center;
+    }
+
+    .header h1 {
+      font-size: 2.5rem;
+      font-weight: 700;
+      color: #fff;
+      margin-bottom: 8px;
+      letter-spacing: 2px;
+    }
+
+    .header .subtitle {
+      font-size: 1.1rem;
+      color: rgba(255, 255, 255, 0.85);
+      font-weight: 300;
+    }
+
+    .badge-row {
+      display: flex;
+      justify-content: center;
+      gap: 12px;
+      margin-top: 20px;
+      flex-wrap: wrap;
+    }
+
+    .badge {
+      background: rgba(255, 255, 255, 0.2);
+      border: 1px solid rgba(255, 255, 255, 0.3);
+      padding: 6px 16px;
+      border-radius: 20px;
+      font-size: 0.85rem;
+      color: #fff;
+    }
+
+    .content {
+      padding: 40px;
+    }
+
+    .section {
+      margin-bottom: 36px;
+    }
+
+    .section-title {
+      font-size: 0.85rem;
+      text-transform: uppercase;
+      letter-spacing: 3px;
+      color: #667eea;
+      margin-bottom: 16px;
+      padding-bottom: 8px;
+      border-bottom: 2px solid rgba(102, 126, 234, 0.3);
+    }
+
+    .section-content {
+      font-size: 1rem;
+      line-height: 1.8;
+      color: #c8c8c8;
+    }
+
+    .section-content ul {
+      list-style: none;
+      padding: 0;
+    }
+
+    .section-content li {
+      padding: 8px 0;
+      padding-left: 24px;
+      position: relative;
+    }
+
+    .section-content li::before {
+      content: '›';
+      position: absolute;
+      left: 0;
+      color: #667eea;
+      font-weight: bold;
+      font-size: 1.2rem;
+    }
+
+    .tech-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+      gap: 16px;
+    }
+
+    .tech-card {
+      background: rgba(102, 126, 234, 0.1);
+      border: 1px solid rgba(102, 126, 234, 0.2);
+      border-radius: 12px;
+      padding: 16px 20px;
+    }
+
+    .tech-card .label {
+      font-size: 0.75rem;
+      text-transform: uppercase;
+      letter-spacing: 1px;
+      color: #667eea;
+      margin-bottom: 6px;
+    }
+
+    .tech-card .value {
+      font-size: 0.95rem;
+      color: #e8e8e8;
+      font-weight: 500;
+    }
+
+    .functions-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+      gap: 16px;
+    }
+
+    .function-item {
+      background: rgba(255, 255, 255, 0.03);
+      border: 1px solid rgba(255, 255, 255, 0.08);
+      border-radius: 12px;
+      padding: 16px 20px;
+      display: flex;
+      align-items: flex-start;
+      gap: 12px;
+      transition: all 0.3s ease;
+    }
+
+    .function-item:hover {
+      background: rgba(102, 126, 234, 0.1);
+      border-color: rgba(102, 126, 234, 0.3);
+    }
+
+    .function-icon {
+      font-size: 1.4rem;
+      flex-shrink: 0;
+    }
+
+    .function-text {
+      font-size: 0.9rem;
+      color: #c8c8c8;
+      line-height: 1.5;
+    }
+
+    .function-text strong {
+      color: #e8e8e8;
+    }
+
+    .footer {
+      background: rgba(0, 0, 0, 0.2);
+      padding: 24px 40px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      flex-wrap: wrap;
+      gap: 16px;
+    }
+
+    .footer-item {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      font-size: 0.9rem;
+      color: #888;
+    }
+
+    .footer-item .icon {
+      font-size: 1.1rem;
+    }
+
+    .footer-item a {
+      color: #667eea;
+      text-decoration: none;
+    }
+
+    .footer-item a:hover {
+      text-decoration: underline;
+    }
+
+    @media (max-width: 600px) {
+      .content { padding: 24px; }
+      .header { padding: 30px 24px; }
+      .header h1 { font-size: 1.8rem; }
+      .footer { padding: 20px 24px; flex-direction: column; align-items: flex-start; }
+    }
+  </style>
+</head>
+<body>
+
+<div class="portfolio-container">
+  <div class="header">
+    <h1>🏠 MaidLedger</h1>
+    <p class="subtitle">O2O 家政管理平台 (HK Market)</p>
+    <div class="badge-row">
+      <span class="badge">📱 Flutter Mobile</span>
+      <span class="badge">☁️ Supabase Backend</span>
+      <span class="badge">🤖 LLM Integration</span>
+      <span class="badge">🔄 Real-time Sync</span>
+    </div>
+  </div>
+
+  <div class="content">
+    <div class="section">
+      <div class="section-title">Role</div>
+      <div class="section-content">
+        <strong>Full Stack Developer</strong><br>
+        Flutter Mobile (helper_app + employer_app) · Supabase Edge Functions · LLM Integration · OCR Pipeline
+      </div>
+    </div>
+
+    <div class="section">
+      <div class="section-title">Industry & Platform</div>
+      <div class="section-content">
+        O2O 家政服務平台 · 雙App架構（僱主 + 工人）· HK Market · 繁體中文優先
+      </div>
+    </div>
+
+    <div class="section">
+      <div class="section-title">User Requirements</div>
+      <div class="section-content">
+        <ul>
+          <li><strong>工人視角：</strong>OCR 掃描收據 / AI 對話記帳 / 即時同步僱主</li>
+          <li><strong>僱主視角：</strong>即時接收收據通知 / 工人管理 / 邀請碼系統</li>
+          <li><strong>雙向需求：</strong>僱主-工人關係綁定 / 即時推播通知</li>
+          <li><strong>數據層：</strong>眾包物價數據 / 天氣抑制邏輯 / 智能報警引擎</li>
+          <li><strong>安全需求：</strong>Rate Limiting / API 成本控制 / 用戶驗證</li>
+        </ul>
+      </div>
+    </div>
+
+    <div class="section">
+      <div class="section-title">Tech Stack</div>
+      <div class="tech-grid">
+        <div class="tech-card">
+          <div class="label">Mobile (Apps)</div>
+          <div class="value">Flutter (helper_app + employer_app)</div>
+        </div>
+        <div class="tech-card">
+          <div class="label">Backend</div>
+          <div class="value">Supabase (Edge Functions + PostgreSQL)</div>
+        </div>
+        <div class="tech-card">
+          <div class="label">LLM</div>
+          <div class="value">OpenRouter (DeepSeek V4 / GPT-4o)</div>
+        </div>
+        <div class="tech-card">
+          <div class="label">OCR</div>
+          <div class="value">Google ML Kit (端側處理)</div>
+        </div>
+        <div class="tech-card">
+          <div class="label">Scraper</div>
+          <div class="value">Python + Playwright</div>
+        </div>
+        <div class="tech-card">
+          <div class="label">Realtime</div>
+          <div class="value">Supabase Realtime + Local Push</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="section">
+      <div class="section-title">Key Functions</div>
+      <div class="functions-grid">
+        <div class="function-item">
+          <span class="function-icon">📷</span>
+          <span class="function-text"><strong>OCR 掃描</strong><br>相機拍攝 → ML Kit 端側 OCR → LLM 解析 → 自動記帳</span>
+        </div>
+        <div class="function-item">
+          <span class="function-icon">💬</span>
+          <span class="function-text"><strong>AI 對話記帳</strong><br>自然語言輸入 → LLM 理解意圖 → 智能記帳分類</span>
+        </div>
+        <div class="function-item">
+          <span class="function-icon">🔔</span>
+          <span class="function-text"><strong>即時通知</strong><br>收據上傳 → Realtime 推播 → 僱主即時收到</span>
+        </div>
+        <div class="function-item">
+          <span class="function-icon">🔢</span>
+          <span class="function-text"><strong>邀請碼系統</strong><br>6位碼僱主綁定工人 / 關係狀態管理</span>
+        </div>
+        <div class="function-item">
+          <span class="function-icon">📊</span>
+          <span class="function-text"><strong>眾包物價</strong><br>店舖匹配 / 價格歷史 / 智能天氣抑制</span>
+        </div>
+        <div class="function-item">
+          <span class="function-icon">🌐</span>
+          <span class="function-text"><strong>多語言</strong><br>繁中 + 英文 / localeProvider 動態切換</span>
+        </div>
+        <div class="function-item">
+          <span class="function-icon">⏱️</span>
+          <span class="function-text"><strong>Rate Limiting</strong><br>防止濫用 / LLM API 成本控制</span>
+        </div>
+        <div class="function-item">
+          <span class="function-icon">🔄</span>
+          <span class="function-text"><strong>雙向同步</strong><br>Supabase Realtime 跨 App 狀態同步</span>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="footer">
+    <div class="footer-item">
+      <span class="icon">⏰</span>
+      <span>2026-05 — 進行中</span>
+    </div>
+    <div class="footer-item">
+      <span class="icon">🔗</span>
+      <a href="https://github.com/Automate-claw/maidledger" target="_blank">github.com/Automate-claw/maidledger</a>
+    </div>
+    <div class="footer-item">
+      <span class="icon">👤</span>
+      <span>Developer Agent Portfolio</span>
+    </div>
+  </div>
+</div>
+
+</body>
+</html>

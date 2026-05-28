@@ -75,6 +75,7 @@ class _RecordPaymentScreenState extends ConsumerState<RecordPaymentScreen> {
         'amount': amount,
         'payment_date': DateFormat('yyyy-MM-dd').format(_paymentDate),
         'note': _noteController.text.trim().isEmpty ? null : _noteController.text.trim(),
+        'created_by': userId,
       });
 
       if (mounted) {
@@ -95,7 +96,7 @@ class _RecordPaymentScreenState extends ConsumerState<RecordPaymentScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Record Payment'),
+        title: const Text('記錄收款'),
         centerTitle: true,
       ),
       body: Form(
@@ -108,7 +109,7 @@ class _RecordPaymentScreenState extends ConsumerState<RecordPaymentScreen> {
               controller: _amountController,
               keyboardType: const TextInputType.numberWithOptions(decimal: true),
               decoration: InputDecoration(
-                labelText: 'Amount',
+                labelText: '金額',
                 prefixText: '\$ ',
                 prefixStyle: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
                 border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
@@ -131,8 +132,8 @@ class _RecordPaymentScreenState extends ConsumerState<RecordPaymentScreen> {
                 side: BorderSide(color: Colors.grey[300]!),
               ),
               leading: const Icon(Icons.calendar_today),
-              title: const Text('Date'),
-              subtitle: Text(DateFormat('EEEE, MMM d, y').format(_paymentDate)),
+              title: const Text('日期'),
+              subtitle: Text(DateFormat('yyyy/MM/dd（EEE）', 'zh_Hant').format(_paymentDate)),
               trailing: const Icon(Icons.chevron_right),
               onTap: _selectDate,
             ),
@@ -143,7 +144,7 @@ class _RecordPaymentScreenState extends ConsumerState<RecordPaymentScreen> {
               controller: _noteController,
               maxLines: 2,
               decoration: InputDecoration(
-                labelText: 'Note (optional)',
+                labelText: '備註（選填）',
                 hintText: '例如：6月零用 / 補貼 / 其他',
                 border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
                 filled: true,
@@ -181,7 +182,7 @@ class _RecordPaymentScreenState extends ConsumerState<RecordPaymentScreen> {
               icon: _isLoading
                   ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2))
                   : const Icon(Icons.check),
-              label: const Text('Save Payment Record'),
+              label: const Text('儲存收款記錄'),
               style: FilledButton.styleFrom(
                 padding: const EdgeInsets.symmetric(vertical: 16),
                 backgroundColor: Colors.green,

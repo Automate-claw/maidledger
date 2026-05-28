@@ -49,7 +49,48 @@ class AppStrings {
       'confidence': '信心度',
       'items': '貨品',
       'location': '地點',
+      'confirm_location': '確認位置',
+      'no_network': '無網絡連接',
+      'no_receipt_photo': '沒有收據相片',
+      'align_receipt': '請將收據置於框內',
+      'cannot_display_photo': '無法顯示相片',
       'photo_attached': '📎 附有相片',
+      'history_title': '記帳歷史',
+      'error': '錯誤',
+      'cash_balance': '現金結餘',
+      'recent_records': '最近記錄',
+      'overdraft': '透支',
+      'item_saved': '✅ 項目已儲存',
+      'save_failed': '儲存失敗',
+      'update_failed': '更新失敗',
+      'delete_failed': '刪除失敗',
+      'receipt_detail': '收據詳情',
+      'saving': '儲存中...',
+      'supermarket': '超市',
+      'wet_market': '街市',
+      'pharmacy': '藥房',
+      'convenience': '便利店',
+      'online': '網購',
+      'restaurant': '餐廳',
+      'cafe': '茶餐廳',
+      'takeaway': '外賣',
+      'other_store': '其他',
+      'no_items': '尚無項目',
+      'edit_item': '編輯項目',
+      'fish': '魚',
+      'pork': '豬肉',
+      'beef': '牛肉',
+      'chicken': '雞肉',
+      'vegetables': '蔬菜',
+      'rice': '米',
+      'oil': '油',
+      'seasoning': '調味料',
+      'snack': '零食',
+      'drink': '飲品',
+      'daily': '日用品',
+      'delete_item': '刪除項目',
+      'confirm_delete': '確認刪除',
+      'delete': '刪除',
       'need_link_employer': '🔗 需要先連接僱主',
       'enter_invite_code': '請先輸入僱主的邀請碼來連接。',
       'ok': '確定',
@@ -134,6 +175,11 @@ class AppStrings {
       'confidence': 'Confidence',
       'items': 'Items',
       'location': 'Location',
+      'confirm_location': 'Confirm location',
+      'no_network': 'No network connection',
+      'no_receipt_photo': 'No receipt photo',
+      'align_receipt': 'Align receipt within frame',
+      'cannot_display_photo': 'Cannot display photo',
       'photo_attached': '📎 Photo attached',
       'need_link_employer': '🔗 Link to employer first',
       'enter_invite_code': 'Please enter your employer\'s invite code to link.',
@@ -172,6 +218,42 @@ class AppStrings {
           'Category：{category}\n'
           'Confidence：{conf}%\n\n'
           'Confirm save? ✅ / ❌',
+      'history_title': 'Expense History',
+      'error': 'Error',
+      'cash_balance': 'Cash Balance',
+      'recent_records': 'Recent Records',
+      'overdraft': 'Overdraft',
+      'item_saved': '✅ Item saved',
+      'save_failed': 'Save failed',
+      'update_failed': 'Update failed',
+      'delete_failed': 'Delete failed',
+      'receipt_detail': 'Receipt Detail',
+      'saving': 'Saving...',
+      'supermarket': 'Supermarket',
+      'wet_market': 'Wet Market',
+      'pharmacy': 'Pharmacy',
+      'convenience': 'Convenience',
+      'online': 'Online',
+      'restaurant': 'Restaurant',
+      'cafe': 'Cafe',
+      'takeaway': 'Takeaway',
+      'other_store': 'Other',
+      'no_items': 'No items',
+      'edit_item': 'Edit Item',
+      'fish': 'Fish',
+      'pork': 'Pork',
+      'beef': 'Beef',
+      'chicken': 'Chicken',
+      'vegetables': 'Vegetables',
+      'rice': 'Rice',
+      'oil': 'Oil',
+      'seasoning': 'Seasoning',
+      'snack': 'Snack',
+      'drink': 'Drink',
+      'daily': 'Daily',
+      'delete_item': 'Delete Item',
+      'confirm_delete': 'Confirm delete',
+      'delete': 'Delete',
     },
     AppLocale.indonesian: {
       'settings': 'Pengaturan',
@@ -219,6 +301,11 @@ class AppStrings {
       'confidence': 'Kepercayaan',
       'items': 'Barang',
       'location': 'Lokasi',
+      'confirm_location': 'Konfirmasi lokasi',
+      'no_network': 'Tidak ada koneksi jaringan',
+      'no_receipt_photo': 'Tidak ada foto kuitansi',
+      'align_receipt': 'Sejajarkan kuitansi dalam bingkai',
+      'cannot_display_photo': 'Tidak dapat menampilkan foto',
       'photo_attached': '📎 Foto dilampirkan',
       'need_link_employer': '🔗 Tautkan ke majikan dulu',
       'enter_invite_code': 'Silakan masukkan kode undangan majikan untuk menautkan.',
@@ -257,6 +344,42 @@ class AppStrings {
           'Kategori：{category}\n'
           'Kepercayaan：{conf}%\n\n'
           'Konfirmasi simpan? ✅ / ❌',
+      'history_title': 'Riwayat Pengeluaran',
+      'error': 'Kesalahan',
+      'cash_balance': 'Saldo Tunai',
+      'recent_records': 'Catatan Terbaru',
+      'overdraft': 'Kelebihan tarik',
+      'item_saved': '✅ Item disimpan',
+      'save_failed': 'Gagal menyimpan',
+      'update_failed': 'Gagal memperbarui',
+      'delete_failed': 'Gagal menghapus',
+      'receipt_detail': 'Detail Kuitansi',
+      'saving': 'Menyimpan...',
+      'supermarket': 'Supermarket',
+      'wet_market': 'Pasar Basah',
+      'pharmacy': 'Apotek',
+      'convenience': 'Convenience',
+      'online': 'Online',
+      'restaurant': 'Restoran',
+      'cafe': 'Kafe',
+      'takeaway': 'Bawa Pulang',
+      'other_store': 'Lainnya',
+      'no_items': 'Tidak ada item',
+      'edit_item': 'Edit Item',
+      'fish': 'Ikan',
+      'pork': 'Daging Babi',
+      'beef': 'Daging Sapi',
+      'chicken': 'Ayam',
+      'vegetables': 'Sayuran',
+      'rice': 'Nasi',
+      'oil': 'Minyak',
+      'seasoning': 'Bumbu',
+      'snack': 'Camilan',
+      'drink': 'Minuman',
+      'daily': 'Barang Sehari-hari',
+      'delete_item': 'Hapus Item',
+      'confirm_delete': 'Konfirmasi hapus',
+      'delete': 'Hapus',
     },
     AppLocale.filipino: {
       'settings': 'Mga Setting',
@@ -304,6 +427,11 @@ class AppStrings {
       'confidence': 'Kumpyansa',
       'items': 'Mga bagay',
       'location': 'Lokasyon',
+      'confirm_location': 'Kumpirmahin ang lokasyon',
+      'no_network': 'Walang koneksyon sa network',
+      'no_receipt_photo': 'Walang resibo ng larawan',
+      'align_receipt': 'I-align ang resibo sa loob ng frame',
+      'cannot_display_photo': 'Hindi ma-display ang larawan',
       'photo_attached': '📎 May larawan na nakakabit',
       'need_link_employer': '🔗 I-link muna sa employer',
       'enter_invite_code': 'Pakilarawan ang invite code ng employer para i-link.',
@@ -342,6 +470,42 @@ class AppStrings {
           'Kategorya：{category}\n'
           'Kumpyansa：{conf}%\n\n'
           'Kumpirmahin ang pag-save? ✅ / ❌',
+      'history_title': 'Kasaysayan ng Gastos',
+      'error': 'Pagkakamali',
+      'cash_balance': 'Kuwenta ng Pera',
+      'recent_records': 'Kamakailang mga Tala',
+      'overdraft': 'Overdraft',
+      'item_saved': '✅ Na-save ang item',
+      'save_failed': 'Hindi nagtagumpay ang pag-save',
+      'update_failed': 'Hindi nagtagumpay ang pag-update',
+      'delete_failed': 'Hindi nagtagumpay ang pag-delete',
+      'receipt_detail': 'Detalye ng Resibo',
+      'saving': 'Nagse-save...',
+      'supermarket': 'Supermarket',
+      'wet_market': 'Palengke',
+      'pharmacy': 'Botika',
+      'convenience': 'Convenience',
+      'online': 'Online',
+      'restaurant': 'Restoran',
+      'cafe': 'Kapehan',
+      'takeaway': 'Kumuha ng labis',
+      'other_store': 'Iba pa',
+      'no_items': 'Walang items',
+      'edit_item': 'I-edit ang Item',
+      'fish': 'Isda',
+      'pork': 'Karneng Baboy',
+      'beef': 'Karneng Baka',
+      'chicken': 'Manok',
+      'vegetables': 'Gulay',
+      'rice': 'Kanis',
+      'oil': 'Langis',
+      'seasoning': 'Pampalasa',
+      'snack': 'Meryenda',
+      'drink': 'Inumin',
+      'daily': 'Araw-araw',
+      'delete_item': 'Burahin ang Item',
+      'confirm_delete': 'Kumpirmahin ang pagbura',
+      'delete': 'Burahin',
     },
   };
 
@@ -392,6 +556,8 @@ class AppStrings {
   static String confidence(AppLocale locale) => get(locale, 'confidence');
   static String items(AppLocale locale) => get(locale, 'items');
   static String location(AppLocale locale) => get(locale, 'location');
+  static String confirmLocation(AppLocale locale) => get(locale, 'confirm_location');
+  static String noNetwork(AppLocale locale) => get(locale, 'no_network');
   static String photoAttached(AppLocale locale) => get(locale, 'photo_attached');
   static String lowConfidence(AppLocale locale) => get(locale, 'low_confidence_warning');
   static String photoExpense(AppLocale locale) => get(locale, 'photo_expense');
@@ -420,4 +586,41 @@ class AppStrings {
   static String disconnectConfirm(AppLocale locale) => get(locale, 'disconnect_confirm');
   static String inviteCode(AppLocale locale) => get(locale, 'invite_code');
   static String employerCodeHint(AppLocale locale) => get(locale, 'employer_code_hint');
+  static String historyTitle(AppLocale locale) => get(locale, 'history_title');
+  static String error(AppLocale locale) => get(locale, 'error');
+  static String recentRecords(AppLocale locale) => get(locale, 'recent_records');
+  static String itemSaved(AppLocale locale) => get(locale, 'item_saved');
+  static String saveFailed(AppLocale locale) => get(locale, 'save_failed');
+  static String updateFailed(AppLocale locale) => get(locale, 'update_failed');
+  static String deleteFailed(AppLocale locale) => get(locale, 'delete_failed');
+  static String receiptDetail(AppLocale locale) => get(locale, 'receipt_detail');
+  static String saving(AppLocale locale) => get(locale, 'saving');
+  static String supermarket(AppLocale locale) => get(locale, 'supermarket');
+  static String wetMarket(AppLocale locale) => get(locale, 'wet_market');
+  static String pharmacy(AppLocale locale) => get(locale, 'pharmacy');
+  static String convenience(AppLocale locale) => get(locale, 'convenience');
+  static String online(AppLocale locale) => get(locale, 'online');
+  static String restaurant(AppLocale locale) => get(locale, 'restaurant');
+  static String cafe(AppLocale locale) => get(locale, 'cafe');
+  static String takeaway(AppLocale locale) => get(locale, 'takeaway');
+  static String otherStore(AppLocale locale) => get(locale, 'other_store');
+  static String noItems(AppLocale locale) => get(locale, 'no_items');
+  static String noReceiptPhoto(AppLocale locale) => get(locale, 'no_receipt_photo');
+  static String cannotDisplayPhoto(AppLocale locale) => get(locale, 'cannot_display_photo');
+  static String alignReceipt(AppLocale locale) => get(locale, 'align_receipt');
+  static String editItem(AppLocale locale) => get(locale, 'edit_item');
+  static String fish(AppLocale locale) => get(locale, 'fish');
+  static String pork(AppLocale locale) => get(locale, 'pork');
+  static String beef(AppLocale locale) => get(locale, 'beef');
+  static String chicken(AppLocale locale) => get(locale, 'chicken');
+  static String vegetables(AppLocale locale) => get(locale, 'vegetables');
+  static String rice(AppLocale locale) => get(locale, 'rice');
+  static String oil(AppLocale locale) => get(locale, 'oil');
+  static String seasoning(AppLocale locale) => get(locale, 'seasoning');
+  static String snack(AppLocale locale) => get(locale, 'snack');
+  static String drink(AppLocale locale) => get(locale, 'drink');
+  static String daily(AppLocale locale) => get(locale, 'daily');
+  static String deleteItem(AppLocale locale) => get(locale, 'delete_item');
+  static String confirmDelete(AppLocale locale) => get(locale, 'confirm_delete');
+  static String productCategory(AppLocale locale, String cate) => get(locale, 'product_$cate');
 }

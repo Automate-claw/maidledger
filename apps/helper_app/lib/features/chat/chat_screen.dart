@@ -26,10 +26,12 @@ class ChatScreen extends ConsumerStatefulWidget {
 }
 
 class _ChatScreenState extends ConsumerState<ChatScreen> {
+  AppLocale get _locale => ref.watch(localeProvider);
   final _messageController = TextEditingController();
   final _scrollController = ScrollController();
   final List<ChatMessage> _messages = [];
   bool _isTyping = false;
+  bool _greetingSet = false;
 
   // Attached image state
   XFile? _attachedImage;
@@ -51,14 +53,23 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
   void initState() {
     super.initState();
     _agent = AIBookingAgent();
-    _messages.add(ChatMessage(text: AppStrings.greeting(AppLocale.tradChinese), isUser: false));
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    // Locale is now available via ref.watch - set greeting when locale first loads
+    if (!_greetingSet) {
+      _greetingSet = true;
+      _messages.add(ChatMessage(text: AppStrings.greeting(ref.read(localeProvider)), isUser: false));
+    }
   }
 
   void _refreshGreeting() {
     final locale = ref.read(localeProvider);
     setState(() {
       _messages.clear();
-      _messages.add(ChatMessage(text: AppStrings.greeting(locale), isUser: false));
+      _messages.add(ChatMessage(text: AppStrings.greeting(_locale), isUser: false));
     });
   }
 
@@ -135,16 +146,16 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
     return showDialog<String>(
       context: context,
       builder: (context) => AlertDialog(
-        title: const Text('📍 確認地點'),
-        content: Text('系統偵測到您可能喺「$detectedLocation」'),
+        title: Text('📍 ${AppStrings.confirmLocation(_locale)}'),
+        content: Text('${AppStrings.confirmLocation(_locale)} 「$detectedLocation」'),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context, detectedLocation),
-            child: const Text('✅ 是'),
+            child: Text(AppStrings.confirm(_locale)),
           ),
           TextButton(
             onPressed: () => Navigator.pop(context, null),
-            child: const Text('❌ 不是'),
+            child: Text(AppStrings.cancel(_locale)),
           ),
           TextButton(
             onPressed: () async {
@@ -154,7 +165,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
                 Navigator.pop(context, result);
               }
             },
-            child: const Text('📍 手動選擇'),
+            child: Text(AppStrings.location(_locale)),
           ),
         ],
       ),
@@ -205,7 +216,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
     return showDialog<String>(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: const Text('📍 添加位置'),
+        title: Text('📍 ${AppStrings.location(_locale)}'),
         content: SizedBox(
           width: double.maxFinite,
           child: GridView.count(
@@ -218,7 +229,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
           ),
         ),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('取消')),
+          TextButton(onPressed: () => Navigator.pop(ctx), child: Text(AppStrings.cancel(_locale))),
         ],
       ),
     );
@@ -254,8 +265,8 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
     if (connectivityResult.contains(ConnectivityResult.none)) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('無網絡連接'),
+          SnackBar(
+            content: Text(AppStrings.noNetwork(_locale)),
             backgroundColor: Colors.orange,
           ),
         );
@@ -285,7 +296,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
 
     setState(() {
       _messages.add(ChatMessage(
-        text: text.isEmpty ? AppStrings.photoExpense(locale) : text,
+        text: text.isEmpty ? AppStrings.photoExpense(_locale) : text,
         isUser: true,
         imagePath: _attachedImageBase64, // use base64 for reliable display
       ));
@@ -337,13 +348,13 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
       final locale = ref.read(localeProvider);
       String errorMsg;
       if (e is TimeoutException) {
-        errorMsg = AppStrings.timeout(locale);
+        errorMsg = AppStrings.timeout(_locale);
       } else if (e.toString().contains('timeout') && e.toString().contains('AI timeout')) {
-        errorMsg = AppStrings.timeout(locale);
+        errorMsg = AppStrings.timeout(_locale);
       } else if (e.toString().contains('rate_limit') || e.toString().contains('rate_limited')) {
-        errorMsg = AppStrings.rateLimited(locale);
+        errorMsg = AppStrings.rateLimited(_locale);
       } else {
-        errorMsg = '${AppStrings.sorryError(locale)}\n錯誤：${e.toString().substring(0, 100)}';
+        errorMsg = '${AppStrings.sorryError(_locale)}\n錯誤：${e.toString().substring(0, 100)}';
         debugPrint('Chat error: $e');
       }
       setState(() {
@@ -474,7 +485,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
       final result = await aiAgent.saveExpense(intent.rawText, userId, location: location, imageBase64: imageBase64);
 
       if (result['success'] != true) {
-        final errors = (result['errors'] as List?)?.join('; ') ?? AppStrings.expenseSaveFailed(locale);
+        final errors = (result['errors'] as List?)?.join('; ') ?? AppStrings.expenseSaveFailed(_locale);
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(content: Text(errors), backgroundColor: Colors.red),
@@ -486,7 +497,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text(AppStrings.expenseSaved(locale)),
+            content: Text(AppStrings.expenseSaved(_locale)),
             backgroundColor: Colors.green,
           ),
         );
@@ -496,7 +507,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('${AppStrings.expenseSaveFailed(locale)}：$e'),
+            content: Text('${AppStrings.expenseSaveFailed(_locale)}：$e'),
             backgroundColor: Colors.red,
           ),
         );
@@ -810,12 +821,12 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
-        title: Text(AppStrings.needLinkEmployer(locale)),
-        content: Text(AppStrings.enterInviteCode(locale)),
+        title: Text(AppStrings.needLinkEmployer(_locale)),
+        content: Text(AppStrings.enterInviteCode(_locale)),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context),
-            child: Text(AppStrings.ok(locale)),
+            child: Text(AppStrings.ok(_locale)),
           ),
         ],
       ),
@@ -875,7 +886,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
                       ),
                     ),
                     const SizedBox(width: 8),
-                    Text(AppStrings.photoAttached(locale)),
+                    Text(AppStrings.photoAttached(_locale)),
                     const SizedBox(width: 8),
                   ],
                   if (_extractedLocation != null) ...[
@@ -920,7 +931,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
                     child: CircularProgressIndicator(strokeWidth: 2),
                   ),
                   const SizedBox(width: 8),
-                  Text(AppStrings.aiThinking(locale)),
+                  Text(AppStrings.aiThinking(_locale)),
                 ],
               ),
             ),
@@ -948,12 +959,12 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
                       IconButton(
                         onPressed: _takePhoto,
                         icon: const Icon(Icons.camera_alt),
-                        tooltip: AppStrings.takePhoto(locale),
+                        tooltip: AppStrings.takePhoto(_locale),
                       ),
                       IconButton(
                         onPressed: _pickImage,
                         icon: const Icon(Icons.photo_library),
-                        tooltip: AppStrings.pickPhoto(locale),
+                        tooltip: AppStrings.pickPhoto(_locale),
                       ),
                       IconButton(
                         icon: const Icon(Icons.location_on_outlined, color: Colors.grey),
@@ -982,7 +993,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
                         child: TextField(
                           controller: _messageController,
                           decoration: InputDecoration(
-                            hintText: AppStrings.typeExpenseHint(locale),
+                            hintText: AppStrings.typeExpenseHint(_locale),
                             border: OutlineInputBorder(
                               borderRadius: BorderRadius.circular(24),
                             ),

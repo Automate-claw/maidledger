@@ -1,6 +1,8 @@
+import 'package:maidledger_localization/maidledger_localization.dart';
 import 'dart:convert';
 import 'dart:io';
 import 'dart:typed_data';
+import 'package:intl/intl.dart';
 import 'package:camera/camera.dart';
 import 'package:connectivity_plus/connectivity_plus.dart';
 import 'package:flutter/material.dart';
@@ -32,6 +34,8 @@ class ScanScreen extends ConsumerStatefulWidget {
 }
 
 class _ScanScreenState extends ConsumerState<ScanScreen> {
+  AppLocale get _locale => ref.watch(localeProvider);
+
   CameraController? _cameraController;
   List<CameraDescription>? _cameras;
   bool _isInitialized = false;
@@ -319,6 +323,9 @@ class _ScanScreenState extends ConsumerState<ScanScreen> {
       'local_timestamp': now,
       'parse_status': 'pending',
       'created_at': DateTime.now().toIso8601String(),
+      'transaction_date': DateFormat('yyyy-MM-dd').format(DateTime.now()),
+      'date_anomaly': false,
+      'created_by': user.id,
     });
 
     // Step 2: Immediately trigger receipt-orchestrate (receipt-vision → write)
@@ -578,12 +585,12 @@ class _ScanScreenState extends ConsumerState<ScanScreen> {
       context: context,
       barrierDismissible: true,
       builder: (context) => AlertDialog(
-        title: const Text('🔗 需要連接僱主'),
-        content: const Text('請先連接僱主才能保存收據。\n如果你已有代碼，請在上一個畫面輸入。'),
+        title: Text('🔗 ${AppStrings.needLinkEmployer(_locale)}'),
+        content: Text(AppStrings.enterInviteCode(_locale)),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context),
-            child: const Text('確定'),
+            child: Text(AppStrings.ok(_locale)),
           ),
         ],
       ),
@@ -616,7 +623,7 @@ class _ScanScreenState extends ConsumerState<ScanScreen> {
                   ),
                 ),
               ),
-              const Text('✅ 收據已保存', style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold)),
+              Text('✅ ${AppStrings.expenseSaved(_locale)}', style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold)),
               const SizedBox(height: 16),
               if (result.storeName != null) _infoRow('店舖', result.storeName!),
               _infoRow('類別', result.storeCate),
@@ -646,7 +653,7 @@ class _ScanScreenState extends ConsumerState<ScanScreen> {
                         _onRetake();
                       },
                       icon: const Icon(Icons.refresh),
-                      label: const Text('再掃'),
+                      label: Text(AppStrings.scan(_locale)),
                     ),
                   ),
                   const SizedBox(width: 12),
@@ -654,7 +661,7 @@ class _ScanScreenState extends ConsumerState<ScanScreen> {
                     child: FilledButton.icon(
                       onPressed: () => Navigator.pop(context),
                       icon: const Icon(Icons.check),
-                      label: const Text('完成'),
+                      label: Text(AppStrings.confirm(_locale)),
                     ),
                   ),
                 ],
@@ -720,11 +727,11 @@ class _ScanScreenState extends ConsumerState<ScanScreen> {
   String _getTitle() {
     switch (_scanPhase) {
       case ScanPhase.camera:
-        return 'Scan Receipt';
+        return AppStrings.scan(_locale);
       case ScanPhase.preview:
-        return '確認照片';
+        return AppStrings.confirmExpense(_locale);
       case ScanPhase.processing:
-        return '處理中';
+        return AppStrings.aiThinking(_locale);
     }
   }
 
@@ -751,7 +758,7 @@ class _ScanScreenState extends ConsumerState<ScanScreen> {
           children: [
             Icon(Icons.camera_alt, size: 80, color: Colors.grey),
             SizedBox(height: 16),
-            Text('Initializing camera...'),
+            const Text('Initializing camera...'),
             SizedBox(height: 8),
             CircularProgressIndicator(),
           ],
@@ -770,10 +777,11 @@ class _ScanScreenState extends ConsumerState<ScanScreen> {
                 border: Border.all(color: Colors.green.withValues(alpha: 0.5), width: 2),
               ),
               margin: const EdgeInsets.all(32),
-              child: const Center(
+              child: Center(
                 child: Text(
-                  'Align receipt within frame',
+                  AppStrings.alignReceipt(_locale),
                   style: TextStyle(
+
                     color: Colors.white,
                     fontSize: 16,
                     shadows: [Shadow(offset: Offset(1, 1), blurRadius: 4, color: Colors.black54)],
@@ -903,7 +911,7 @@ class _ScanScreenState extends ConsumerState<ScanScreen> {
                 child: OutlinedButton.icon(
                   onPressed: _isProcessing ? null : _onRetake,
                   icon: const Icon(Icons.refresh),
-                  label: const Text('重新拍攝'),
+                  label: Text(AppStrings.scan(_locale)),
                   style: OutlinedButton.styleFrom(
                     padding: const EdgeInsets.symmetric(vertical: 14),
                   ),
@@ -914,7 +922,7 @@ class _ScanScreenState extends ConsumerState<ScanScreen> {
                 child: FilledButton.icon(
                   onPressed: (_isProcessing || _ocrRawText == null) ? null : _onConfirm,
                   icon: const Icon(Icons.check),
-                  label: const Text('確認送出'),
+                  label: Text(AppStrings.confirm(_locale)),
                   style: FilledButton.styleFrom(
                     padding: const EdgeInsets.symmetric(vertical: 14),
                   ),
