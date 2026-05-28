@@ -14,6 +14,7 @@ import '../../core/services/shop_matching_service.dart';
 import '../../core/services/product_matching_service.dart';
 import '../../core/services/location_service.dart';
 import '../../core/services/receipt_scanner_service.dart';
+import 'widgets/weight_option_chip_selector.dart';
 
 /// Chat screen for AI-powered expense entry
 /// Supports: text input + optional image attachment + EXIF location
@@ -363,51 +364,88 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
 
   void _showSaveDialog(ExpenseIntent intent, XFile? image, String? location, String? imageBase64) {
     final locale = ref.read(localeProvider);
+
+    // Per-item selected weight (item_index -> weight_g)
+    final Map<int, int?> _selectedWeights = {};
+
     showDialog(
       context: context,
-      builder: (context) => AlertDialog(
-        title: Text(AppStrings.confirmExpense(locale)),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            if (imageBase64 != null) ...[
-              ClipRRect(
-                borderRadius: BorderRadius.circular(8),
-                child: Image.memory(
-                  base64Decode(imageBase64),
-                  width: 80,
-                  height: 80,
-                  fit: BoxFit.cover,
-                ),
+      builder: (context) => StatefulBuilder(
+        builder: (context, setDialogState) {
+          return AlertDialog(
+            title: Text(AppStrings.confirmExpense(locale)),
+            content: SingleChildScrollView(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  if (imageBase64 != null) ...[
+                    ClipRRect(
+                      borderRadius: BorderRadius.circular(8),
+                      child: Image.memory(
+                        base64Decode(imageBase64),
+                        width: 80,
+                        height: 80,
+                        fit: BoxFit.cover,
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                  ],
+                  Text('${AppStrings.input(locale)}：${intent.rawText}'),
+                  const SizedBox(height: 4),
+                  Text('${AppStrings.category(locale)}：${intent.category ?? "未知"}'),
+                  if (intent.amount != null)
+                    Text('${AppStrings.amount(locale)}：\$${intent.amount!.toStringAsFixed(0)}'),
+                  Text('${AppStrings.confidence(locale)}：${(intent.confidence * 100).toInt()}%'),
+                  if (intent.items.isNotEmpty) ...[
+                    Text('${AppStrings.items(locale)}：${intent.items.join("、")}'),
+                    const SizedBox(height: 8),
+                  ],
+                  // Weight chips per item
+                  ...List.generate(intent.items.length, (i) {
+                    final itemName = intent.items[i];
+                    final subcategoryCode = i < intent.subcategoryCodes.length ? intent.subcategoryCodes[i] : null;
+                    final selectedWeight = _selectedWeights[i];
+                    return Padding(
+                      padding: const EdgeInsets.only(bottom: 12),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text('🍽 $itemName', style: const TextStyle(fontWeight: FontWeight.w500)),
+                          const SizedBox(height: 4),
+                          WeightOptionChipSelector(
+                            subcategoryCode: subcategoryCode,
+                            selectedWeightG: selectedWeight,
+                            onSelected: (wg) {
+                              setDialogState(() {
+                                _selectedWeights[i] = wg;
+                              });
+                            },
+                          ),
+                        ],
+                      ),
+                    );
+                  }),
+                  if (location != null) Text('${AppStrings.location(locale)}：$location'),
+                  if (image != null) Text(AppStrings.photoAttached(locale)),
+                ],
               ),
-              const SizedBox(height: 8),
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(context),
+                child: Text(AppStrings.cancel(locale)),
+              ),
+              FilledButton(
+                onPressed: () {
+                  Navigator.pop(context);
+                  _saveExpense(intent, image, location, imageBase64: imageBase64, selectedWeights: _selectedWeights);
+                },
+                child: Text(AppStrings.confirm(locale)),
+              ),
             ],
-            Text('${AppStrings.input(locale)}：${intent.rawText}'),
-            const SizedBox(height: 4),
-            Text('${AppStrings.category(locale)}：${intent.category ?? "未知"}'),
-            if (intent.amount != null)
-              Text('${AppStrings.amount(locale)}：\$${intent.amount!.toStringAsFixed(0)}'),
-            Text('${AppStrings.confidence(locale)}：${(intent.confidence * 100).toInt()}%'),
-            if (intent.items.isNotEmpty)
-              Text('${AppStrings.items(locale)}：${intent.items.join("、")}'),
-            if (location != null) Text('${AppStrings.location(locale)}：$location'),
-            if (image != null) Text(AppStrings.photoAttached(locale)),
-          ],
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: Text(AppStrings.cancel(locale)),
-          ),
-          FilledButton(
-            onPressed: () {
-              Navigator.pop(context);
-              _saveExpense(intent, image, location, imageBase64: imageBase64);
-            },
-            child: Text(AppStrings.confirm(locale)),
-          ),
-        ],
+          );
+        },
       ),
     );
   }
@@ -415,7 +453,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
   // ─────────────────────────────────────────────
   // Save expense — all business logic in chat-orchestrate Edge Function
   // ─────────────────────────────────────────────
-  Future<void> _saveExpense(ExpenseIntent intent, XFile? image, String? location, {String? imageBase64}) async {
+  Future<void> _saveExpense(ExpenseIntent intent, XFile? image, String? location, {String? imageBase64, Map<int, int?>? selectedWeights}) async {
     final locale = ref.read(localeProvider);
     try {
       final client = supabase;

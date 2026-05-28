@@ -120,7 +120,7 @@ class AIBookingAgent {
   }
 
   /// Call chat-orchestrate to save expense (all business logic in Edge Function)
-  Future<Map<String, dynamic>> saveExpense(String text, String userId, {String? location, String? imageBase64}) async {
+  Future<Map<String, dynamic>> saveExpense(String text, String userId, {String? location, String? imageBase64, Map<int, int?>? selectedWeights}) async {
     debugPrint('🤖 [AIBookingAgent] Calling chat-orchestrate to save: $text');
 
     final anonKey = dotenv.env['SUPABASE_ANON_KEY'] ?? '';
@@ -130,6 +130,9 @@ class AIBookingAgent {
       'location': location,
     };
     if (imageBase64 != null) body['attached_image_base64'] = imageBase64;
+    if (selectedWeights != null && selectedWeights.isNotEmpty) {
+      body['selected_weights'] = selectedWeights.map((k, v) => MapEntry(k.toString(), v));
+    }
 
     final bodyBytes = utf8.encode(jsonEncode(body));
 
