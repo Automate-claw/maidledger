@@ -16,7 +16,9 @@ const corsHeaders = {
 };
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL") ?? "";
-const SUPABASE_SERVICE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? Deno.env.get("SUPABASE_ANON_KEY") ?? "";
+const SUPABASE_SERVICE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "";
+// For internal function-to-function calls, use apikey header with secret key (official Supabase pattern)
+const INTERNAL_CALL_KEY = Deno.env.get("INTERNAL_ANON_KEY") ?? SUPABASE_SERVICE_KEY;
 
 // Returns today's date in HK timezone (YYYY-MM-DD)
 function hkDate(): string {
@@ -32,7 +34,7 @@ async function callFunction(funcName: string, payload: any): Promise<any> {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
-      "Authorization": `Bearer ${SUPABASE_SERVICE_KEY}`,
+      "apikey": INTERNAL_CALL_KEY,
     },
     body: JSON.stringify(payload),
   });

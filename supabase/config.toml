@@ -1,0 +1,25 @@
+# Supabase Edge Functions Configuration
+# All internal/coordinator functions should have verify_jwt=false
+# since they call other functions using service keys (apikey header)
+
+[functions.chat-orchestrate]
+verify_jwt = false
+
+[functions.receipt-orchestrate]
+verify_jwt = false
+
+# Individual functions called by orchestrators - verify_jwt=false for service-to-service
+[functions.chat-parser]
+verify_jwt = false
+
+[functions.receipt-writer]
+verify_jwt = false
+
+[functions.shop-manager]
+verify_jwt = false
+
+[functions.product-manager]
+verify_jwt = false
+
+[functions.receipt-vision]
+verify_jwt = false
