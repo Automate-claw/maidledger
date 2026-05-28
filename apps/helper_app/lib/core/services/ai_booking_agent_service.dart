@@ -103,7 +103,7 @@ class AIBookingAgent {
       Uri.parse(_chatParserUrl),
       headers: {
         'Content-Type': 'application/json; charset=utf-8',
-        'Authorization': anonKey,
+        'Authorization': 'Bearer $anonKey',
       },
       body: bodyBytes,
     ).timeout(const Duration(seconds: 60));
@@ -140,7 +140,7 @@ class AIBookingAgent {
       Uri.parse(_edgeUrl),
       headers: {
         'Content-Type': 'application/json; charset=utf-8',
-        'Authorization': anonKey,
+        'Authorization': 'Bearer $anonKey',
       },
       body: bodyBytes,
     ).timeout(const Duration(seconds: 60));
