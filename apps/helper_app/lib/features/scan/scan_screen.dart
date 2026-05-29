@@ -87,9 +87,11 @@ class _ScanScreenState extends ConsumerState<ScanScreen> with WidgetsBindingObse
   void didChangeDependencies() {
     super.didChangeDependencies();
     final activeTab = ref.watch(activeTabProvider);
+    print('[ScanScreen] didChangeDependencies: activeTab=$activeTab, _isInitialized=$_isInitialized, _isInitializing=$_isInitializing, _scanPhase=$_scanPhase');
     
     if (activeTab != 0) {
       // Switching away from scan tab - dispose camera
+      print('[ScanScreen] Tab away - disposing camera');
       _disposeCamera();
     } else {
       // On scan tab - init camera if needed
@@ -97,11 +99,15 @@ class _ScanScreenState extends ConsumerState<ScanScreen> with WidgetsBindingObse
       _disposed = false;
       
       if (_isInitialized && _cameraController != null && _cameraController!.value.isInitialized) {
+        print('[ScanScreen] Camera already ready, skipping init');
         return; // Camera already ready
       }
       
       if (!_isInitialized && !_isInitializing && _scanPhase == ScanPhase.camera) {
+        print('[ScanScreen] Calling _initCamera()');
         _initCamera();
+      } else {
+        print('[ScanScreen] Skipping init: _isInitialized=$_isInitialized, _isInitializing=$_isInitializing, _scanPhase=$_scanPhase');
       }
     }
   }
@@ -128,11 +134,15 @@ class _ScanScreenState extends ConsumerState<ScanScreen> with WidgetsBindingObse
 
   Future<void> _initCamera() async {
     // Prevent concurrent initialization
-    if (_isInitializing) return;
+    if (_isInitializing) {
+      print('[ScanScreen] _initCamera skipped: already initializing');
+      return;
+    }
     
     // Mark as disposed - if tab switches away during init, this will be true
     _disposed = false;
     _isInitializing = true;
+    print('[ScanScreen] _initCamera started');
 
     try {
       // Dispose existing controller before creating new one
