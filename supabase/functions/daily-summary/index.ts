@@ -42,24 +42,34 @@ serve(async (req) => {
 
     const now = new Date()
     
-    // Calculate time window: 06:00 today to 06:00 tomorrow
-    // If current time is before 06:00, the window started yesterday
-    const today6AM = new Date(now)
-    today6AM.setHours(6, 0, 0, 0)
+    // Calculate time window: 06:00 today to 06:00 tomorrow in HK timezone
+    // We use local Hong Kong time (UTC+8)
+    const HK_OFFSET = 8 * 60 * 60 * 1000; // 8 hours in ms
     
-    let windowStart: Date
-    let windowEnd: Date
+    // Get current time in HK
+    const nowHK = new Date(now.getTime() + HK_OFFSET);
+    const currentHourHK = nowHK.getHours();
     
-    if (now.getHours() < 6) {
-      // Before 6 AM → window started yesterday 6 AM
-      windowStart = new Date(today6AM)
-      windowStart.setDate(windowStart.getDate() - 1)
-      windowEnd = today6AM
+    // Get today's date in HK
+    const todayDateStr = nowHK.toISOString().split('T')[0]; // YYYY-MM-DD
+    
+    // If current HK hour is before 6 AM, the window started yesterday 6 AM
+    // So we should show yesterday's receipts
+    let windowStartStr: string;
+    let windowEndStr: string;
+    
+    if (currentHourHK < 6) {
+      // Before 6 AM HK → window is yesterday to today
+      const yesterday = new Date(nowHK);
+      yesterday.setDate(yesterday.getDate() - 1);
+      windowStartStr = yesterday.toISOString().split('T')[0];
+      windowEndStr = todayDateStr;
     } else {
-      // After 6 AM → window started today 6 AM, ends tomorrow 6 AM
-      windowStart = today6AM
-      windowEnd = new Date(today6AM)
-      windowEnd.setDate(windowEnd.getDate() + 1)
+      // After 6 AM HK → window is today to tomorrow
+      windowStartStr = todayDateStr;
+      const tomorrow = new Date(nowHK);
+      tomorrow.setDate(tomorrow.getDate() + 1);
+      windowEndStr = tomorrow.toISOString().split('T')[0];
     }
 
     // Query receipts for this helper (helper_id = user.id) in the time window
@@ -74,13 +84,16 @@ serve(async (req) => {
         employer_id
       `)
       .eq('helper_id', user.id)
-      .gte('transaction_date', windowStart.toISOString())
-      .lt('transaction_date', windowEnd.toISOString())
+      .gte('transaction_date', windowStartStr)
+      .lt('transaction_date', windowEndStr)
       .order('created_at', { ascending: true })
 
     if (receiptsError) {
       throw receiptsError
     }
+
+    // DEBUG
+    console.log('windowStartStr:', windowStartStr, 'windowEndStr:', windowEndStr, 'receipts:', receipts?.length);
 
     // Get employer's name for the header (if linked)
     let employerDisplay = ''
