@@ -98,6 +98,18 @@ INSERT / UPDATE employer_helper_relations（status='active'）
 
 ## 🌏 Critical Technical Rules
 
+### 🛡️ Anti-Cheat Rules（防作弊）
+
+| 規則 | 條件 | 結果 |
+|---|---|---|
+| **Rule 1** | `transaction_date` > 3 天前 | `needs_review = true` |
+| **Rule 2** | 3 日內，同一 `store_cate` + 同一 `amount` + **所有 items 完全相同** | `needs_review = true` |
+
+- **適用範圍：** Chat 和 Scan 兩條 path 統一規則
+- **Helper 行為：** 可以保存，但 receipt 標記為 `needs_review = true`
+- **返回：** `similar_receipts[]` 陣列，包含相似記錄供僱主對比
+- **實作位置：** `receipt-writer` 的 `checkAntiCheat()` 函數
+
 - **Timezone:** `Asia/Hong_Kong`，`toLocaleString("en-US", {timeZone: "Asia/Hong_Kong"})`
 - **Auth:** Edge Functions 内部調用用 `SUPABASE_SERVICE_ROLE_KEY`（唔係 ANON_KEY）
 - **LLM Provider:** OpenRouter（DeepSeek V4 / GPT-4o）
