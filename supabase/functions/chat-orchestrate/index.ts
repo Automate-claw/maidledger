@@ -126,6 +126,7 @@ async function processChatInput(
   // ── Step 2: receipt-writer: create/update receipt ───────────────────
   let receiptId: string | null = null;
   try {
+    // Pass items for anti-cheat check (Rule 1 & Rule 2)
     const r = await callFunction("receipt-writer", {
       action: "createFromChat",
       user_id: userId,
@@ -138,11 +139,17 @@ async function processChatInput(
       ocr_raw_text: text,
       ocr_reconstructed: null,
       attached_image_base64: attachedImageBase64 ?? null,
+      items: items, // for anti-cheat duplicate check
     });
     if (!r.ok || !r.data?.success) {
       allErrors.push(`receipt-writer (createFromChat) failed: ${JSON.stringify(r.data)}`);
     } else {
       receiptId = r.data.receipt_id ?? null;
+      // Use anti-cheat result (higher confidence wins)
+      if (r.data.needs_review) {
+        needsReview = true;
+        console.log(`[chat-orchestrate] anti-cheat triggered: similar_receipts=${r.data.similar_receipts?.length}`);
+      }
     }
   } catch (e) {
     allErrors.push(`receipt-writer exception: ${e}`);
