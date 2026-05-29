@@ -65,12 +65,18 @@ class _ScanScreenState extends ConsumerState<ScanScreen> with WidgetsBindingObse
 
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
+    final activeTab = ref.read(activeTabProvider);
+    // Only manage camera if we're on the scan tab
+    if (activeTab != 0) return;
+    
     // Dispose camera when app goes to background or becomes inactive
     if (state == AppLifecycleState.inactive || state == AppLifecycleState.paused) {
       _disposeCamera();
     } else if (state == AppLifecycleState.resumed && _scanPhase == ScanPhase.camera) {
       // Reinitialize camera when app resumes to camera phase
-      _initCamera();
+      if (!_isInitialized && !_isInitializing) {
+        _initCamera();
+      }
     }
   }
 
@@ -88,9 +94,15 @@ class _ScanScreenState extends ConsumerState<ScanScreen> with WidgetsBindingObse
       // Coming back to scan tab - reinitialize camera if needed
       if (!_isInitialized && !_isInitializing && _scanPhase == ScanPhase.camera) {
         WidgetsBinding.instance.addPostFrameCallback((_) {
-          // Check again inside callback - tab might have changed
+          // Only reinit if still on scan tab
+          if (!mounted) return;
           final currentTab = ref.read(activeTabProvider);
-          if (mounted && currentTab == 0 && !_isInitialized && !_isInitializing) {
+          if (currentTab != 0) return;
+          // Force reset if stuck in initializing state (tab switch during init)
+          if (_isInitializing) {
+            _isInitializing = false;
+          }
+          if (!_isInitialized && !_isInitializing && _scanPhase == ScanPhase.camera) {
             _initCamera();
           }
         });
