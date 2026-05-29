@@ -41,6 +41,7 @@ class _ScanScreenState extends ConsumerState<ScanScreen> with WidgetsBindingObse
   List<CameraDescription>? _cameras;
   bool _isInitialized = false;
   bool _isInitializing = false;
+  bool _disposed = false;
   bool _isVisible = true;
 
   // Phase state
@@ -59,8 +60,13 @@ class _ScanScreenState extends ConsumerState<ScanScreen> with WidgetsBindingObse
   @override
   void initState() {
     super.initState();
-    _initCamera();
     WidgetsBinding.instance.addObserver(this);
+    // Delay camera init to after first frame to avoid IndexedStack issues
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) {
+        _initCamera();
+      }
+    });
   }
 
   @override
@@ -100,6 +106,7 @@ class _ScanScreenState extends ConsumerState<ScanScreen> with WidgetsBindingObse
           if (currentTab != 0) return;
           // Force reset if stuck in initializing state (tab switch during init)
           if (_isInitializing) {
+            _disposed = true; // Signal cancellation
             _isInitializing = false;
           }
           if (!_isInitialized && !_isInitializing && _scanPhase == ScanPhase.camera) {
@@ -111,51 +118,89 @@ class _ScanScreenState extends ConsumerState<ScanScreen> with WidgetsBindingObse
   }
 
   void _disposeCamera() {
+    _disposed = true;
     if (_cameraController != null && _cameraController!.value.isInitialized) {
       _cameraController!.dispose();
     }
     _cameraController = null;
     _isInitialized = false;
-    _isInitializing = false;
+    // Don't reset _isInitializing here - let the in-flight init handle it
   }
 
   Future<void> _initCamera() async {
     // Prevent concurrent initialization
     if (_isInitializing) return;
+    
+    // Mark as disposed - if tab switches away during init, this will be true
+    _disposed = false;
     _isInitializing = true;
 
     try {
       // Dispose existing controller before creating new one
       if (_cameraController != null) {
-        await _cameraController!.dispose();
+        try {
+          await _cameraController!.dispose();
+        } catch (_) {}
         _cameraController = null;
-        _isInitialized = false;
       }
 
-      _cameras = await availableCameras();
-      if (_cameras == null || _cameras!.isEmpty) {
-        _showError('No cameras available');
+      // Check if we were disposed while waiting
+      if (_disposed) {
+        _isInitializing = false;
         return;
       }
 
-      final backCamera = _cameras!.firstWhere(
+      final cameras = await availableCameras();
+      
+      // Check again after await
+      if (_disposed) {
+        _isInitializing = false;
+        return;
+      }
+
+      if (cameras == null || cameras.isEmpty) {
+        if (!_disposed && mounted) {
+          _showError('No cameras available');
+        }
+        _isInitializing = false;
+        return;
+      }
+
+      final backCamera = cameras.firstWhere(
         (cam) => cam.lensDirection == CameraLensDirection.back,
-        orElse: () => _cameras!.first,
+        orElse: () => cameras.first,
       );
 
-      _cameraController = CameraController(
+      final controller = CameraController(
         backCamera,
         ResolutionPreset.high,
         enableAudio: false,
       );
 
-      await _cameraController!.initialize();
+      // Check one more time before initialize
+      if (_disposed) {
+        controller.dispose();
+        _isInitializing = false;
+        return;
+      }
 
+      await controller.initialize();
+
+      // Final check before setting state
+      if (_disposed) {
+        controller.dispose();
+        _isInitializing = false;
+        return;
+      }
+
+      _cameraController = controller;
       if (mounted) {
         setState(() => _isInitialized = true);
       }
     } catch (e) {
-      _showError('Camera initialization failed: $e');
+      if (!_disposed && mounted) {
+        _showError('Camera initialization failed: $e');
+      }
     } finally {
       _isInitializing = false;
     }
