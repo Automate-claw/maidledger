@@ -65,6 +65,18 @@ class _ScanScreenState extends ConsumerState<ScanScreen> with WidgetsBindingObse
     // Watch activeTabProvider in initState so Flutter registers this dependency
     // This ensures didChangeDependencies is called when activeTab changes
     ref.watch(activeTabProvider);
+    
+    // Initialize camera on first build if on scan tab
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) {
+        final initialTab = ref.read(activeTabProvider);
+        print('[ScanScreen] initState: initialTab=$initialTab');
+        if (initialTab == 0 && !_isInitialized && !_isInitializing) {
+          print('[ScanScreen] initState: calling _initCamera');
+          _initCamera();
+        }
+      }
+    });
   }
 
   @override
