@@ -42,30 +42,23 @@ serve(async (req) => {
 
     const now = new Date()
     
-    // Calculate time window: 06:00 today to 06:00 tomorrow in HK timezone
-    // We use local Hong Kong time (UTC+8)
+    // Get current date in HK timezone (UTC+8)
+    // Since transaction_date has no time component, we just show today's receipts
     const HK_OFFSET = 8 * 60 * 60 * 1000; // 8 hours in ms
-    
-    // Get current time in HK
     const nowHK = new Date(now.getTime() + HK_OFFSET);
+    const todayDateStr = nowHK.toISOString().split('T')[0]; // YYYY-MM-DD in HK
+    
+    // If before 6 AM HK, show yesterday's data instead
     const currentHourHK = nowHK.getHours();
-    
-    // Get today's date in HK
-    const todayDateStr = nowHK.toISOString().split('T')[0]; // YYYY-MM-DD
-    
-    // If current HK hour is before 6 AM, the window started yesterday 6 AM
-    // So we should show yesterday's receipts
     let windowStartStr: string;
     let windowEndStr: string;
     
     if (currentHourHK < 6) {
-      // Before 6 AM HK → window is yesterday to today
       const yesterday = new Date(nowHK);
       yesterday.setDate(yesterday.getDate() - 1);
       windowStartStr = yesterday.toISOString().split('T')[0];
       windowEndStr = todayDateStr;
     } else {
-      // After 6 AM HK → window is today to tomorrow
       windowStartStr = todayDateStr;
       const tomorrow = new Date(nowHK);
       tomorrow.setDate(tomorrow.getDate() + 1);
@@ -109,7 +102,7 @@ serve(async (req) => {
     }
 
     if (!receipts || receipts.length === 0) {
-      const dateStr = _formatDate(windowStart)
+      const dateStr = windowStartStr
       const text = `📋 每日採購摘要\n🗓️ ${dateStr}\n\n今日暫時沒有收據記錄`
       return new Response(JSON.stringify({ success: true, text }), {
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
@@ -147,7 +140,7 @@ serve(async (req) => {
     }
 
     // Build formatted text
-    const dateStr = _formatDate(windowStart)
+    const dateStr = windowStartStr
     let text = `📋 每日採購摘要\n🗓️ ${dateStr}\n`
     if (employerDisplay) text += employerDisplay + '\n'
 
