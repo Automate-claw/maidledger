@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/date_symbol_data_local.dart';
 import 'package:maidledger_localization/maidledger_localization.dart';
 import 'core/services/supabase_client_provider.dart';
+import 'core/providers/navigation_provider.dart';
 import 'features/auth/auth_provider.dart';
 import 'features/auth/login_screen.dart';
 import 'features/auth/relation_gate.dart';
@@ -118,6 +119,7 @@ class _MainNavigationScreenState extends ConsumerState<MainNavigationScreen> {
       bottomNavigationBar: NavigationBar(
         selectedIndex: _currentIndex,
         onDestinationSelected: (index) {
+          ref.read(activeTabProvider.notifier).state = index;
           setState(() => _currentIndex = index);
         },
         destinations: [

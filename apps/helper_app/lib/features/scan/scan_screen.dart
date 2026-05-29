@@ -17,6 +17,7 @@ import '../../core/services/receipt_scanner_provider.dart';
 import '../../core/services/receipt_scanner_service.dart';
 import '../../core/services/product_matching_service.dart';
 import '../../core/services/shop_matching_service.dart';
+import '../../core/providers/navigation_provider.dart';
 
 /// Camera scan screen for receipt scanning
 ///
@@ -33,12 +34,13 @@ class ScanScreen extends ConsumerStatefulWidget {
   ConsumerState<ScanScreen> createState() => _ScanScreenState();
 }
 
-class _ScanScreenState extends ConsumerState<ScanScreen> {
+class _ScanScreenState extends ConsumerState<ScanScreen> with WidgetsBindingObserver {
   AppLocale get _locale => ref.watch(localeProvider);
 
   CameraController? _cameraController;
   List<CameraDescription>? _cameras;
   bool _isInitialized = false;
+  bool _isVisible = true;
 
   // Phase state
   ScanPhase _scanPhase = ScanPhase.camera;
@@ -57,6 +59,48 @@ class _ScanScreenState extends ConsumerState<ScanScreen> {
   void initState() {
     super.initState();
     _initCamera();
+    WidgetsBinding.instance.addObserver(this);
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    // Dispose camera when app goes to background or becomes inactive
+    if (state == AppLifecycleState.inactive || state == AppLifecycleState.paused) {
+      _disposeCamera();
+    } else if (state == AppLifecycleState.resumed && _scanPhase == ScanPhase.camera) {
+      // Reinitialize camera when app resumes to camera phase
+      _initCamera();
+    }
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    // Check if this tab is no longer active - dispose camera to save resources
+    final activeTab = ref.watch(activeTabProvider);
+    if (activeTab != 0) {
+      // Switching away from scan tab - dispose camera
+      if (_cameraController != null) {
+        _disposeCamera();
+      }
+    } else {
+      // Coming back to scan tab - reinitialize camera if needed
+      if (!_isInitialized && _scanPhase == ScanPhase.camera) {
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (mounted && !_isInitialized) {
+            _initCamera();
+          }
+        });
+      }
+    }
+  }
+
+  void _disposeCamera() {
+    if (_cameraController != null) {
+      _cameraController?.dispose();
+      _cameraController = null;
+      _isInitialized = false;
+    }
   }
 
   Future<void> _initCamera() async {
@@ -716,7 +760,8 @@ class _ScanScreenState extends ConsumerState<ScanScreen> {
 
   @override
   void dispose() {
-    _cameraController?.dispose();
+    WidgetsBinding.instance.removeObserver(this);
+    _disposeCamera();
     super.dispose();
   }
 

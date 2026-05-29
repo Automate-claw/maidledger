@@ -74,8 +74,8 @@ serve(async (req) => {
         employer_id
       `)
       .eq('helper_id', user.id)
-      .gte('created_at', windowStart.toISOString())
-      .lt('created_at', windowEnd.toISOString())
+      .gte('transaction_date', windowStart.toISOString())
+      .lt('transaction_date', windowEnd.toISOString())
       .order('created_at', { ascending: true })
 
     if (receiptsError) {
