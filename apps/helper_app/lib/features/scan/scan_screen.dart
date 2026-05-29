@@ -104,10 +104,18 @@ class _ScanScreenState extends ConsumerState<ScanScreen> with WidgetsBindingObse
       }
       
       if (!_isInitialized && !_isInitializing && _scanPhase == ScanPhase.camera) {
-        print('[ScanScreen] Calling _initCamera()');
+        print('[ScanScreen] Guard passed, calling _initCamera()');
         _initCamera();
       } else {
-        print('[ScanScreen] Skipping init: _isInitialized=$_isInitialized, _isInitializing=$_isInitializing, _scanPhase=$_scanPhase');
+        print('[ScanScreen] Guard failed: _isInitialized=$_isInitialized, _isInitializing=$_isInitializing, _scanPhase=$_scanPhase');
+        // Force reset everything and retry in next frame
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          print('[ScanScreen] Post-frame: Force resetting all state and retrying _initCamera()');
+          _isInitializing = false;
+          _isInitialized = false;
+          _disposed = false;
+          _initCamera();
+        });
       }
     }
   }
@@ -853,6 +861,7 @@ class _ScanScreenState extends ConsumerState<ScanScreen> with WidgetsBindingObse
   Widget build(BuildContext context) {
     // Check if we are the active tab
     final activeTab = ref.watch(activeTabProvider);
+    print('[ScanScreen] build: activeTab=$activeTab');
     
     return PopScope(
       canPop: false,
