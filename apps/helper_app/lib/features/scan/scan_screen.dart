@@ -40,6 +40,7 @@ class _ScanScreenState extends ConsumerState<ScanScreen> with WidgetsBindingObse
   CameraController? _cameraController;
   List<CameraDescription>? _cameras;
   bool _isInitialized = false;
+  bool _isInitializing = false;
   bool _isVisible = true;
 
   // Phase state
@@ -85,9 +86,9 @@ class _ScanScreenState extends ConsumerState<ScanScreen> with WidgetsBindingObse
       }
     } else {
       // Coming back to scan tab - reinitialize camera if needed
-      if (!_isInitialized && _scanPhase == ScanPhase.camera) {
+      if (!_isInitialized && !_isInitializing && _scanPhase == ScanPhase.camera) {
         WidgetsBinding.instance.addPostFrameCallback((_) {
-          if (mounted && !_isInitialized) {
+          if (mounted && !_isInitialized && !_isInitializing) {
             _initCamera();
           }
         });
@@ -100,11 +101,23 @@ class _ScanScreenState extends ConsumerState<ScanScreen> with WidgetsBindingObse
       _cameraController?.dispose();
       _cameraController = null;
       _isInitialized = false;
+      _isInitializing = false;
     }
   }
 
   Future<void> _initCamera() async {
+    // Prevent concurrent initialization
+    if (_isInitializing) return;
+    _isInitializing = true;
+
     try {
+      // Dispose existing controller before creating new one
+      if (_cameraController != null) {
+        await _cameraController!.dispose();
+        _cameraController = null;
+        _isInitialized = false;
+      }
+
       _cameras = await availableCameras();
       if (_cameras == null || _cameras!.isEmpty) {
         _showError('No cameras available');
@@ -129,6 +142,8 @@ class _ScanScreenState extends ConsumerState<ScanScreen> with WidgetsBindingObse
       }
     } catch (e) {
       _showError('Camera initialization failed: $e');
+    } finally {
+      _isInitializing = false;
     }
   }
 
