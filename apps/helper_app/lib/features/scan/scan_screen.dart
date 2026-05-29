@@ -87,6 +87,8 @@ class _ScanScreenState extends ConsumerState<ScanScreen> with WidgetsBindingObse
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
+    // Watch activeTabProvider HERE so Flutter registers this dependency
+    // This ensures didChangeDependencies is called when activeTab changes
     final activeTab = ref.watch(activeTabProvider);
     print('[ScanScreen] didChangeDependencies: activeTab=$activeTab, _isInitialized=$_isInitialized, _isInitializing=$_isInitializing, _scanPhase=$_scanPhase');
     
@@ -870,8 +872,8 @@ class _ScanScreenState extends ConsumerState<ScanScreen> with WidgetsBindingObse
 
   @override
   Widget build(BuildContext context) {
-    // Check if we are the active tab
-    final activeTab = ref.watch(activeTabProvider);
+    // Only read activeTab for conditional rendering - don't watch for rebuild
+    final activeTab = ref.read(activeTabProvider);
     print('[ScanScreen] build: activeTab=$activeTab');
     
     return PopScope(
