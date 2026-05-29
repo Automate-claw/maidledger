@@ -119,7 +119,7 @@ class _MainNavigationScreenState extends ConsumerState<MainNavigationScreen> {
       bottomNavigationBar: NavigationBar(
         selectedIndex: _currentIndex,
         onDestinationSelected: (index) {
-          ref.read(activeTabProvider.notifier).state = index;
+          ref.read(activeTabProvider.notifier).set(index);
           setState(() => _currentIndex = index);
         },
         destinations: [
