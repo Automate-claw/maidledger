@@ -133,7 +133,7 @@ class _ScanScreenState extends ConsumerState<ScanScreen> with WidgetsBindingObse
     _pendingDispose = true;
     
     if (_cameraController != null) {
-      final controller = _cameraController;
+      final controller = _cameraController!;
       _cameraController = null;
       _isInitialized = false;
       
