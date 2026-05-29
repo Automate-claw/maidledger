@@ -68,6 +68,7 @@ class _ScanScreenState extends ConsumerState<ScanScreen> with WidgetsBindingObse
 
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
+    print('[ScanScreen] didChangeAppLifecycleState: $state');
     final activeTab = ref.read(activeTabProvider);
     // Only manage camera if we're on the scan tab
     if (activeTab != 0) return;
@@ -147,6 +148,15 @@ class _ScanScreenState extends ConsumerState<ScanScreen> with WidgetsBindingObse
       return;
     }
     
+    // Safety timeout: force reset after 10 seconds
+    final timeout = Future.delayed(const Duration(seconds: 10), () {
+      if (_isInitializing) {
+        print('[ScanScreen] TIMEOUT: force resetting _isInitializing');
+        _isInitializing = false;
+        _disposed = true;
+      }
+    });
+    
     // Mark as disposed - if tab switches away during init, this will be true
     _disposed = false;
     _isInitializing = true;
@@ -221,6 +231,7 @@ class _ScanScreenState extends ConsumerState<ScanScreen> with WidgetsBindingObse
       }
     } finally {
       _isInitializing = false;
+      _disposed = false;
     }
   }
 
