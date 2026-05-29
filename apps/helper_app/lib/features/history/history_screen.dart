@@ -30,7 +30,6 @@ class _HistoryScreenState extends ConsumerState<HistoryScreen> {
   double _totalExpense = 0;
   double _balance = 0;
 
-  AppLocale get _locale => ref.watch(localeProvider);
 
   Future<void> _shareDailySummary() async {
     // Show loading indicator

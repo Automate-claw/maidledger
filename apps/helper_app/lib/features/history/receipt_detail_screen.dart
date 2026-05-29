@@ -22,7 +22,6 @@ class _ReceiptDetailScreenState extends ConsumerState<ReceiptDetailScreen> {
   bool _isLoading = true;
   String? _error;
   bool _isSaving = false;
-  AppLocale get _locale => ref.watch(localeProvider);
 
   late TextEditingController _storeNameController;
   late TextEditingController _locationController;

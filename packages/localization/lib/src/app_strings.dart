@@ -22,7 +22,6 @@ class AppStrings {
       'save': '儲存',
       'cancel': '取消',
       'confirm': '確認',
-      'cash_balance': '現金餘額',
       'balance': '餘額',
       'overdraft': '透支',
       'received': '已收',
