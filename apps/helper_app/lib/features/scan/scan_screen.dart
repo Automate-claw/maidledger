@@ -88,7 +88,9 @@ class _ScanScreenState extends ConsumerState<ScanScreen> with WidgetsBindingObse
       // Coming back to scan tab - reinitialize camera if needed
       if (!_isInitialized && !_isInitializing && _scanPhase == ScanPhase.camera) {
         WidgetsBinding.instance.addPostFrameCallback((_) {
-          if (mounted && !_isInitialized && !_isInitializing) {
+          // Check again inside callback - tab might have changed
+          final currentTab = ref.read(activeTabProvider);
+          if (mounted && currentTab == 0 && !_isInitialized && !_isInitializing) {
             _initCamera();
           }
         });
@@ -97,12 +99,12 @@ class _ScanScreenState extends ConsumerState<ScanScreen> with WidgetsBindingObse
   }
 
   void _disposeCamera() {
-    if (_cameraController != null) {
-      _cameraController?.dispose();
-      _cameraController = null;
-      _isInitialized = false;
-      _isInitializing = false;
+    if (_cameraController != null && _cameraController!.value.isInitialized) {
+      _cameraController!.dispose();
     }
+    _cameraController = null;
+    _isInitialized = false;
+    _isInitializing = false;
   }
 
   Future<void> _initCamera() async {
@@ -782,6 +784,9 @@ class _ScanScreenState extends ConsumerState<ScanScreen> with WidgetsBindingObse
 
   @override
   Widget build(BuildContext context) {
+    // Check if we are the active tab
+    final activeTab = ref.watch(activeTabProvider);
+    
     return PopScope(
       canPop: false,
       onPopInvokedWithResult: (didPop, result) {
@@ -794,7 +799,9 @@ class _ScanScreenState extends ConsumerState<ScanScreen> with WidgetsBindingObse
         title: Text(_getTitle()),
         centerTitle: true,
       ),
-      body: _buildBody(),
+      body: activeTab != 0
+          ? _buildPlaceholderBody()
+          : _buildBody(),
       floatingActionButton: _scanPhase == ScanPhase.camera && _isInitialized && !_isProcessing
           ? FloatingActionButton.large(
               onPressed: _onCapture,
@@ -819,6 +826,14 @@ class _ScanScreenState extends ConsumerState<ScanScreen> with WidgetsBindingObse
       case ScanPhase.failed:
         return AppStrings.uploadFailed(_locale);
     }
+  }
+
+  Widget _buildPlaceholderBody() {
+    // When switching away from scan tab, dispose camera and show placeholder
+    if (_cameraController != null) {
+      _disposeCamera();
+    }
+    return const SizedBox.shrink();
   }
 
   Widget _buildBody() {
