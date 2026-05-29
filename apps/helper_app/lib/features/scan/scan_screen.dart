@@ -62,21 +62,8 @@ class _ScanScreenState extends ConsumerState<ScanScreen> with WidgetsBindingObse
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
-    // Watch activeTabProvider in initState so Flutter registers this dependency
-    // This ensures didChangeDependencies is called when activeTab changes
-    ref.watch(activeTabProvider);
-    
-    // Initialize camera on first build if on scan tab
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (mounted) {
-        final initialTab = ref.read(activeTabProvider);
-        print('[ScanScreen] initState: initialTab=$initialTab');
-        if (initialTab == 0 && !_isInitialized && !_isInitializing) {
-          print('[ScanScreen] initState: calling _initCamera');
-          _initCamera();
-        }
-      }
-    });
+    // Watch activeTabProvider in initState to establish dependency
+    // DO NOT call _initCamera here - didChangeDependencies handles it
   }
 
   @override
@@ -100,38 +87,31 @@ class _ScanScreenState extends ConsumerState<ScanScreen> with WidgetsBindingObse
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
-    // Just read here - we already watch in initState
-    final activeTab = ref.read(activeTabProvider);
+    // Watch activeTabProvider here so Flutter knows to call us when it changes
+    final activeTab = ref.watch(activeTabProvider);
     print('[ScanScreen] didChangeDependencies: activeTab=$activeTab, _isInitialized=$_isInitialized, _isInitializing=$_isInitializing, _scanPhase=$_scanPhase');
     
     if (activeTab != 0) {
       // Switching away from scan tab - dispose camera
       print('[ScanScreen] Tab away - disposing camera');
       _disposeCamera();
+      return;
+    }
+    
+    // On scan tab - init camera if needed
+    // Reset _disposed so any in-flight init can proceed
+    _disposed = false;
+    
+    if (_isInitialized && _cameraController != null && _cameraController!.value.isInitialized) {
+      print('[ScanScreen] Camera already ready, skipping init');
+      return;
+    }
+    
+    if (!_isInitialized && !_isInitializing && _scanPhase == ScanPhase.camera) {
+      print('[ScanScreen] Calling _initCamera()');
+      _initCamera();
     } else {
-      // On scan tab - init camera if needed
-      // Reset _disposed so any in-flight init can proceed
-      _disposed = false;
-      
-      if (_isInitialized && _cameraController != null && _cameraController!.value.isInitialized) {
-        print('[ScanScreen] Camera already ready, skipping init');
-        return; // Camera already ready
-      }
-      
-      if (!_isInitialized && !_isInitializing && _scanPhase == ScanPhase.camera) {
-        print('[ScanScreen] Guard passed, calling _initCamera()');
-        _initCamera();
-      } else {
-        print('[ScanScreen] Guard failed: _isInitialized=$_isInitialized, _isInitializing=$_isInitializing, _scanPhase=$_scanPhase');
-        // Force reset everything and retry in next frame
-        WidgetsBinding.instance.addPostFrameCallback((_) {
-          print('[ScanScreen] Post-frame: Force resetting all state and retrying _initCamera()');
-          _isInitializing = false;
-          _isInitialized = false;
-          _disposed = false;
-          _initCamera();
-        });
-      }
+      print('[ScanScreen] Guard failed: _isInitialized=$_isInitialized, _isInitializing=$_isInitializing, _scanPhase=$_scanPhase');
     }
   }
 
