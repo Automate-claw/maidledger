@@ -87,32 +87,7 @@ class _ScanScreenState extends ConsumerState<ScanScreen> with WidgetsBindingObse
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
-    // Watch activeTabProvider here so Flutter knows to call us when it changes
-    final activeTab = ref.watch(activeTabProvider);
-    print('[ScanScreen] didChangeDependencies: activeTab=$activeTab, _isInitialized=$_isInitialized, _isInitializing=$_isInitializing, _scanPhase=$_scanPhase');
-    
-    if (activeTab != 0) {
-      // Switching away from scan tab - dispose camera
-      print('[ScanScreen] Tab away - disposing camera');
-      _disposeCamera();
-      return;
-    }
-    
-    // On scan tab - init camera if needed
-    // Reset _disposed so any in-flight init can proceed
-    _disposed = false;
-    
-    if (_isInitialized && _cameraController != null && _cameraController!.value.isInitialized) {
-      print('[ScanScreen] Camera already ready, skipping init');
-      return;
-    }
-    
-    if (!_isInitialized && !_isInitializing && _scanPhase == ScanPhase.camera) {
-      print('[ScanScreen] Calling _initCamera()');
-      _initCamera();
-    } else {
-      print('[ScanScreen] Guard failed: _isInitialized=$_isInitialized, _isInitializing=$_isInitializing, _scanPhase=$_scanPhase');
-    }
+    // No longer needed - build() handles everything via ref.watch
   }
 
   void _disposeCamera() {
@@ -864,9 +839,23 @@ class _ScanScreenState extends ConsumerState<ScanScreen> with WidgetsBindingObse
 
   @override
   Widget build(BuildContext context) {
-    // Only read activeTab for conditional rendering - don't watch for rebuild
-    final activeTab = ref.read(activeTabProvider);
+    // Watch activeTabProvider in build() so Flutter auto-calls build() on change
+    final activeTab = ref.watch(activeTabProvider);
     print('[ScanScreen] build: activeTab=$activeTab');
+    
+    if (activeTab != 0) {
+      // Not on scan tab - dispose camera and show placeholder
+      if (_cameraController != null) {
+        _disposeCamera();
+      }
+      return _buildPlaceholderBody();
+    }
+    
+    // On scan tab - init camera if needed
+    // This runs on every build where activeTab == 0 (including first build and tab switch back)
+    if (!_isInitialized && !_isInitializing && _scanPhase == ScanPhase.camera) {
+      _initCamera();
+    }
     
     return PopScope(
       canPop: false,
@@ -880,9 +869,7 @@ class _ScanScreenState extends ConsumerState<ScanScreen> with WidgetsBindingObse
         title: Text(_getTitle()),
         centerTitle: true,
       ),
-      body: activeTab != 0
-          ? _buildPlaceholderBody()
-          : _buildBody(),
+      body: _buildBody(),
       floatingActionButton: _scanPhase == ScanPhase.camera && _isInitialized && !_isProcessing
           ? FloatingActionButton.large(
               onPressed: _onCapture,
