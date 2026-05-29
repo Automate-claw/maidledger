@@ -92,11 +92,15 @@ class _ScanScreenState extends ConsumerState<ScanScreen> with WidgetsBindingObse
       // Switching away from scan tab - dispose camera
       _disposeCamera();
     } else {
-      // On scan tab - init camera if needed (only on first call)
-      // Guard: if init in progress or camera ready, skip
-      if (_isInitialized || _isInitializing) return;
+      // On scan tab - init camera if needed
+      // Reset _disposed so any in-flight init can proceed
+      _disposed = false;
       
-      if (_scanPhase == ScanPhase.camera) {
+      if (_isInitialized && _cameraController != null && _cameraController!.value.isInitialized) {
+        return; // Camera already ready
+      }
+      
+      if (!_isInitialized && !_isInitializing && _scanPhase == ScanPhase.camera) {
         _initCamera();
       }
     }
