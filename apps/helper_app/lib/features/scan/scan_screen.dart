@@ -42,6 +42,7 @@ class _ScanScreenState extends ConsumerState<ScanScreen> with WidgetsBindingObse
   bool _isInitialized = false;
   bool _isInitializing = false;
   bool _disposed = false;
+  bool _pendingDispose = false; // true when disposal is in progress
   bool _isVisible = true;
 
   // Phase state
@@ -89,24 +90,34 @@ class _ScanScreenState extends ConsumerState<ScanScreen> with WidgetsBindingObse
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
-    // Check if this tab is no longer active - dispose camera to save resources
     final activeTab = ref.watch(activeTabProvider);
+    
     if (activeTab != 0) {
       // Switching away from scan tab - dispose camera
-      if (_cameraController != null) {
+      if (_cameraController != null || _pendingDispose) {
         _disposeCamera();
       }
     } else {
-      // Coming back to scan tab - reinitialize camera if needed
-      if (!_isInitialized && !_isInitializing && _scanPhase == ScanPhase.camera) {
+      // Coming back to scan tab
+      // If camera was already fully initialized, just reuse it
+      if (_isInitialized && _cameraController != null && _cameraController!.value.isInitialized) {
+        return; // Camera already ready, no need to reinit
+      }
+      
+      // If init is in progress, wait for it
+      if (_isInitializing) {
+        return;
+      }
+      
+      // Otherwise init camera
+      if (_scanPhase == ScanPhase.camera) {
         WidgetsBinding.instance.addPostFrameCallback((_) {
-          // Only reinit if still on scan tab
           if (!mounted) return;
           final currentTab = ref.read(activeTabProvider);
           if (currentTab != 0) return;
-          // Force reset if stuck in initializing state (tab switch during init)
+          // Force reset if stuck in initializing state
           if (_isInitializing) {
-            _disposed = true; // Signal cancellation
+            _disposed = true;
             _isInitializing = false;
           }
           if (!_isInitialized && !_isInitializing && _scanPhase == ScanPhase.camera) {
@@ -119,12 +130,22 @@ class _ScanScreenState extends ConsumerState<ScanScreen> with WidgetsBindingObse
 
   void _disposeCamera() {
     _disposed = true;
-    if (_cameraController != null && _cameraController!.value.isInitialized) {
-      _cameraController!.dispose();
+    _pendingDispose = true;
+    
+    if (_cameraController != null) {
+      final controller = _cameraController;
+      _cameraController = null;
+      _isInitialized = false;
+      
+      // Dispose asynchronously but we don't wait
+      controller.dispose().then((_) {
+        _pendingDispose = false;
+      }).catchError((_) {
+        _pendingDispose = false;
+      });
+    } else {
+      _pendingDispose = false;
     }
-    _cameraController = null;
-    _isInitialized = false;
-    // Don't reset _isInitializing here - let the in-flight init handle it
   }
 
   Future<void> _initCamera() async {
@@ -198,7 +219,8 @@ class _ScanScreenState extends ConsumerState<ScanScreen> with WidgetsBindingObse
         setState(() => _isInitialized = true);
       }
     } catch (e) {
-      if (!_disposed && mounted) {
+      // Only show error if we're still the active tab and not disposed
+      if (!_disposed && mounted && !_pendingDispose) {
         _showError('Camera initialization failed: $e');
       }
     } finally {
