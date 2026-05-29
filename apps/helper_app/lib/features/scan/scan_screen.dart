@@ -62,12 +62,8 @@ class _ScanScreenState extends ConsumerState<ScanScreen> with WidgetsBindingObse
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
-    // Delay camera init to after first frame to avoid IndexedStack issues
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (mounted) {
-        _initCamera();
-      }
-    });
+    // Don't init camera here - didChangeDependencies will handle it
+    // This avoids double-init race conditions
   }
 
   @override
@@ -94,36 +90,14 @@ class _ScanScreenState extends ConsumerState<ScanScreen> with WidgetsBindingObse
     
     if (activeTab != 0) {
       // Switching away from scan tab - dispose camera
-      if (_cameraController != null || _pendingDispose) {
-        _disposeCamera();
-      }
+      _disposeCamera();
     } else {
-      // Coming back to scan tab
-      // If camera was already fully initialized, just reuse it
-      if (_isInitialized && _cameraController != null && _cameraController!.value.isInitialized) {
-        return; // Camera already ready, no need to reinit
-      }
+      // On scan tab - init camera if needed (only on first call)
+      // Guard: if init in progress or camera ready, skip
+      if (_isInitialized || _isInitializing) return;
       
-      // If init is in progress, wait for it
-      if (_isInitializing) {
-        return;
-      }
-      
-      // Otherwise init camera
       if (_scanPhase == ScanPhase.camera) {
-        WidgetsBinding.instance.addPostFrameCallback((_) {
-          if (!mounted) return;
-          final currentTab = ref.read(activeTabProvider);
-          if (currentTab != 0) return;
-          // Force reset if stuck in initializing state
-          if (_isInitializing) {
-            _disposed = true;
-            _isInitializing = false;
-          }
-          if (!_isInitialized && !_isInitializing && _scanPhase == ScanPhase.camera) {
-            _initCamera();
-          }
-        });
+        _initCamera();
       }
     }
   }
