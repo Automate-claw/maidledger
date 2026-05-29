@@ -1,7 +1,7 @@
 # MaidLedger — Architecture & Workflow Documentation
 
 **用途：** 維護參考 — 快速定位 logic 修改位置
-**最後更新：** 2026-05-25
+**最後更新：** 2026-05-29
 
 ---
 
@@ -18,6 +18,7 @@
 | **Product matching** | `supabase/functions/product-manager/index.ts` | master product + brand |
 | **Price alert engine** | `supabase/functions/price-alert-engine/index.ts` | 價格警報 + weather suppression |
 | **Notification broadcast** | `supabase/functions/notification-broadcast/index.ts` | 通知僱主 |
+| **Daily summary** | `supabase/functions/daily-summary/index.ts` | 分享按鈕每日摘要（按 transaction_date） |
 | **Helper App** | `apps/helper_app/lib/` | 工人所有畫面 |
 | Chat Screen | `apps/helper_app/lib/features/chat/chat_screen.dart` | 價錢入帳 |
 | History Screen | `apps/helper_app/lib/features/history/history_screen.dart` | 歷史查詢 |
@@ -118,6 +119,7 @@ INSERT / UPDATE employer_helper_relations（status='active'）
 | `shop-manager` | `{store_name, location?}` | `{shop_id, canonical_name}` |
 | `product-manager` | `{item_name, brand?}` | `{product_id, canonical_name}` |
 | `notification-broadcast` | `{user_id, message}` | `{sent}` |
+| `daily-summary` | (none, uses auth) | `{success, text}`（每日採購摘要） |
 
 ---
 
