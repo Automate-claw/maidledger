@@ -307,11 +307,12 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
     // Save to pending buffers so dialog can access after _sendMessage returns
     _pendingImage = _attachedImage;
     _pendingImageBase64 = _attachedImageBase64;
-    _pendingLocation = _extractedLocation;
     // Wait for location extraction to finish before sending
     while (_isExtractingLocation) {
       await Future.delayed(const Duration(milliseconds: 100));
     }
+    // Capture location AFTER GPS extraction completes
+    _pendingLocation = _extractedLocation;
     _scrollToBottom();
 
     try {
