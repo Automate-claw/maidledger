@@ -116,9 +116,11 @@ class ReceiptScannerService {
                         e.key.toLowerCase().contains('long'))
           .toList();
       if (gpsTags.isNotEmpty) {
-        print('🔵 [GPS EXIF] Found GPS tags: $gpsTags');
+        // ignore: avoid_print
+        debugPrint('🔵 [GPS EXIF] Found GPS tags: $gpsTags');
       } else {
-        print('🔵 [GPS EXIF] No GPS tags found. All tags: ${exifData.entries.map((e) => e.key).toList()}');
+        // ignore: avoid_print
+        debugPrint('🔵 [GPS EXIF] No GPS tags found. All tags: ${exifData.entries.map((e) => e.key).toList()}');
       }
 
       final lat = exifData['GPS GPSLatitude'];
