@@ -119,32 +119,39 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
   }
 
   Future<void> _extractExifLocation(XFile image) async {
+    debugPrint('🔵 [_extractExifLocation] starting for image: ${image.path}');
     try {
-      final file = File(image.path);
-      final gps = await _scanner.extractGpsFromFile(file);
+      final bytes = await image.readAsBytes();
+      debugPrint('🔵 [_extractExifLocation] bytes length: ${bytes.length}');
+      final gps = await _scanner.extractGpsFromBytes(bytes);
+      debugPrint('🔵 [_extractExifLocation] gps result: $gps');
 
       if (gps != null) {
+        debugPrint('🔵 [_extractExifLocation] GPS found: lat=${gps.latitude}, lon=${gps.longitude}');
         final locResult = _locationService.reverseGeocode(gps);
+        debugPrint('🔵 [_extractExifLocation] reverseGeocode result: ${locResult?.displayText}, confidence=${locResult?.confidence}');
         if (locResult != null) {
-          // GPS found - always show confirmation dialog
-          // If confidence is low, show the region fallback instead (e.g. "港島")
           final displayText = (locResult.confidence ?? 0) > 0.5
               ? locResult.displayText
               : locResult.region ?? "未知地區";
+          debugPrint('🔵 [_extractExifLocation] showing dialog with: $displayText');
           final confirmed = await _showLocationConfirmationDialog(context, displayText);
+          debugPrint('🔵 [_extractExifLocation] dialog result: $confirmed');
           if (confirmed != null) {
             setState(() => _extractedLocation = confirmed);
+            debugPrint('🔵 [_extractExifLocation] set to: $confirmed');
             return;
           }
-          // User cancelled GPS → fall back to default
+          debugPrint('🔵 [_extractExifLocation] user cancelled, loading default');
           await _loadDefaultLocation();
           return;
         }
       }
 
-      // No GPS → use default location
+      debugPrint('🔵 [_extractExifLocation] no GPS or no result, loading default');
       await _loadDefaultLocation();
     } catch (e) {
+      debugPrint('🔵 [_extractExifLocation] error: $e');
       await _loadDefaultLocation();
     }
   }

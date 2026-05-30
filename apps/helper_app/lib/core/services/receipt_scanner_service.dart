@@ -97,6 +97,15 @@ class ReceiptScannerService {
   Future<GpsResult?> extractGpsFromFile(File file) async {
     try {
       final bytes = await file.readAsBytes();
+      return await extractGpsFromBytes(bytes);
+    } catch (e) {
+      return null;
+    }
+  }
+
+  Future<GpsResult?> extractGpsFromBytes(Uint8List bytes) async {
+    try {
+      final bytes = await file.readAsBytes();
       final exifData = await readExifFromBytes(bytes);
 
       final lat = exifData['GPS GPSLatitude'];
