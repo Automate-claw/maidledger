@@ -120,9 +120,9 @@ class LocationService {
 
   LocationResult _regionFromCoords(double lat, double lon) {
     String region;
-    if (lat > 22.35) {
+    if (lat > 22.36) {
       region = '新界';
-    } else if (lat > 22.27) {
+    } else if (lat > 22.29) {
       region = '九龍';
     } else {
       region = '港島';
