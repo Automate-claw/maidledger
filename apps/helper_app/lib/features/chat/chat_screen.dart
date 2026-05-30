@@ -5,6 +5,7 @@ import 'package:connectivity_plus/connectivity_plus.dart';
 import 'package:uuid/uuid.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:geolocator/geolocator.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:exif/exif.dart';
 import 'package:maidledger_localization/maidledger_localization.dart';
@@ -145,11 +146,53 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
         }
       }
 
+      // EXIF GPS failed → try device current location as fallback
+      debugPrint('🔵 [_extractExifLocation] EXIF GPS failed, trying device GPS...');
+      final currentGps = await _getCurrentLocation();
+      if (currentGps != null) {
+        debugPrint('🔵 [_extractExifLocation] device GPS: lat=${currentGps.latitude}, lon=${currentGps.longitude}');
+        final locResult = _locationService.reverseGeocode(currentGps);
+        if (locResult != null) {
+          final displayText = (locResult.confidence ?? 0) > 0.5
+              ? locResult.displayText
+              : locResult.region ?? "未知地區";
+          final confirmed = await _showLocationConfirmationDialog(context, displayText);
+          if (confirmed != null) {
+            setState(() => _extractedLocation = confirmed);
+            return;
+          }
+        }
+      }
+
       debugPrint('🔵 [_extractExifLocation] no GPS or no result, loading default');
       await _loadDefaultLocation();
     } catch (e) {
       debugPrint('🔵 [_extractExifLocation] error: $e');
       await _loadDefaultLocation();
+    }
+  }
+
+  Future<GpsResult?> _getCurrentLocation() async {
+    try {
+      final permission = await Geolocator.checkPermission();
+      if (permission == LocationPermission.denied) {
+        final result = await Geolocator.requestPermission();
+        if (result == LocationPermission.denied || result == LocationPermission.deniedForever) {
+          debugPrint('🔵 [_getCurrentLocation] permission denied');
+          return null;
+        }
+      }
+      if (permission == LocationPermission.deniedForever) {
+        debugPrint('🔵 [_getCurrentLocation] permission denied forever');
+        return null;
+      }
+      final position = await Geolocator.getCurrentPosition(
+        locationSettings: const LocationSettings(accuracy: LocationAccuracy.medium),
+      );
+      return GpsResult(latitude: position.latitude, longitude: position.longitude);
+    } catch (e) {
+      debugPrint('🔵 [_getCurrentLocation] error: $e');
+      return null;
     }
   }
 
