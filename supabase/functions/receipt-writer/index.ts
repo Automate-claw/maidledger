@@ -380,19 +380,23 @@ serve(async (req) => {
       const validPrdCodes: string[] = body.validPrdCodes ?? [];
       const itemRows = body.items.map((item: any, idx: number) => {
         const selectedWeight = body.selected_weights?.[idx.toString()];
+        const weightG = selectedWeight ?? item.weight_grams;
+        const unitDisplay = item.unit_display ?? (weightG ? `${weightG}g` : item.extracted_spec ?? null);
+        const unitType = item.unit_type ?? (weightG && weightG > 10 ? "g" : weightG && weightG <= 10 ? "pcs" : "unknown");
         return {
           receipt_id: body.receipt_id,
           item_name: item.item_name ?? item.item_raw_text ?? "",
           extracted_brand: null,
           extracted_name: item.item_name ?? item.item_raw_text ?? "",
           extracted_spec: null,
-          item_raw_text: item.item_raw_text ?? item.item_name ?? "",
           qty: item.qty ?? 1,
           unit_price: item.unit_price ?? null,
           line_total: item.actual_price ?? (item.unit_price != null && item.qty != null ? item.unit_price * item.qty : null),
           prd_cate: validPrdCodes.includes(item.prd_cate) ? item.prd_cate : "other",
           subcategory_code: item.subcategory_code ?? null,
-          weight_grams: selectedWeight ?? null,
+          weight_grams: weightG,
+          unit_display: unitDisplay,
+          unit_type: unitType,
         };
       });
 
