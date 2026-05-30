@@ -1,7 +1,7 @@
 # MaidLedger — Architecture & Workflow Documentation
 
 **用途：** 維護參考 — 快速定位 logic 修改位置
-**最後更新：** 2026-05-29
+**最後更新：** 2026-05-30
 
 ---
 
@@ -53,7 +53,12 @@
 
 ### Chat Flow（Helper App → chat-orchestrate）
 ```
-用戶輸入文字 → chat-orchestrate → LLM 解析（is_expense?）
+用戶輸入文字 + 可選相片 → chat-orchestrate → LLM 文字解析
+    │
+    ├─ image_picker (gallery/camera) → base64
+    │
+    ├─ EXIF GPS 讀取 → district/region → location hint
+    │
     ↓
 rate limit check（1分鐘 >6次 → 限速；2分鐘 >5次 non-expense → 封30分鐘）
     ↓
@@ -61,7 +66,10 @@ buildResponse(intent)
     ↓
 confidence>0.7 + 有金額 → _showSaveDialog()
     ↓
-INSERT receipts + receipt_items
+INSERT receipts (parse_status="parsed") + receipt_items
+    │
+    └─ DB Trigger: 只對 parse_status="pending" 觸發 receipt-orchestrate
+    │         （chat flow 係 "parsed"，唔會重新走 vision）
     ↓
 notification-broadcast（非阻塞）
 ```
