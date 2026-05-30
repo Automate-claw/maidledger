@@ -33,6 +33,7 @@ dependencies:
 
   # Image handling
   geolocator: ^11.0.0
+  photo_manager: ^3.0.0
   image: ^4.1.7
   flutter_image_compress: ^2.3.0
   exif: ^3.3.0

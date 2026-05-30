@@ -5,6 +5,7 @@ import 'package:connectivity_plus/connectivity_plus.dart';
 import 'package:uuid/uuid.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:photo_manager/photo_manager.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:exif/exif.dart';
@@ -84,16 +85,71 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
     );
     if (image == null) return;
 
+    // Read EXIF from original image using photo_manager (respects ACCESS_MEDIA_LOCATION)
+    final originalGps = await _extractGpsFromOriginal(image);
+    
     final bytes = await image.readAsBytes();
     final base64 = base64Encode(bytes);
 
     setState(() {
       _attachedImage = image;
       _attachedImageBase64 = base64;
-      _isExtractingLocation = true;
+      _isExtractingLocation = originalGps == null;
     });
-    await _extractExifLocation(image);
+
+    if (originalGps != null) {
+      // We have GPS from original - show confirmation immediately
+      final locResult = _locationService.reverseGeocode(originalGps);
+      if (locResult != null) {
+        final displayText = (locResult.confidence ?? 0) > 0.5
+            ? locResult.displayText
+            : locResult.region ?? "未知地區";
+        final confirmed = await _showLocationConfirmationDialog(context, displayText);
+        if (confirmed != null) {
+          setState(() => _extractedLocation = confirmed);
+        } else {
+          await _loadDefaultLocation();
+        }
+        if (mounted) setState(() => _isExtractingLocation = false);
+        return;
+      }
+    }
+
+    // Fallback to device GPS or default
+    await _extractExifLocationWithFallback(image);
     if (mounted) setState(() => _isExtractingLocation = false);
+  }
+
+  /// Use photo_manager to read EXIF GPS from original image (bypasses Android 13+ restriction)
+  Future<GpsResult?> _extractGpsFromOriginal(XFile image) async {
+    try {
+      // Request media location permission if not already granted
+      final result = await PhotoManager.requestPermissionExtend();
+      if (!result.isAuth) {
+        debugPrint('🔵 [_extractGpsFromOriginal] photo_manager permission denied');
+        return null;
+      }
+
+      // Get the asset from content URI
+      final asset = await AssetEntity.fromUri(image.path);
+      if (asset == null) {
+        debugPrint('🔵 [_extractGpsFromOriginal] could not get asset from URI');
+        return null;
+      }
+
+      // Get original file with full metadata
+      final file = await asset.originFile;
+      if (file == null) {
+        debugPrint('🔵 [_extractGpsFromOriginal] originFile is null');
+        return null;
+      }
+
+      final bytes = await file.readAsBytes();
+      return await _scanner.extractGpsFromBytes(bytes);
+    } catch (e) {
+      debugPrint('🔵 [_extractGpsFromOriginal] error: $e');
+      return null;
+    }
   }
 
   Future<void> _takePhoto() async {
@@ -104,6 +160,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
     );
     if (image == null) return;
 
+    // For camera, EXIF GPS should be present in the original
     final bytes = await image.readAsBytes();
     final base64 = base64Encode(bytes);
 
@@ -112,11 +169,11 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
       _attachedImageBase64 = base64;
       _isExtractingLocation = true;
     });
-    await _extractExifLocation(image);
+    await _extractExifLocationWithFallback(image);
     if (mounted) setState(() => _isExtractingLocation = false);
   }
 
-  Future<void> _extractExifLocation(XFile image) async {
+  Future<void> _extractExifLocationWithFallback(XFile image) async {
     debugPrint('🔵 [_extractExifLocation] starting for image: ${image.path}');
     try {
       final bytes = await image.readAsBytes();
