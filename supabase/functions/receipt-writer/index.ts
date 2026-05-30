@@ -496,6 +496,22 @@ serve(async (req) => {
         });
       }
 
+  const selectedWeight = body.selected_weights?.[0];
+      const itemWeightG = selectedWeight ?? item.weight_grams;
+      const unitDisplay = item.unit_display ?? (itemWeightG ? `${itemWeightG}g` : item.extracted_spec ?? "件");
+      const unitType = item.unit_type ?? (itemWeightG && itemWeightG > 10 ? "g" : itemWeightG && itemWeightG <= 10 ? "pcs" : "unknown");
+
+      // Calculate normalized prices
+      let pricePerKg: number | null = null;
+      let pricePerPcs: number | null = null;
+      if (item.unit_price != null && itemWeightG != null && itemWeightG > 0) {
+        if (unitType === "g" || unitType === "kg") {
+          pricePerKg = unitType === "g" ? (item.unit_price / itemWeightG) * 1000 : item.unit_price / (itemWeightG / 1000);
+        } else if (unitType === "pcs" || unitType === "ml") {
+          pricePerPcs = item.unit_price / itemWeightG;
+        }
+      }
+
       const resp = await fetch(`${supabaseUrl}/rest/v1/price_history`, {
         method: "POST",
         headers: {
@@ -509,10 +525,16 @@ serve(async (req) => {
           location: parse_result?.location ?? null,
           price: item.unit_price,
           original_price: item.unit_price,
-          unit: item.extracted_spec ?? "件",
+          unit: unitDisplay,
           source_receipt_id: receipt_id,
           shop_id: body.shop_id ?? null,
           recorded_at: parse_result?.transaction_date ?? new Date().toISOString().split("T")[0],
+          // New normalized fields
+          weight_g: itemWeightG,
+          unit_display: unitDisplay,
+          unit_type: unitType,
+          price_per_kg: pricePerKg ? Math.round(pricePerKg * 100) / 100 : null,
+          price_per_pcs: pricePerPcs ? Math.round(pricePerPcs * 100) / 100 : null,
         }),
       });
 

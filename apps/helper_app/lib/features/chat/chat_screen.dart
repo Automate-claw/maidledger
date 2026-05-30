@@ -480,7 +480,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
       // - receipt-writer writeItemsFromChat
       // - product-manager upsert loop + price_history writes
       final aiAgent = AIBookingAgent();
-      final result = await aiAgent.saveExpense(intent.rawText, userId, location: location, imageBase64: imageBase64);
+      final result = await aiAgent.saveExpense(intent.rawText, userId, location: location, imageBase64: imageBase64, selectedWeights: selectedWeights);
 
       if (result['success'] != true) {
         final errors = (result['errors'] as List?)?.join('; ') ?? AppStrings.expenseSaveFailed(_locale);
