@@ -125,15 +125,24 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
 
       if (gps != null) {
         final locResult = _locationService.reverseGeocode(gps);
-        if (locResult != null && (locResult.confidence ?? 0) > 0.5) {
-          final confirmed = await _showLocationConfirmationDialog(context, locResult.displayText);
+        if (locResult != null) {
+          // GPS found - always show confirmation dialog
+          // If confidence is low, show the region fallback instead (e.g. "港島")
+          final displayText = (locResult.confidence ?? 0) > 0.5
+              ? locResult.displayText
+              : locResult.region ?? "未知地區";
+          final confirmed = await _showLocationConfirmationDialog(context, displayText);
           if (confirmed != null) {
             setState(() => _extractedLocation = confirmed);
             return;
           }
+          // User cancelled GPS → fall back to default
+          await _loadDefaultLocation();
+          return;
         }
       }
 
+      // No GPS → use default location
       await _loadDefaultLocation();
     } catch (e) {
       await _loadDefaultLocation();
