@@ -3,7 +3,6 @@ import 'dart:typed_data';
 import 'dart:ui';
 import 'package:google_mlkit_text_recognition/google_mlkit_text_recognition.dart';
 import 'package:exif/exif.dart' show readExifFromBytes;
-import 'package:image/image.dart' as img;
 import 'location_service.dart'; // Uses GpsResult from location_service
 
 /// Receipt Scanner Service provider for managed lifecycle.
@@ -107,29 +106,32 @@ class ReceiptScannerService {
 
   Future<GpsResult?> extractGpsFromBytes(Uint8List imageBytes) async {
     try {
-      // Method 1: Try exif package
       final exifData = await readExifFromBytes(imageBytes);
+
+      // Debug: print ALL GPS-related EXIF tags
+      final gpsTags = exifData.entries
+          .where((e) => e.key.toLowerCase().contains('gps') ||
+                        e.key.toLowerCase().contains('lat') ||
+                        e.key.toLowerCase().contains('lon') ||
+                        e.key.toLowerCase().contains('geo') ||
+                        e.key.toLowerCase().contains('location'))
+          .map((e) => '${e.key}=${e.value}')
+          .toList();
+      print('🔵 [GPS EXIF] Tags: $gpsTags');
 
       final lat = exifData['GPS GPSLatitude'];
       final lon = exifData['GPS GPSLongitude'];
       final latRef = exifData['GPS GPSLatitudeRef']?.printable;
       final lonRef = exifData['GPS GPSLongitudeRef']?.printable;
 
+      print('🔵 [GPS EXIF] lat=$lat, lon=$lon, latRef=$latRef, lonRef=$lonRef');
+
       if (lat != null && lon != null) {
         final latitude = _parseDMS(lat.printable, latRef);
         final longitude = _parseDMS(lon.printable, lonRef);
+        print('🔵 [GPS EXIF] parsed lat=$latitude, lon=$longitude');
         if (latitude != null && longitude != null && (latitude != 0 || longitude != 0)) {
           return GpsResult(latitude: latitude, longitude: longitude);
-        }
-      }
-
-      // Method 2: Try image package (better for some Android phones)
-      final image = img.decodeImage(imageBytes);
-      if (image != null) {
-        final imgLat = image.gpsLatitude;
-        final imgLon = image.gpsLongitude;
-        if (imgLat != null && imgLon != null && (imgLat != 0 || imgLon != 0)) {
-          return GpsResult(latitude: imgLat, longitude: imgLon);
         }
       }
 
