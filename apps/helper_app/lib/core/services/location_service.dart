@@ -43,6 +43,8 @@ class LocationService {
     _MarketDb(name: '鵝頸橋街市', type: 'wet_market', region: '港島', district: '灣仔', lat: 22.2345, lon: 114.2345),
     _MarketDb(name: '渣華街街市', type: 'wet_market', region: '港島', district: '北角', lat: 22.2915, lon: 114.3021),
     _MarketDb(name: '北角街市', type: 'wet_market', region: '港島', district: '北角', lat: 22.2915, lon: 114.3021),
+    _MarketDb(name: '筲箕灣街市', type: 'wet_market', region: '港島', district: '筲箕灣', lat: 22.2798, lon: 114.2403),
+    _MarketDb(name: '愛秩序灣街市', type: 'wet_market', region: '港島', district: '筲箕灣', lat: 22.2837, lon: 114.2354),
     _MarketDb(name: '大埔墟街市', type: 'wet_market', region: '新界', district: '大埔', lat: 22.4456, lon: 114.1678),
     _MarketDb(name: '旺角街市', type: 'wet_market', region: '九龍', district: '旺角', lat: 22.3178, lon: 114.1689),
     _MarketDb(name: '旺角熟食市場', type: 'wet_market', region: '九龍', district: '旺角', lat: 22.3178, lon: 114.1689),
@@ -120,7 +122,7 @@ class LocationService {
     String region;
     if (lat > 22.35) {
       region = '新界';
-    } else if (lat > 22.28) {
+    } else if (lat > 22.27) {
       region = '九龍';
     } else {
       region = '港島';
