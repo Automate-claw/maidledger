@@ -1,4 +1,5 @@
 import 'dart:io';
+import 'dart:typed_data';
 import 'dart:ui';
 import 'package:google_mlkit_text_recognition/google_mlkit_text_recognition.dart';
 import 'package:exif/exif.dart' show readExifFromBytes;
@@ -103,10 +104,9 @@ class ReceiptScannerService {
     }
   }
 
-  Future<GpsResult?> extractGpsFromBytes(Uint8List bytes) async {
+  Future<GpsResult?> extractGpsFromBytes(Uint8List imageBytes) async {
     try {
-      final bytes = await file.readAsBytes();
-      final exifData = await readExifFromBytes(bytes);
+      final exifData = await readExifFromBytes(imageBytes);
 
       final lat = exifData['GPS GPSLatitude'];
       final lon = exifData['GPS GPSLongitude'];
