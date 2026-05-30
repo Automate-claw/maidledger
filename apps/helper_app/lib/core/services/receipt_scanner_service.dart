@@ -116,11 +116,9 @@ class ReceiptScannerService {
                         e.key.toLowerCase().contains('long'))
           .toList();
       if (gpsTags.isNotEmpty) {
-        // ignore: avoid_print
-        debugPrint('🔵 [GPS EXIF] Found GPS tags: $gpsTags');
+        print('🔵 [GPS EXIF] Found GPS tags: $gpsTags');
       } else {
-        // ignore: avoid_print
-        debugPrint('🔵 [GPS EXIF] No GPS tags found. All tags: ${exifData.entries.map((e) => e.key).toList()}');
+        print('🔵 [GPS EXIF] No GPS tags found. All tags: ${exifData.entries.map((e) => e.key).toList()}');
       }
 
       final lat = exifData['GPS GPSLatitude'];
@@ -137,8 +135,7 @@ class ReceiptScannerService {
 
       return GpsResult(latitude: latitude, longitude: longitude);
     } catch (e) {
-      // ignore: avoid_print
-      debugPrint('🔵 [GPS EXIF] Error: $e');
+      print('🔵 [GPS EXIF] Error: $e');
       return null;
     }
   }
