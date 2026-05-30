@@ -76,11 +76,10 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
   // ─────────────────────────────────────────────
   Future<void> _pickImage() async {
     final picker = ImagePicker();
+    // requestFullMetadata=true preserves EXIF/GPS from original
     final image = await picker.pickImage(
       source: ImageSource.gallery,
-      maxWidth: 1920,
-      maxHeight: 1920,
-      imageQuality: 85,
+      requestFullMetadata: true,
     );
     if (image == null) return;
 
@@ -100,9 +99,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
     final picker = ImagePicker();
     final image = await picker.pickImage(
       source: ImageSource.camera,
-      maxWidth: 1920,
-      maxHeight: 1920,
-      imageQuality: 85,
+      requestFullMetadata: true,
     );
     if (image == null) return;
 
