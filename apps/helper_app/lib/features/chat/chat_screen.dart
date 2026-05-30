@@ -200,7 +200,9 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
           .eq('id', userId)
           .maybeSingle();
 
-      if (profile != null && profile['default_location'] != null) {
+      // Only set default_location if no location has been extracted yet
+      // This prevents overwriting EXIF GPS location with the profile default
+      if (profile != null && profile['default_location'] != null && _extractedLocation == null) {
         setState(() => _extractedLocation = profile['default_location']);
       }
     } catch (e) {
