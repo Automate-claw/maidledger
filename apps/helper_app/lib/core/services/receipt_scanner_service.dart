@@ -3,6 +3,7 @@ import 'dart:typed_data';
 import 'dart:ui';
 import 'package:google_mlkit_text_recognition/google_mlkit_text_recognition.dart';
 import 'package:exif/exif.dart' show readExifFromBytes;
+import 'package:image/image.dart' as img;
 import 'location_service.dart'; // Uses GpsResult from location_service
 
 /// Receipt Scanner Service provider for managed lifecycle.
@@ -106,34 +107,33 @@ class ReceiptScannerService {
 
   Future<GpsResult?> extractGpsFromBytes(Uint8List imageBytes) async {
     try {
+      // Method 1: Try exif package
       final exifData = await readExifFromBytes(imageBytes);
-
-      // Debug: log all GPS-related tags
-      final gpsTags = exifData.entries
-          .where((e) => e.key.toLowerCase().contains('gps') ||
-                        e.key.toLowerCase().contains('lat') ||
-                        e.key.toLowerCase().contains('lon') ||
-                        e.key.toLowerCase().contains('long'))
-          .toList();
-      if (gpsTags.isNotEmpty) {
-        print('🔵 [GPS EXIF] Found GPS tags: $gpsTags');
-      } else {
-        print('🔵 [GPS EXIF] No GPS tags found. All tags: ${exifData.entries.map((e) => e.key).toList()}');
-      }
 
       final lat = exifData['GPS GPSLatitude'];
       final lon = exifData['GPS GPSLongitude'];
       final latRef = exifData['GPS GPSLatitudeRef']?.printable;
       final lonRef = exifData['GPS GPSLongitudeRef']?.printable;
 
-      if (lat == null || lon == null) return null;
+      if (lat != null && lon != null) {
+        final latitude = _parseDMS(lat.printable, latRef);
+        final longitude = _parseDMS(lon.printable, lonRef);
+        if (latitude != null && longitude != null && (latitude != 0 || longitude != 0)) {
+          return GpsResult(latitude: latitude, longitude: longitude);
+        }
+      }
 
-      final latitude = _parseDMS(lat.printable, latRef);
-      final longitude = _parseDMS(lon.printable, lonRef);
+      // Method 2: Try image package (better for some Android phones)
+      final image = img.decodeImage(imageBytes);
+      if (image != null) {
+        final imgLat = image.gpsLatitude;
+        final imgLon = image.gpsLongitude;
+        if (imgLat != null && imgLon != null && (imgLat != 0 || imgLon != 0)) {
+          return GpsResult(latitude: imgLat, longitude: imgLon);
+        }
+      }
 
-      if (latitude == null || longitude == null) return null;
-
-      return GpsResult(latitude: latitude, longitude: longitude);
+      return null;
     } catch (e) {
       print('🔵 [GPS EXIF] Error: $e');
       return null;
