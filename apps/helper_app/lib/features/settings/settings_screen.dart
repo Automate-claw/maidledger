@@ -7,7 +7,7 @@ import '../../core/services/relation_service.dart';
 import '../auth/auth_provider.dart';
 import '../auth/relation_gate.dart';
 
-/// Settings screen with logout + language switch + employer link
+/// Settings screen with logout + language switch + employer link + default district
 class SettingsScreen extends ConsumerWidget {
   const SettingsScreen({super.key});
 
@@ -85,6 +85,24 @@ class SettingsScreen extends ConsumerWidget {
                   ),
                 ),
                 error: (_, __) => const SizedBox(),
+              ),
+
+              const SizedBox(height: 16),
+
+              // Default district section
+              Card(
+                child: ListTile(
+                  leading: const Icon(Icons.location_on),
+                  title: Text(AppStrings.defaultLocation(locale)),
+                  subtitle: Text(
+                    profile?['default_location'] ?? AppStrings.notSet(locale),
+                    style: TextStyle(
+                      color: profile?['default_location'] != null ? Colors.green : Colors.grey,
+                    ),
+                  ),
+                  trailing: const Icon(Icons.chevron_right),
+                  onTap: () => _showDistrictPicker(context, ref, profile),
+                ),
               ),
 
               const SizedBox(height: 16),
@@ -171,6 +189,67 @@ class SettingsScreen extends ConsumerWidget {
         ),
       ),
     );
+  }
+
+  void _showDistrictPicker(BuildContext context, WidgetRef ref, Map<String, dynamic>? profile) {
+    final locale = ref.read(localeProvider);
+    final districts = [
+      '港島｜灣仔',
+      '港島｜北角',
+      '港島｜中環',
+      '港島｜西營盤',
+      '九龍｜旺角',
+      '九龍｜深水埗',
+      '九龍｜九龍城',
+      '九龍｜黃大仙',
+      '新界｜粉嶺',
+      '新界｜大埔',
+      '新界｜沙田',
+      '新界｜屯門',
+      '其他',
+    ];
+
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: Text(AppStrings.defaultLocation(locale)),
+        content: SizedBox(
+          width: double.maxFinite,
+          child: ListView.builder(
+            shrinkWrap: true,
+            itemCount: districts.length,
+            itemBuilder: (_, idx) {
+              final d = districts[idx];
+              final current = profile?['default_location'] ?? '';
+              return ListTile(
+                title: Text(d),
+                leading: Radio<String>(
+                  value: d,
+                  groupValue: current.isEmpty ? null : current,
+                  onChanged: (v) {
+                    if (v != null) _saveDefaultLocation(ctx, ref, profile?['id'], v);
+                  },
+                ),
+                onTap: () => _saveDefaultLocation(ctx, ref, profile?['id'], d),
+              );
+            },
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: Text(AppStrings.cancel(locale)),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Future<void> _saveDefaultLocation(BuildContext ctx, WidgetRef ref, String? profileId, String district) async {
+    if (profileId == null) return;
+    await supabase.from('user_profiles').update({'default_location': district}).eq('id', profileId);
+    ref.invalidate(_helperProfileProvider(profileId));
+    if (ctx.mounted) Navigator.pop(ctx);
   }
 
   void _confirmLogout(BuildContext context, WidgetRef ref) {

@@ -38,6 +38,8 @@ class AppStrings {
       'expense_saved': '✅ 記帳已保存！',
       'link_employer': '連接僱主',
       'disconnect_employer': '断开僱主連接',
+      'default_location': '默認地區',
+      'not_set': '未設定',
       'disconnect_confirm': '確定要断开與僱主的連接嗎？你的歷史記錄將會保留。',
       'invite_code': '邀請碼',
       'employer_code_hint': '請輸入僱主的6位邀請碼',
@@ -183,6 +185,8 @@ class AppStrings {
       'expense_saved': '✅ Expense saved！',
       'link_employer': 'Link Employer',
       'disconnect_employer': 'Disconnect Employer',
+      'default_location': 'Default District',
+      'not_set': 'Not set',
       'disconnect_confirm': 'Are you sure you want to disconnect from this employer? Your history will be kept.',
       'invite_code': 'Invite Code',
       'employer_code_hint': "Enter employer's 6-character invite code",
@@ -327,6 +331,8 @@ class AppStrings {
       'expense_saved': '✅ Biaya disimpan！',
       'link_employer': 'Tautkan Majikan',
       'disconnect_employer': 'Putuskan Hubungan Majikan',
+      'default_location': 'Lokasi Default',
+      'not_set': 'Belum diatur',
       'disconnect_confirm': 'Apakah Anda yakin ingin memutuskan hubungan dengan majikan ini? Riwayat Anda akan disimpan.',
       'invite_code': 'Kode Undangan',
       'employer_code_hint': 'Masukkan kode undangan 6 karakter majikan',
@@ -471,6 +477,8 @@ class AppStrings {
       'expense_saved': '✅ Na-save ang gastusin！',
       'link_employer': 'I-link ang Employer',
       'disconnect_employer': 'Alisin ang Koneksyon sa Employer',
+      'default_location': 'Default na District',
+      'not_set': 'Hindi naka-set',
       'disconnect_confirm': 'Sigurado ka bang gusto mong alisin ang koneksyon sa employer na ito? Itatago ang iyong kasaysayan.',
       'invite_code': 'Invite Code',
       'employer_code_hint': 'Ilagay ang 6-character invite code ng employer',
@@ -663,6 +671,8 @@ class AppStrings {
   static String deleteReceiptConfirm(AppLocale locale) => get(locale, 'delete_receipt_confirm');
   static String linkEmployer(AppLocale locale) => get(locale, 'link_employer');
   static String disconnectEmployer(AppLocale locale) => get(locale, 'disconnect_employer');
+  static String defaultLocation(AppLocale locale) => get(locale, 'default_location');
+  static String notSet(AppLocale locale) => get(locale, 'not_set');
   static String disconnectConfirm(AppLocale locale) => get(locale, 'disconnect_confirm');
   static String inviteCode(AppLocale locale) => get(locale, 'invite_code');
   static String employerCodeHint(AppLocale locale) => get(locale, 'employer_code_hint');
