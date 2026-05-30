@@ -108,6 +108,19 @@ class ReceiptScannerService {
     try {
       final exifData = await readExifFromBytes(imageBytes);
 
+      // Debug: log all GPS-related tags
+      final gpsTags = exifData.entries
+          .where((e) => e.key.toLowerCase().contains('gps') ||
+                        e.key.toLowerCase().contains('lat') ||
+                        e.key.toLowerCase().contains('lon') ||
+                        e.key.toLowerCase().contains('long'))
+          .toList();
+      if (gpsTags.isNotEmpty) {
+        print('🔵 [GPS EXIF] Found GPS tags: $gpsTags');
+      } else {
+        print('🔵 [GPS EXIF] No GPS tags found. All tags: ${exifData.entries.map((e) => e.key).toList()}');
+      }
+
       final lat = exifData['GPS GPSLatitude'];
       final lon = exifData['GPS GPSLongitude'];
       final latRef = exifData['GPS GPSLatitudeRef']?.printable;
@@ -122,6 +135,8 @@ class ReceiptScannerService {
 
       return GpsResult(latitude: latitude, longitude: longitude);
     } catch (e) {
+      // ignore: avoid_print
+      debugPrint('🔵 [GPS EXIF] Error: $e');
       return null;
     }
   }
