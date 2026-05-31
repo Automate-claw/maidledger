@@ -126,12 +126,12 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
 
       if (gps != null) {
         debugPrint('🔵 [_extractExifLocation] GPS found: lat=${gps.latitude}, lon=${gps.longitude}');
-        final locResult = _locationService.reverseGeocode(gps);
+        final locResult = await _locationService.reverseGeocode(gps);
         debugPrint('🔵 [_extractExifLocation] reverseGeocode result: ${locResult?.displayText}, confidence=${locResult?.confidence}');
         if (locResult != null) {
           final displayText = (locResult.confidence ?? 0) > 0.5
-              ? locResult.displayText
-              : locResult.region ?? "未知地區";
+              ? (locResult.displayText ?? locResult.fallbackText)
+              : locResult.region ?? '未知地區';
           debugPrint('🔵 [_extractExifLocation] showing dialog with: $displayText');
           final confirmed = await _showLocationConfirmationDialog(context, displayText);
           debugPrint('🔵 [_extractExifLocation] dialog result: $confirmed');
@@ -151,11 +151,11 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
       final currentGps = await _getCurrentLocation();
       if (currentGps != null) {
         debugPrint('🔵 [_extractExifLocation] device GPS: lat=${currentGps.latitude}, lon=${currentGps.longitude}');
-        final locResult = _locationService.reverseGeocode(currentGps);
+        final locResult = await _locationService.reverseGeocode(currentGps);
         if (locResult != null) {
           final displayText = (locResult.confidence ?? 0) > 0.5
-              ? locResult.displayText
-              : locResult.region ?? "未知地區";
+              ? (locResult.displayText ?? locResult.fallbackText)
+              : locResult.region ?? '未知地區';
           final confirmed = await _showLocationConfirmationDialog(context, displayText);
           if (confirmed != null) {
             setState(() => _extractedLocation = confirmed);
@@ -289,30 +289,6 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
         ],
       ),
     );
-  }
-
-  Future<String?> _reverseGeocode(double lat, double lon) async {
-    try {
-      final uri = Uri.parse(
-        'https://nominatim.openstreetmap.org/reverse'
-        '?lat=$lat&lon=$lon&format=json&accept-language=zh-tw',
-      );
-      final httpClient = HttpClient();
-      final req = await httpClient.getUrl(uri);
-      final resp = await req.close();
-      final jsonStr = await resp
-          .transform(utf8.decoder)
-          .join();
-
-      final districtMatch = RegExp(r'"city"\s*:\s*"([^"]*)"').firstMatch(jsonStr);
-      final areaMatch = RegExp(r'"state"\s*:\s*"([^"]*)"').firstMatch(jsonStr);
-      final suburbMatch = RegExp(r'"suburb"\s*:\s*"([^"]*)"').firstMatch(jsonStr);
-
-      final location = districtMatch?.group(1) ?? areaMatch?.group(1) ?? suburbMatch?.group(1);
-      return location;
-    } catch (e) {
-      return null;
-    }
   }
 
   Future<bool> _checkConnectivity() async {
