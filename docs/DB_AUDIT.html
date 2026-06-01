@@ -1,0 +1,383 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>MaidLedger DB Deeper Audit</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { background: #0f1117; font-family: 'Segoe UI', sans-serif; color: #e0e0e0; padding: 20px; font-size: 13px; }
+  h1 { color: #fff; margin-bottom: 6px; font-size: 16px; }
+  h2 { font-size: 12px; color: #888; margin: 4px 0 2px; }
+  .subtitle { color: #666; font-size: 11px; margin-bottom: 20px; }
+  .grid { display: flex; flex-wrap: wrap; gap: 14px; align-items: flex-start; }
+  .table { background: #1a1d27; border-radius: 10px; padding: 12px; min-width: 180px; border: 1px solid #2a2d3a; }
+  .table-title { font-size: 12px; font-weight: 600; margin-bottom: 8px; border-bottom: 1px solid #2a2d3a; padding-bottom: 5px; }
+  .title-ok { color: #7ec8a4; }
+  .title-warn { color: #ffcc80; }
+  .title-bad { color: #ff8080; }
+  .title-obs { color: #666; }
+  .column { font-size: 11px; padding: 2px 0; display: flex; gap: 5px; align-items: center; }
+  .col-name { color: #e0e0e0; }
+  .col-val { color: #888; font-size: 10px; }
+  .badge { font-size: 9px; padding: 2px 5px; border-radius: 3px; margin-left: 3px; }
+  .badge-keep { background: #1f4d3a; color: #7ec8a4; }
+  .badge-remove { background: #3d1f1f; color: #ff8080; }
+  .badge-review { background: #3d3d1f; color: #ffcc80; }
+  .badge-unknown { background: #2a2d3a; color: #888; }
+  .section { margin-bottom: 28px; }
+  .issue { background: #1a1d27; border-radius: 10px; padding: 14px; min-width: 260px; border: 1px solid #2a2d3a; }
+  .issue h3 { font-size: 12px; margin-bottom: 8px; }
+  .issue p { color: #888; font-size: 11px; line-height: 1.7; margin-bottom: 5px; }
+  .issue code { background: #111; padding: 2px 5px; border-radius: 3px; color: #ccc; font-size: 10px; }
+  .issue .action { color: #7eb8ff; font-size: 11px; margin-top: 6px; }
+  .row-count { font-size: 10px; color: #666; margin-left: auto; }
+  .legend { display: flex; gap: 14px; margin-bottom: 20px; font-size: 11px; color: #888; flex-wrap: wrap; }
+  .legend span { display: flex; align-items: center; gap: 5px; }
+  .dot { width: 10px; height: 10px; border-radius: 50%; }
+  table { width: 100%; border-collapse: collapse; margin-bottom: 20px; font-size: 12px; }
+  th, td { padding: 8px 12px; text-align: left; border-bottom: 1px solid #2a2d3a; }
+  th { color: #888; font-weight: 400; }
+  tr:hover { background: #1a1d27; }
+  .ok { color: #7ec8a4; }
+  .warn { color: #ffcc80; }
+  .bad { color: #ff8080; }
+  .obs { color: #666; }
+  .num { color: #7eb8ff; font-family: monospace; }
+  pre { background: #111; padding: 14px; border-radius: 8px; font-size: 11px; color: #aaa; line-height: 1.7; margin: 0; }
+</style>
+</head>
+<body>
+
+<h1>🔍 MaidLedger DB Deeper Audit</h1>
+<p class="subtitle">Row counts, null analysis, FK references — 2026-05-30</p>
+
+<div class="legend">
+  <span><span class="dot" style="background:#7ec8a4"></span> ✅ Keep</span>
+  <span><span class="dot" style="background:#ffcc80"></span> ⚠️ Review</span>
+  <span><span class="dot" style="background:#ff8080"></span> ❌ Remove</span>
+  <span><span class="dot" style="background:#666"></span> 🔴 Obsolete</span>
+  <span><span class="dot" style="background:#888"></span> ❓ Unknown</span>
+</div>
+
+<!-- DATA SAMPLES -->
+<div class="section">
+<h1 style="color:#fff;font-size:14px;margin-bottom:12px">📊 Row Counts & Data Density</h1>
+<table>
+<tr>
+  <th>Table</th>
+  <th>Rows</th>
+  <th>Non-Null Columns</th>
+  <th>Notes</th>
+  <th>Verdict</th>
+</tr>
+<tr>
+  <td>user_profiles</td>
+  <td class="num">2</td>
+  <td>role, name, default_location (NEW)</td>
+  <td>Small, essential auth</td>
+  <td class="ok">✅ Keep</td>
+</tr>
+<tr>
+  <td>employer_helper_relations</td>
+  <td class="num">small</td>
+  <td>employer_id, helper_id, status</td>
+  <td>Small, essential</td>
+  <td class="ok">✅ Keep</td>
+</tr>
+<tr>
+  <td>receipts</td>
+  <td class="num">29</td>
+  <td>14/29 have parsed_data, 29/29 have items, 29/29 have ocr_raw_text</td>
+  <td>parsed_data only 48% filled — why?</td>
+  <td class="warn">⚠️ Review parsed_data</td>
+</tr>
+<tr>
+  <td>receipt_items</td>
+  <td class="num">55</td>
+  <td>55/55 item_raw_text=NULL, 16/55 extracted_brand, 1/55 weight_grams</td>
+  <td>item_raw_text ALWAYS null → remove. extracted_brand 29% filled</td>
+  <td class="warn">⚠️ Cleanup needed</td>
+</tr>
+<tr>
+  <td>price_history</td>
+  <td class="num">81</td>
+  <td>81/81 unit, original_price, total_paid</td>
+  <td>Critical: unit = free-text "件" — needs fix</td>
+  <td class="bad">❌ Fix unit schema</td>
+</tr>
+<tr>
+  <td>shops</td>
+  <td class="num">13</td>
+  <td>canonical_name</td>
+  <td>Small, essential for shop matching</td>
+  <td class="ok">✅ Keep</td>
+</tr>
+<tr>
+  <td>shop_aliases</td>
+  <td class="num">14</td>
+  <td>raw_name, shop_id</td>
+  <td>14 aliases for 13 shops (avg 1.1) — sparse</td>
+  <td class="warn">⚠️ Low coverage</td>
+</tr>
+<tr>
+  <td>master_products</td>
+  <td class="num">42</td>
+  <td>canonical_name, brand, prd_cate, default_unit (unused?)</td>
+  <td>Essential for product matching</td>
+  <td class="ok">✅ Keep</td>
+</tr>
+<tr>
+  <td>product_aliases</td>
+  <td class="num">42</td>
+  <td>raw_name, master_product_id</td>
+  <td>42 aliases for 42 products — 1:1, low value (could be in master_products)</td>
+  <td class="warn">⚠️ Consider merging</td>
+</tr>
+<tr>
+  <td>cc_prices</td>
+  <td class="num">2545</td>
+  <td>name_zh, cat1_zh, standard_weight_g, price_per_100g</td>
+  <td>Large reference table, actively used for price comparison</td>
+  <td class="ok">✅ Keep</td>
+</tr>
+<tr>
+  <td>expense_summaries</td>
+  <td class="num">0</td>
+  <td>—</td>
+  <td>EMPTY — 0 rows, no FK refs from any table</td>
+  <td class="bad">❌ DROP TABLE</td>
+</tr>
+<tr>
+  <td>price_alerts</td>
+  <td class="num">0</td>
+  <td>—</td>
+  <td>EMPTY — 0 rows, FK from receipts.receipt_id (no data)</td>
+  <td class="obs">🔴 DROP TABLE</td>
+</tr>
+<tr>
+  <td>price_data</td>
+  <td class="num">0</td>
+  <td>—</td>
+  <td>EMPTY — scraper output table, no data, no refs</td>
+  <td class="obs">🔴 DROP TABLE</td>
+</tr>
+<tr>
+  <td>weather_signals</td>
+  <td class="num">0</td>
+  <td>—</td>
+  <td>EMPTY — no refs, weather alert feature (unused?)</td>
+  <td class="obs">🔴 DROP TABLE</td>
+</tr>
+<tr>
+  <td>price_alert_suppression</td>
+  <td class="num">0</td>
+  <td>—</td>
+  <td>EMPTY — no refs</td>
+  <td class="obs">🔴 DROP TABLE</td>
+</tr>
+<tr>
+  <td>app_errors</td>
+  <td class="num">0</td>
+  <td>—</td>
+  <td>EMPTY — no refs (logging elsewhere?)</td>
+  <td class="obs">🔴 DROP TABLE</td>
+</tr>
+<tr>
+  <td>chat_logs</td>
+  <td class="num">113</td>
+  <td>input_text, output_response (jsonb), llm_raw_response</td>
+  <td>113 rows but only 29 receipts → not 1:1 with receipts, seems audit only</td>
+  <td class="warn">⚠️ Audit log, not essential</td>
+</tr>
+<tr>
+  <td>chat_rate_limits</td>
+  <td class="num">60</td>
+  <td>user_id, is_expense, created_at</td>
+  <td>60 rows for 2 users — actively used in rate limiting</td>
+  <td class="ok">✅ Keep (used by edge function)</td>
+</tr>
+<tr>
+  <td>prd_categories</td>
+  <td class="num">small</td>
+  <td>code, name_tc</td>
+  <td>Reference table — 魚/豬/牛/雞/菜 etc.</td>
+  <td class="ok">✅ Keep</td>
+</tr>
+<tr>
+  <td>subcategories</td>
+  <td class="num">~35</td>
+  <td>code, name_tc, parent_cate</td>
+  <td>Reference table — linked to weight_options</td>
+  <td class="ok">✅ Keep</td>
+</tr>
+<tr>
+  <td>weight_options</td>
+  <td class="num">~70</td>
+  <td>subcategory_code, weight_g, label, unit_type</td>
+  <td>Reference table — used in Chat UI for unit selection</td>
+  <td class="ok">✅ Keep</td>
+</tr>
+<tr>
+  <td>employer_payments</td>
+  <td class="num">small</td>
+  <td>employer_id, relation_id, amount, payment_date</td>
+  <td>Rolling balance tracking</td>
+  <td class="ok">✅ Keep</td>
+</tr>
+</table>
+</div>
+
+<!-- REMOVEABLES -->
+<div class="section">
+<h1 style="color:#fff;font-size:14px;margin-bottom:14px">🗑️ Tables to DROP (0 rows, no refs)</h1>
+<div class="grid">
+
+<div class="issue">
+  <h3 style="color:#ff8080">❌ expense_summaries</h3>
+  <p>0 rows. No FK references from any table.</p>
+  <p>Intention: monthly category aggregation. But currently empty.</p>
+  <p class="action">→ DROP TABLE</p>
+</div>
+
+<div class="issue">
+  <h3 style="color:#ff8080">❌ price_alerts</h3>
+  <p>0 rows. FK column on receipts (receipt_id) exists but no data.</p>
+  <p>Intention: alert when price > avg. But no rows written.</p>
+  <p class="action">→ DROP TABLE + DROP FK on receipts</p>
+</div>
+
+<div class="issue">
+  <h3 style="color:#ff8080">❌ price_data</h3>
+  <p>0 rows. No FK references. Scraped supermarket prices.</p>
+  <p>cc_prices already provides same data (2545 rows).</p>
+  <p class="action">→ DROP TABLE</p>
+</div>
+
+<div class="issue">
+  <h3 style="color:#ff8080">❌ weather_signals</h3>
+  <p>0 rows. No refs. Weather-based price suppression?</p>
+  <p class="action">→ DROP TABLE</p>
+</div>
+
+<div class="issue">
+  <h3 style="color:#ff8080">❌ price_alert_suppression</h3>
+  <p>0 rows. No refs.</p>
+  <p class="action">→ DROP TABLE</p>
+</div>
+
+<div class="issue">
+  <h3 style="color:#ff8080">❌ app_errors</h3>
+  <p>0 rows. No refs. Error logging table.</p>
+  <p class="action">→ DROP TABLE</p>
+</div>
+
+</div>
+</div>
+
+<!-- COLUMN CLEANUP -->
+<div class="section">
+<h1 style="color:#fff;font-size:14px;margin-bottom:14px">🧹 Column Cleanup</h1>
+<div class="grid">
+
+<div class="issue">
+  <h3 style="color:#ffcc80">⚠️ receipt_items.item_raw_text</h3>
+  <p>55/55 rows = NULL (100% empty)</p>
+  <p>Never written, no value. Takes space.</p>
+  <p class="action">→ ALTER TABLE DROP COLUMN item_raw_text</p>
+</div>
+
+<div class="issue">
+  <h3 style="color:#ffcc80">⚠️ receipts.parsed_data</h3>
+  <p>14/29 rows have data (48%)</p>
+  <p>JSONB — unclear purpose. receipt_items already normalized.</p>
+  <p>Could be old OCR output / debug data.</p>
+  <p class="action">→ Review: if debug only, DROP COLUMN</p>
+</div>
+
+<div class="issue">
+  <h3 style="color:#ffcc80">⚠️ receipts.items (jsonb)</h3>
+  <p>29/29 rows have data (100%)</p>
+  <p>But receipt_items already has all item data.</p>
+  <p>Possible duplication.</p>
+  <p class="action">→ Review: if redundant, DROP COLUMN</p>
+</div>
+
+<div class="issue">
+  <h3 style="color:#ffcc80">⚠️ master_products.default_unit</h3>
+  <p>Added but never populated/used in code?</p>
+  <p>Verify code references before keeping.</p>
+  <p class="action">→ Check code before deciding</p>
+</div>
+
+</div>
+</div>
+
+<!-- DATA FLOW -->
+<div class="section">
+<h1 style="color:#fff;font-size:14px;margin-bottom:14px">🔄 Data Flow Analysis</h1>
+<pre style="background:#111;border-radius:8px;padding:14px;font-size:11px;color:#aaa;line-height:2">
+CLEAN (atomic, single source of truth):
+  user_profiles ←── employer_helper_relations ───→ employer_payments
+  shops ←── shop_aliases
+  master_products ←── product_aliases
+  cc_prices (reference, read-only)
+  weight_options ←── subcategories
+  chat_rate_limits (edge-function state)
+
+RECEIPT FLOW (needs fixing):
+  receipts (header)
+    ├── receipt_items (detail) ←── master_products
+    │     ├── extracted_brand (16/55 non-null) ← partial
+    │     ├── extracted_spec (❌ free text, needs weight_g)
+    │     └── weight_grams (1/55 non-null) ← almost never written
+    │
+    └── price_history (price record) ←── shops, master_products
+          ├── unit (❌ free text "件") ← needs fixing
+          ├── original_price (81/81 non-null)
+          └── total_paid (81/81 non-null)
+
+AUDIT ONLY (non-essential):
+  chat_logs (113 rows, not tied to receipts 1:1)
+
+PROBLEMATIC:
+  product_aliases: 42 rows, 1:1 with master_products → almost no aliasing happened
+  shop_aliases: 14 rows for 13 shops → almost no aliasing happened
+  → These tables suggest aliasing/matching is not working well yet
+</pre>
+</div>
+
+<!-- ACTION PLAN -->
+<div class="section">
+<h1 style="color:#fff;font-size:14px;margin-bottom:14px">📋 Audit Action Plan</h1>
+<pre style="background:#1a1d27;border-radius:8px;padding:16px;font-size:11px;color:#aaa;line-height:2">
+
+PHASE 1 — IMMEDIATE (今次修復):
+  ✅ price_history: ADD weight_g, unit_display, price_per_kg, price_per_pcs
+  ✅ receipt-writer: fix selectedWeights → weight_g propagation
+  ✅ chat_screen: pass selectedWeights to aiAgent.saveExpense()
+  ❌ DROP COLUMN: receipt_items.item_raw_text (always NULL)
+
+PHASE 2 — CLEANUP (no risk):
+  ❌ DROP TABLE: expense_summaries (0 rows, no refs)
+  ❌ DROP TABLE: price_alerts (0 rows, no refs)
+  ❌ DROP TABLE: price_data (0 rows, no refs)
+  ❌ DROP TABLE: weather_signals (0 rows, no refs)
+  ❌ DROP TABLE: price_alert_suppression (0 rows, no refs)
+  ❌ DROP TABLE: app_errors (0 rows, no refs)
+
+PHASE 3 — REVIEW (need business decision):
+  ⚠️ receipts.parsed_data (14/29 non-null) — keep? drop? move to audit?
+  ⚠️ receipts.items (jsonb, always non-null) — keep? drop? redundant with receipt_items?
+  ⚠️ master_products.default_unit — verify code uses it
+  ⚠️ product_aliases (42 rows, 1:1 with master_products) — necessary? or merge?
+  ⚠️ shop_aliases (14 rows, 1.1 per shop) — necessary? or merge?
+
+PHASE 4 — LONG TERM:
+  📦 Consolidate alias tables if matching rate is always ~1:1
+  📦 Add unique constraint on receipts(receipt_id, master_product_id) if price_history should be unique
+  📦 Consider: receipts = transaction header only, receipt_items = detail, price_history = price record
+</pre>
+</div>
+
+</body>
+</html>
