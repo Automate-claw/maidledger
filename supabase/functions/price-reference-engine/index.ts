@@ -5,10 +5,14 @@
 // Layers (in priority order):
 //   Layer 1: Consumer Council median price (cc_prices)
 //   Layer 2: Own historical trimmed mean (45-day, freshness-weighted)
-//   Layer 3: AFCD wholesale × retail_multiplier (future)
+//   Layer 3: AFCD wholesale × retail_multiplier
 //
-// Input:  { standard_name, master_product_id?, district?, store_type? }
-// Output: { anchor_price, anchor_type, anchor_source, confidence }
+// Filters applied:
+//   - district_index: cross-district price normalization
+//   - store_type channel: wet_market ≠ supermarket (never cross-match)
+//
+// Input:  { standard_name, master_product_id?, user_id?, district?, store_type? }
+// Output: { anchor_price, anchor_type, anchor_source, confidence, district_index_applied? }
 // ══════════════════════════════════════════════════════════════════════════════
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 
@@ -17,13 +21,30 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
 };
 
-// ─── Freshness weight (time decay) ──────────────────────────────────────────
-function freshnessWeight(daysAgo: number): number {
-  if (daysAgo === 0) return 1.0;
-  if (daysAgo === 1) return 0.7;
-  if (daysAgo === 2) return 0.3;
-  if (daysAgo >= 3) return 0.1;
-  return 0.05;
+// ─── District price index lookup ─────────────────────────────────────────────
+async function getDistrictIndex(
+  supabaseUrl: string,
+  supabaseKey: string,
+  district: string,
+  storeType: string,
+): Promise<number> {
+  if (!district) return 1.0;
+  // Normalize district name
+  const search = encodeURIComponent(district.replace(/[區市]/g, ""));
+  const cat = storeType === "wet_market" ? "街市" : storeType === "supermarket" ? "超市" : "all";
+  const monthStart = new Date();
+  monthStart.setDate(1);
+  const monthStr = monthStart.toISOString().split("T")[0];
+
+  const res = await fetch(
+    `${supabaseUrl}/rest/v1/district_price_index?district=ilike.*${search}*&category=eq.${cat}&recorded_month=lte.${monthStr}&order=recorded_month.desc&limit=1&select=index_coefficient`,
+    { headers: { apikey: supabaseKey, Authorization: `Bearer ${supabaseKey}` } }
+  );
+  const data = await res.json();
+  if (Array.isArray(data) && data.length > 0 && data[0].index_coefficient) {
+    return parseFloat(String(data[0].index_coefficient));
+  }
+  return 1.0; // No index found → neutral
 }
 
 // ─── Layer 1: Consumer Council median ───────────────────────────────────────
@@ -32,25 +53,34 @@ async function getCcMedian(
   supabaseKey: string,
   standardName: string,
   brand?: string,
-): Promise<{ price: number; source: string } | null> {
-  // Search cc_prices by name_zh or name_en (fuzzy)
-  const searchTerm = encodeURIComponent(standardName);
+  districtIndex: number = 1.0,
+): Promise<{ price: number; source: string; district_index_applied: number } | null> {
+  const search = encodeURIComponent(standardName);
   const ccRes = await fetch(
-    `${supabaseUrl}/rest/v1/cc_prices?or=(name_zh.ilike.*${searchTerm}*,name_en.ilike.*${searchTerm}*)&select=cc_code,name_zh,name_en,prices,price_per_100g&limit=5`,
+    `${supabaseUrl}/rest/v1/cc_prices?or=(name_zh.ilike.*${search}*,name_en.ilike.*${search}*)&select=cc_code,name_zh,name_en,prices,price_per_100g&limit=5`,
     { headers: { apikey: supabaseKey, Authorization: `Bearer ${supabaseKey}` } }
   );
   const ccData = await ccRes.json();
   if (!Array.isArray(ccData) || ccData.length === 0) return null;
 
+  // Brand matching: prefer rows where brand matches
+  let bestRow = ccData[0];
+  if (brand) {
+    const brandLower = brand.toLowerCase();
+    const brandMatch = ccData.find(
+      (r: any) => r.brand_en?.toLowerCase().includes(brandLower) || r.brand_zh?.includes(brand)
+    );
+    if (brandMatch) bestRow = brandMatch;
+  }
+
   // Parse prices JSON and compute median
   let allPrices: number[] = [];
-  for (const row of ccData) {
-    try {
-      const prices: Record<string, number> = JSON.parse(row.prices ?? "{}");
-      const vals = Object.values(prices).filter((v) => v > 0);
-      allPrices = allPrices.concat(vals);
-    } catch { /* skip malformed */ }
-  }
+  try {
+    const prices: Record<string, number> = JSON.parse(bestRow.prices ?? "{}");
+    const vals = Object.values(prices).filter((v) => v > 0);
+    allPrices = vals;
+  } catch { /* malformed */ }
+
   if (allPrices.length === 0) return null;
 
   allPrices.sort((a, b) => a - b);
@@ -58,11 +88,23 @@ async function getCcMedian(
     ? (allPrices[allPrices.length / 2 - 1] + allPrices[allPrices.length / 2]) / 2
     : allPrices[Math.floor(allPrices.length / 2)];
 
-  // Use price_per_100g if available (already normalized)
-  if (ccData[0].price_per_100g) {
-    return { price: parseFloat(String(ccData[0].price_per_100g)), source: `cc:${ccData[0].cc_code}` };
+  // Apply district index: convert to baseline district price
+  // raw_median / district_index = what this would cost in the baseline district
+  const adjustedMedian = median / districtIndex;
+
+  if (bestRow.price_per_100g) {
+    const adjustedPer100g = parseFloat(String(bestRow.price_per_100g)) / districtIndex;
+    return {
+      price: Math.round(adjustedPer100g * 100) / 100,
+      source: `cc:${bestRow.cc_code}`,
+      district_index_applied: districtIndex,
+    };
   }
-  return { price: median, source: `cc:${ccData[0].cc_code}` };
+  return {
+    price: Math.round(adjustedMedian * 100) / 100,
+    source: `cc:${bestRow.cc_code}`,
+    district_index_applied: districtIndex,
+  };
 }
 
 // ─── Layer 2: Own historical trimmed mean ───────────────────────────────────
@@ -71,73 +113,93 @@ async function getHistoricalTrimmedMean(
   supabaseKey: string,
   masterProductId: string,
   userId: string,
-): Promise<{ price: number; source: string } | null> {
+): Promise<{ price: number; source: string; sample_count: number } | null> {
   const fortyFiveDaysAgo = new Date(Date.now() - 45 * 24 * 60 * 60 * 1000).toISOString().split("T")[0];
   const now = new Date().toISOString().split("T")[0];
 
-  // Fetch 45-day history for this product + user, prefer normalized_unit_price
   const histRes = await fetch(
-    `${supabaseUrl}/rest/v1/price_history?master_product_id=eq.${masterProductId}&user_id=eq.${userId}&recorded_at=gte.${fortyFiveDaysAgo}&recorded_at=lte.${now}&select=price,price_per_kg,price_per_pcs,recorded_at&order=recorded_at.desc&limit=100`,
+    `${supabaseUrl}/rest/v1/price_history?master_product_id=eq.${masterProductId}&user_id=eq.${userId}&recorded_at=gte.${fortyFiveDaysAgo}&recorded_at=lte.${now}&select=price,price_per_kg,price_per_pcs,recorded_at,freshness_weight&order=recorded_at.desc&limit=100`,
     { headers: { apikey: supabaseKey, Authorization: `Bearer ${supabaseKey}` } }
   );
   const hist = await histRes.json();
   if (!Array.isArray(hist) || hist.length === 0) return null;
 
   // Build normalized price list (prefer price_per_kg, fallback to price)
-  const prices: number[] = [];
+  const weightedPrices: { p: number; w: number }[] = [];
   for (const row of hist) {
     const p = row.price_per_kg ?? row.price_per_pcs ?? parseFloat(String(row.price));
-    if (p && p > 0) {
-      const daysAgo = Math.floor(
-        (new Date(now).getTime() - new Date(row.recorded_at).getTime()) / (1000 * 60 * 60 * 24)
-      );
-      // Weighted by freshness (only include recent enough data)
-      if (freshnessWeight(daysAgo) >= 0.1) {
-        prices.push(p);
-      }
-    }
-  }
-  if (prices.length < 2) {
-    // Not enough data for trimmed mean, use simple average
-    const avg = prices.length > 0 ? prices.reduce((a, b) => a + b, 0) / prices.length : 0;
-    return avg > 0 ? { price: Math.round(avg * 100) / 100, source: "own_history_avg" } : null;
+    if (!p || p <= 0) continue;
+    // Use precomputed freshness_weight, or compute on the fly
+    let w = row.freshness_weight ? parseFloat(String(row.freshness_weight)) : 1.0;
+    if (w < 0.1) continue; // skip stale data
+    weightedPrices.push({ p, w });
   }
 
-  // Trimmed mean: remove top and bottom 10% (at least 1 each)
-  prices.sort((a, b) => a - b);
-  const trimCount = Math.max(1, Math.floor(prices.length * 0.1));
-  const trimmed = prices.slice(trimCount, prices.length - trimCount);
-  const mean = trimmed.reduce((a, b) => a + b, 0) / trimmed.length;
-  return { price: Math.round(mean * 100) / 100, source: "own_history_trimmed_mean" };
+  if (weightedPrices.length === 0) return null;
+
+  if (weightedPrices.length < 3) {
+    // Simple weighted average
+    const totalW = weightedPrices.reduce((s, x) => s + x.w, 0);
+    const avg = weightedPrices.reduce((s, x) => s + x.p * x.w, 0) / totalW;
+    return {
+      price: Math.round(avg * 100) / 100,
+      source: "own_weighted_avg",
+      sample_count: weightedPrices.length,
+    };
+  }
+
+  // Trimmed mean: sort by price, trim top/bottom 10%
+  weightedPrices.sort((a, b) => a.p - b.p);
+  const trimCount = Math.max(1, Math.floor(weightedPrices.length * 0.1));
+  const trimmed = weightedPrices.slice(trimCount, weightedPrices.length - trimCount);
+  if (trimmed.length === 0) return null;
+
+  const totalW = trimmed.reduce((s, x) => s + x.w, 0);
+  const mean = trimmed.reduce((s, x) => s + x.p * x.w, 0) / totalW;
+  return {
+    price: Math.round(mean * 100) / 100,
+    source: "own_trimmed_mean",
+    sample_count: trimmed.length,
+  };
 }
 
-// ─── Layer 3: AFCD wholesale × multiplier (stub for future) ────────────────
+// ─── Layer 3: AFCD wholesale × multiplier ───────────────────────────────────
 async function getAfcdAnchor(
   supabaseUrl: string,
   supabaseKey: string,
   standardName: string,
 ): Promise<{ price: number; source: string } | null> {
   const search = encodeURIComponent(standardName);
+  const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString().split("T")[0];
+  const today = new Date().toISOString().split("T")[0];
+
   const afRes = await fetch(
-    `${supabaseUrl}/rest/v1/afcd_wholesale_prices?or=(item_name.ilike.*${search}*)&select=wholesale_price,unit,retail_multiplier&limit=1&order=recorded_date.desc`,
+    `${supabaseUrl}/rest/v1/afcd_wholesale_prices?item_name.ilike.*${search}*&recorded_date=gte.${sevenDaysAgo}&recorded_date=lte.${today}&select=wholesale_price,unit,retail_multiplier&order=recorded_date.desc&limit=3`,
     { headers: { apikey: supabaseKey, Authorization: `Bearer ${supabaseKey}` } }
   );
   const afData = await afRes.json();
   if (!Array.isArray(afData) || afData.length === 0) return null;
 
+  // Use most recent record
   const row = afData[0];
   const multiplier = parseFloat(String(row.retail_multiplier)) || 2.0;
   const wholesale = parseFloat(String(row.wholesale_price));
   if (!wholesale) return null;
 
-  // Convert to per-standard-unit (assume liang if unit contains 両, else kg)
+  // Convert to per-kg for standardization
   let perKg: number;
-  if (row.unit && row.unit.includes("両")) {
+  if (row.unit && (row.unit.includes("斤") || row.unit.includes("両"))) {
     perKg = (wholesale * multiplier) / 0.60479; // 1 斤 ≈ 0.605 kg
-  } else {
+  } else if (row.unit && row.unit.includes("公斤")) {
     perKg = wholesale * multiplier;
+  } else {
+    perKg = wholesale * multiplier; // assume per-kg if unknown
   }
-  return { price: Math.round(perKg * 100) / 100, source: "afcd_wholesale" };
+
+  return {
+    price: Math.round(perKg * 100) / 100,
+    source: `afcd:${standardName}`,
+  };
 }
 
 // ─── Main serve ─────────────────────────────────────────────────────────────
@@ -151,31 +213,27 @@ serve(async (req) => {
     let body: any;
     try { body = await req.json(); } catch { body = {}; }
 
-    const {
-      standard_name,
-      master_product_id,
-      user_id,
-      district,
-      store_type,
-    } = body;
+    const { standard_name, master_product_id, user_id, district, store_type } = body;
 
     if (!standard_name && !master_product_id) {
       return new Response(JSON.stringify({ error: "standard_name or master_product_id required" }), {
-        status: 400,
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
+        status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
 
-    const result = {
-      anchor_price: null as number | null,
-      anchor_type: null as string | null,
-      anchor_source: null as string | null,
+    const districtIndex = await getDistrictIndex(supabaseUrl, supabaseKey, district ?? "", store_type ?? "");
+
+    const result: any = {
+      anchor_price: null,
+      anchor_type: null,
+      anchor_source: null,
       confidence: 0,
+      district_index_applied: districtIndex > 1.0 || districtIndex < 1.0 ? districtIndex : undefined,
     };
 
-    // ── Try Layer 1: Consumer Council ────────────────────────────────────
+    // ── Layer 1: Consumer Council ──────────────────────────────────────────
     if (standard_name) {
-      const cc = await getCcMedian(supabaseUrl, supabaseKey, standard_name);
+      const cc = await getCcMedian(supabaseUrl, supabaseKey, standard_name, body.brand, districtIndex);
       if (cc) {
         result.anchor_price = cc.price;
         result.anchor_type = "consumer_council";
@@ -187,7 +245,7 @@ serve(async (req) => {
       }
     }
 
-    // ── Try Layer 2: Own historical trimmed mean ─────────────────────────
+    // ── Layer 2: Own historical trimmed mean ───────────────────────────────
     if (master_product_id && user_id) {
       const hist = await getHistoricalTrimmedMean(supabaseUrl, supabaseKey, master_product_id, user_id);
       if (hist) {
@@ -195,13 +253,14 @@ serve(async (req) => {
         result.anchor_type = "own_history";
         result.anchor_source = hist.source;
         result.confidence = 0.7;
+        result.sample_count = hist.sample_count;
         return new Response(JSON.stringify({ success: true, ...result }), {
           headers: { ...corsHeaders, "Content-Type": "application/json" },
         });
       }
     }
 
-    // ── Try Layer 3: AFCD wholesale ──────────────────────────────────────
+    // ── Layer 3: AFCD wholesale ────────────────────────────────────────────
     if (standard_name) {
       const af = await getAfcdAnchor(supabaseUrl, supabaseKey, standard_name);
       if (af) {
@@ -223,8 +282,7 @@ serve(async (req) => {
   } catch (error) {
     console.error("price-reference-engine error:", error);
     return new Response(JSON.stringify({ success: false, error: String(error) }), {
-      status: 500,
-      headers: { ...corsHeaders, "Content-Type": "application/json" },
+      status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
   }
 });

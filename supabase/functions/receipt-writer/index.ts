@@ -566,6 +566,9 @@ serve(async (req) => {
           unit_type: unitType,
           price_per_kg: pricePerKg ? Math.round(pricePerKg * 100) / 100 : null,
           price_per_pcs: pricePerPcs ? Math.round(pricePerPcs * 100) / 100 : null,
+          // Stage 2: time-decay fields (always 1.0 for new records)
+          freshness_weight: 1.0,
+          days_ago: 0,
         }),
       });
 
