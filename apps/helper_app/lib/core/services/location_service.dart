@@ -32,7 +32,7 @@ class LocationResult {
 
 class LocationService {
   /// Nominatim reverse geocode: GPS → district/region name
-  /// Returns null on failure (network error, rate limit, etc.)
+  /// Falls back to coordinate-based region if Nominatim fails or times out.
   Future<LocationResult?> reverseGeocode(GpsResult gps) async {
     try {
       final uri = Uri.parse(
@@ -41,13 +41,15 @@ class LocationService {
         '&format=json&accept-language=zh-tw',
       );
 
-      final httpClient = HttpClient();
+      final httpClient = HttpClient()
+        ..connectionTimeout = const Duration(seconds: 5);
       final req = await httpClient.getUrl(uri);
       req.headers.set('User-Agent', 'MaidLedgerApp/1.0');
       final resp = await req.close();
 
       if (resp.statusCode != 200) {
-        return null;
+        // Nominatim failed (403/429/timeout/etc) → use coordinate-based fallback
+        return _regionFallback(gps.latitude, gps.longitude);
       }
 
       final jsonStr = await resp
