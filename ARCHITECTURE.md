@@ -1,7 +1,7 @@
 # MaidLedger — Architecture & Workflow Documentation
 
 **用途：** 維護參考 — 快速定位 logic 修改位置
-**最後更新：** 2026-05-30
+**最後更新：** 2026-06-24
 
 ---
 
@@ -16,7 +16,12 @@
 | **Receipt write** | `supabase/functions/receipt-writer/index.ts` | 寫入 DB（含 createFromChat 圖片上傳） |
 | **Shop matching** | `supabase/functions/shop-manager/index.ts` | canonical name + matching |
 | **Product matching** | `supabase/functions/product-manager/index.ts` | master product + brand |
-| **Price alert engine** | `supabase/functions/price-alert-engine/index.ts` | 價格警報 + weather suppression |
+| **Price alert engine** | `supabase/functions/price-alert-engine/index.ts` | 價格警報 + 分層 Buffer Zone + 人性化文案 |
+| **Price reference engine** | `supabase/functions/price-reference-engine/index.ts` | 四層 Anchor 查詢（geo/CC/歷史/AFCD） |
+| **Cross-household query** | `supabase/functions/cross-household-query/index.ts` | 匿名化跨家庭聚合價格 |
+| **Geo price cluster** | `supabase/functions/geo-price-cluster/index.ts` | 地理範圍 1.5km 聚合價格 |
+| **AFCD price fetcher** | `supabase/functions/afcd-price-fetcher/index.ts` | 政府批發價每日拉取 |
+| **Community badge check** | `supabase/functions/community-badge-check/index.ts` | 精明眼勳章每週評估 |
 | **Notification broadcast** | `supabase/functions/notification-broadcast/index.ts` | 通知僱主 |
 | **Daily summary** | `supabase/functions/daily-summary/index.ts` | 分享按鈕每日摘要（按 transaction_date） |
 | **Helper App** | `apps/helper_app/lib/` | 工人所有畫面 |
@@ -35,13 +40,20 @@
 | Table | 用途 |
 |---|---|
 | `receipts` | 收據 header（employer_id, helper_id, total, transaction_date, raw_text, date_anomaly） |
-| `receipt_items` | 收據項目（receipt_id, item_name, extracted_brand/name/spec, unit_price, qty, prd_cate） |
-| `shops` | 商戶標準化（canonical_name, shop_type, region） |
+| `receipt_items` | 收據項目（receipt_id, item_name, extracted_brand/name/spec, unit_price, qty, prd_cate, standard_name, normalized_unit_price, is_fresh_food, confidence_score） |
+| `shops` | 商戶標準化（canonical_name, shop_type, region, latitude, longitude） |
 | `shop_aliases` | 商戶別名 → shops（raw_name → canonical） |
 | `master_products` | 商品主數據（canonical_name, brand, prd_cate, search_keywords） |
 | `product_aliases` | 商品別名 → master_products（raw_name → canonical） |
-| `price_history` | 價格歷史（master_product_id, shop_id, price, unit, source_type） |
+| `price_history` | 價格歷史（master_product_id, shop_id, price, unit, source_type, freshness_weight, price_per_kg, price_per_pcs） |
 | `user_profiles` | 用戶（employer/helper，name, phone, short_code） |
+| `cc_prices` | 消委會物價通（每日更新，name_zh/en, brand, prices JSON, price_per_100g） |
+| `afcd_wholesale_prices` | AFCD 每日批發價（蔬菜/淡水魚/海水魚，retail_multiplier） |
+| `district_price_index` | 地區物價修正系數（district × category × month） |
+| `household_trust_scores` | 家庭信任分（trust_score, total_entries, correct_entries） |
+| `price_alert_config` | 用戶自定義 alert threshold（per category） |
+| `community_badges` | 精明眼勳章（badge_type, district, percentile_rank, savings_vs_district） |
+| `product_standard_names` | LLM standard_name → master_product_id 映射（match_count, confidence_score） |
 | `employer_helper_relations` | 僱主-工人關係（employer_id, helper_id, status） |
 | `employer_payments` | 付款記錄（滾動結餘：收入 − 支出，created_by 記錄操作者） |
 | `store_categories` / `prd_categories` | 分類主數據 |
@@ -128,18 +140,50 @@ INSERT / UPDATE employer_helper_relations（status='active'）
 
 ---
 
+
+## 💰 Price Anchor System
+
+### 四層 Anchor Priority
+
+| Layer | 名稱 | 數據來源 | 信心度 |
+|---|---|---|---|
+| Layer 0 | Geo Cluster | 同街市 1.5km 內其他家庭（48h） | 最高 |
+| Layer 1 | 消委會中位數 | Consumer Council 超市物價通 | 85% |
+| Layer 2 | 自家歷史 | 45天 trimmed mean（freshness weighted） | 70% |
+| Layer 3 | AFCD 批發價 | 政府批發價 × 1.8-2.2 倍 | 50% |
+
+### Buffer Zone（統一公式 D = (A-B)/B × 100%）
+
+| 類型 | 🟢 好平 | ⚪ 合理（靜音） | 🟡 略高 | 🔴 買貴 | ⚠️ 異常 |
+|---|---|---|---|---|---|
+| 包裝食品 | D < -15% | -15% ≤ D ≤ +12% | +12% < D ≤ +35% | D > +35% | D > +150% |
+| 街市生鮮 | D < -20% | -20% ≤ D ≤ +20% | +20% < D ≤ +40% | D > +40% | D > +150% |
+
+### 渠道鐵律
+wet_market 只跟 wet_market 比，supermarket 只跟 supermarket 比
+
+---
+
 ## 📁 Edge Functions API
 
 | Function | Input | Output |
-|---|---|---|
-| `chat-orchestrate` | `{text, user_id, location?, attached_image_base64?}` | `{success, receipt_id, needs_review, errors}` |
-| `receipt-orchestrate` | `{receipt_id}`（webhook trigger）或 cron fallback | `{success}` |
-| `receipt-parse` | `{image_base64?, image_url?}` | `{success, items, total}` |
+|---|---|
+| `chat-orchestrate` | `{text, user_id, location?, attached_image_base64?}` | `{success, receipt_id, needs_review}` |
+| `receipt-orchestrate` | `{receipt_id}`（webhook/cron） | `{success}` |
+| `receipt-parse` | `{image_base64?, image_url?}` | `{success, items, standard_name, normalized_unit_price...}` |
 | `receipt-writer` | `{receipt_data}` | `{receipt_id}` |
 | `shop-manager` | `{store_name, location?}` | `{shop_id, canonical_name}` |
 | `product-manager` | `{item_name, brand?}` | `{product_id, canonical_name}` |
 | `notification-broadcast` | `{user_id, message}` | `{sent}` |
-| `daily-summary` | (none, uses auth) | `{success, text}`（每日採購摘要） |
+| `daily-summary` | (none) | `{success, text}` |
+| `price-reference-engine` | `{standard_name, lat?, lng?, district?, store_type?}` | `{anchor_price, anchor_type, confidence}` |
+| `price-alert-engine` | `{receipt_id, user_id}` | `{alerts_created, alerts[]}` |
+| `cross-household-query` | `{standard_name, district?, store_type?}` | `{aggregated: {median, avg, count}}` |
+| `geo-price-cluster` | `{lat, lng, standard_name}` | `{aggregated: {median, count}, shops_in_radius}` |
+| `afcd-price-fetcher` | (cron/manual) | `{total_upserted, errors}` |
+| `community-badge-check` | `{employer_id, district}` | `{eligible, message, savings_vs_district}` |
+
+---
 
 ---
 
