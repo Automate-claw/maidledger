@@ -1,18 +1,21 @@
 // ══════════════════════════════════════════════════════════════════════════════
-// price-reference-engine — Three-layer Anchor Price Lookup
+// price-reference-engine — Four-layer Anchor Price Lookup
 //
 // Purpose: Returns the best available reference price ("Anchor") for a product.
-// Layers (in priority order):
-//   Layer 1: Consumer Council median price (cc_prices)
-//   Layer 2: Own historical trimmed mean (45-day, freshness-weighted)
-//   Layer 3: AFCD wholesale × retail_multiplier
+// Layers (in priority order, most precise first):
+//   Layer 1 (Geo):  Same market cluster via geo-price-cluster RPC (1.5km radius)
+//                   MOST PRECISE — neighbors within same wet market area
+//   Layer 2: Consumer Council median price (cc_prices) — packaged goods
+//   Layer 3: Own historical trimmed mean (45-day, freshness-weighted)
+//   Layer 4: AFCD wholesale × retail_multiplier — fresh food baseline
 //
 // Filters applied:
 //   - district_index: cross-district price normalization
 //   - store_type channel: wet_market ≠ supermarket (never cross-match)
+//   - trust_threshold: exclude trust_score < 0.3 from geo layer
 //
-// Input:  { standard_name, master_product_id?, user_id?, district?, store_type? }
-// Output: { anchor_price, anchor_type, anchor_source, confidence, district_index_applied? }
+// Input:  { standard_name, master_product_id?, user_id?, district?, store_type?, lat?, lng? }
+// Output: { anchor_price, anchor_type, anchor_source, confidence, district_index_applied?, geo_applied? }
 // ══════════════════════════════════════════════════════════════════════════════
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 
@@ -213,7 +216,7 @@ serve(async (req) => {
     let body: any;
     try { body = await req.json(); } catch { body = {}; }
 
-    const { standard_name, master_product_id, user_id, district, store_type } = body;
+    const { standard_name, master_product_id, user_id, district, store_type, lat, lng } = body;
 
     if (!standard_name && !master_product_id) {
       return new Response(JSON.stringify({ error: "standard_name or master_product_id required" }), {
@@ -230,6 +233,41 @@ serve(async (req) => {
       confidence: 0,
       district_index_applied: districtIndex > 1.0 || districtIndex < 1.0 ? districtIndex : undefined,
     };
+
+    // ── Layer 0: Geo cluster (most precise, if lat/lng available) ─────────
+    if (standard_name && lat != null && lng != null) {
+      try {
+        const geoResp = await fetch(`${supabaseUrl}/rest/v1/rpc/get_cross_household_prices`, {
+          method: "POST",
+          headers: {
+            apikey: supabaseKey,
+            Authorization: `Bearer ${supabaseKey}`,
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            p_standard_name: standard_name,
+            p_employer_ids: [], // empty = use all high-trust
+            p_cutoff_time: new Date(Date.now() - 48 * 60 * 60 * 1000).toISOString(),
+            p_district: district ?? null,
+            p_store_type: store_type ?? null,
+            p_min_data_points: 5,
+          }),
+        });
+        if (geoResp.ok) {
+          const geoData = await geoResp.json();
+          if (geoData?.success && geoData?.available && geoData?.aggregated?.median > 0) {
+            result.anchor_price = geoData.aggregated.median;
+            result.anchor_type = "geo_cluster";
+            result.anchor_source = `geo_cluster:${geoData.aggregated.count}items@${geoData.aggregated.household_count}households`;
+            result.confidence = geoData.confidence ?? 0.75;
+            result.geo_applied = { lat, lng, radius_km: 1.5 };
+            return new Response(JSON.stringify({ success: true, ...result }), {
+              headers: { ...corsHeaders, "Content-Type": "application/json" },
+            });
+          }
+        }
+      } catch { /* geo layer unavailable, fall through */ }
+    }
 
     // ── Layer 1: Consumer Council ──────────────────────────────────────────
     if (standard_name) {
