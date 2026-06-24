@@ -397,6 +397,12 @@ serve(async (req) => {
           weight_grams: weightG,
           unit_display: unitDisplay,
           unit_type: unitType,
+          // Stage 1 new fields: defaults for chat-flow items (no LLM normalization)
+          standard_name: item.standard_name ?? null,
+          normalized_unit_price: item.normalized_unit_price ?? null,
+          unit_for_normalized: item.unit_for_normalized ?? null,
+          is_fresh_food: item.is_fresh_food ?? false,
+          confidence_score: item.confidence_score ?? 0.5,
         };
       });
 
@@ -456,6 +462,12 @@ serve(async (req) => {
         unit_price: item.unit_price ?? null,
         line_total: item.unit_price != null && item.qty != null ? item.unit_price * item.qty : null,
         prd_cate: validPrdCodes.includes(item.prd_cate) ? item.prd_cate : "other",
+        // Stage 1 new fields: LLM-normalized pricing
+        standard_name: item.standard_name ?? null,
+        normalized_unit_price: item.normalized_unit_price ?? null,
+        unit_for_normalized: item.unit_for_normalized ?? null,
+        is_fresh_food: item.is_fresh_food ?? false,
+        confidence_score: item.confidence_score ?? 0.5,
       }));
 
       const resp = await fetch(`${supabaseUrl}/rest/v1/receipt_items`, {
@@ -506,9 +518,24 @@ serve(async (req) => {
       const unitType = item.unit_type ?? (itemWeightG && itemWeightG > 10 ? "g" : itemWeightG && itemWeightG <= 10 ? "pcs" : "unknown");
 
       // Calculate normalized prices
+      // Prefer LLM-provided normalized_unit_price when available (Stage 1)
       let pricePerKg: number | null = null;
       let pricePerPcs: number | null = null;
-      if (item.unit_price != null && itemWeightG != null && itemWeightG > 0) {
+      if (item.normalized_unit_price != null) {
+        // Use LLM's standardized unit price directly
+        // unit_for_normalized tells us what unit it's in (e.g., "斤", "盒", "100g")
+        const normUnit = item.unit_for_normalized ?? unitDisplay;
+        if (normUnit.includes("斤") || normUnit.includes("磅") || normUnit.includes("lb")) {
+          pricePerKg = normUnit.includes("斤") ? item.normalized_unit_price * 0.605 : item.normalized_unit_price * 2.205;
+        } else if (normUnit.includes("100g")) {
+          pricePerKg = item.normalized_unit_price * 10;
+        } else if (normUnit.includes("kg") || normUnit.includes("公斤")) {
+          pricePerKg = item.normalized_unit_price;
+        } else {
+          pricePerPcs = item.normalized_unit_price;
+        }
+      } else if (item.unit_price != null && itemWeightG != null && itemWeightG > 0) {
+        // Fallback: calculate from weight (existing logic)
         if (unitType === "g" || unitType === "kg") {
           pricePerKg = unitType === "g" ? (item.unit_price / itemWeightG) * 1000 : item.unit_price / (itemWeightG / 1000);
         } else if (unitType === "pcs" || unitType === "ml") {

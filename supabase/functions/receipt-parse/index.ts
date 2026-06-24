@@ -86,7 +86,12 @@ ${PRD_CATEGORIES.map((c) => `- ${c.code} = ${c.name_tc}`).join("\n")}
       "item_raw_text": "原始OCR行文字",
       "qty": 數量,
       "unit_price": 單價或null,
-      "prd_cate": "有效的prd_cate code"
+      "prd_cate": "有效的prd_cate code",
+      "standard_name": "標準化產品名稱（如：牛肉片、菜心、維他豆奶）",
+      "normalized_unit_price": 數字或null,
+      "unit_for_normalized": "標準單位（如：斤、盒、100g、件）",
+      "is_fresh_food": true或false,
+      "confidence_score": 0.0-1.0
     }
   ],
   "parse_confidence": 0.0-1.0
@@ -98,9 +103,41 @@ ${PRD_CATEGORIES.map((c) => `- ${c.code} = ${c.name_tc}`).join("\n")}
 - extracted_spec：容量、尺寸、包裝數量
 - 如果無法確定某個欄位，填 null
 
+### 標準化欄位計算規則（最重要）
+- **standard_name**：LLM 自動生成的標準化名稱，用於跨家庭比較。例如：
+  - "VITA SOY REG 250ML 6PK" → "維他純豆奶"
+  - "美國牛肉片 1磅 $85" → "牛肉片"
+  - "街市菜心 1斤 $14" → "菜心"
+- **normalized_unit_price**：將 unit_price 換算成「每標準單位」的價格。例如：
+  - "$20.5 / 6盒250ml" → normalized_unit_price = 20.5 / 6 = 3.41（每盒）
+  - "$85 / 1磅" → normalized_unit_price = 85（每磅）
+  - "$14 / 1斤" → normalized_unit_price = 14（每斤）
+  - "$25 / 1公升" → normalized_unit_price = 25（每公升）→ 需換算成每100ml = 2.5
+- **unit_for_normalized**：用於 normalized_unit_price 的標準單位，例如：
+  - 包裝食品："盒"、"罐"、"包"、"件"
+  - 生鮮肉類："斤"、"磅"、"両"
+  - 液體飲料："100ml"、"公升"
+  - 乾貨/糧油："100g"、"斤"、"公斤"
+- **is_fresh_food**：
+  - true：街市/濕市場購買的生鮮（蔬菜、肉類、海魚、豆腐、雞蛋）
+  - false：超市包裝食品、糧油罐頭、清潔用品
+
+### is_fresh_food 判斷規則
+以下情況設為 true：
+- 購買地點係「街市」（wet_market）或「鮮活食品店」
+- 產品名稱包含：菜心、白菜、西蘭花、肉片、魚、豆腐、雞蛋、鮮肉
+- 沒有固定包裝、論斤論両銷售的
+
+以下情況設為 false：
+- 超市包裝食品（維他、益力多、品客、合味道等）
+- 糧油罐頭（鹽、糖、油、醬油、罐頭）
+- 清潔用品（洗潔精、洗衣粉、廁紙）
+- 有固定包裝、條碼的加工食品
+
 ### item + price 配對規則
 - 如果有「Row-Reconstructed」格式，以「 | 」分隔黎配對
 - 如果 OCR 碎片化導致 item 同 price 分離，嘗試靠「TOTAL」附近價格推斷
+- 如果 item 有 quantity > 1（例如「×3」），unit_price 係總價，需除以 qty
 
 ### location 校正
 - OCR 可能把「灣仔」讀成「灣貨」等，請對照香港地區名稱列表自動校正
@@ -108,7 +145,8 @@ ${PRD_CATEGORIES.map((c) => `- ${c.code} = ${c.name_tc}`).join("\n")}
 ### 其他規則
 - 金額唔需要加$符號，直接填數字
 - unit_price 必須係有效數字，無法確認時設為 null
-- parse_confidence 反映對整體解析結果的信心程度`;
+- normalized_unit_price 必須係有效數字，無法確認時設為 null
+- confidence_score 反映對整體解析結果的信心程度，低於 0.5 嘅項目唔應該出現
 
   const models = ["deepseek/deepseek-chat-v3.1", "qwen/qwen3-8b"];
   let lastError = "";
