@@ -1,5 +1,6 @@
 import 'dart:convert';
 import 'dart:io';
+import 'package:flutter/foundation.dart';
 
 // GpsResult is defined in this file
 
@@ -41,15 +42,20 @@ class LocationService {
         '&format=json&accept-language=zh-tw',
       );
 
+      debugPrint('🔵 [reverseGeocode] requesting: $uri');
+
       final httpClient = HttpClient()
         ..connectionTimeout = const Duration(seconds: 5);
       final req = await httpClient.getUrl(uri);
-      req.headers.set('User-Agent', 'MaidLedgerApp/1.0');
+      req.headers.set('User-Agent', 'MaidLedgerApp/1.0 (contact: wandvault@gmail.com)');
+      req.headers.set('Accept', 'application/json');
+
       final resp = await req.close();
+      debugPrint('🔵 [reverseGeocode] response status: ${resp.statusCode}');
 
       if (resp.statusCode != 200) {
-        debugPrint('🔵 [reverseGeocode] non-200 status: ${resp.statusCode}, falling back to coordinates');
-        // Nominatim failed (403/429/timeout/etc) → use coordinate-based fallback
+        final body = await resp.transform(utf8.decoder).join();
+        debugPrint('🔵 [reverseGeocode] non-200 body: ${body.substring(0, body.length < 200 ? body.length : 200)}');
         return _regionFallback(gps.latitude, gps.longitude);
       }
 
@@ -57,10 +63,13 @@ class LocationService {
           .transform(utf8.decoder)
           .join();
 
+      debugPrint('🔵 [reverseGeocode] response body (${jsonStr.length} chars): ${jsonStr.substring(0, jsonStr.length < 300 ? jsonStr.length : 300)}');
+
       final json = jsonDecode(jsonStr) as Map<String, dynamic>;
       final addr = json['address'] as Map<String, dynamic>?;
 
       if (addr == null) {
+        debugPrint('🔵 [reverseGeocode] addr=null, falling back to coordinates');
         return _regionFallback(gps.latitude, gps.longitude);
       }
 
@@ -71,6 +80,8 @@ class LocationService {
           ?? addr['suburb']
           ?? addr['county'];
 
+      debugPrint('🔵 [reverseGeocode] district=$district addr=$addr');
+
       final region = _inferRegion(district ?? '', addr);
 
       return LocationResult(
@@ -79,8 +90,9 @@ class LocationService {
         displayText: district ?? region,
         confidence: 0.9,
       );
-    } catch (e) {
-      debugPrint('🔵 [reverseGeocode] error: $e, falling back to coordinates');
+    } catch (e, stack) {
+      debugPrint('🔵 [reverseGeocode] ERROR: $e');
+      debugPrint('🔵 [reverseGeocode] stack: $stack');
       return _regionFallback(gps.latitude, gps.longitude);
     }
   }
