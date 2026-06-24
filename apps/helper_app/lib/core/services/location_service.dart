@@ -101,6 +101,7 @@ class LocationService {
     // Priority 1: infer from district name (most reliable for HK)
     if (district.isNotEmpty) {
       if (district.contains('港島') || district.contains('香港島') ||
+          district == '香港' ||  // "香港" from Nominatim = 港島（未包含「港島」字）
           district.contains('中西') || district.contains('灣仔') ||
           district.contains('東區') || district.contains('南區') ||
           district.contains('筲箕') || district.contains('柴灣') ||

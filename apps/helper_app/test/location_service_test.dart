@@ -95,6 +95,11 @@ void main() {
         expect(result, equals('港島'));
       });
 
+      test('detects 港島 from district 香港 (Nominatim city=Hong Kong)', () {
+        final result = _inferRegionForTest('香港', {});
+        expect(result, equals('港島'));
+      });
+
       test('detects 港島 from district 中西區', () {
         final result = _inferRegionForTest('中西區', {});
         expect(result, equals('港島'));
@@ -205,6 +210,7 @@ String _inferRegionForTest(String district, Map<String, dynamic> addr) {
   // Priority 1: infer from district name (most reliable for HK)
   if (district.isNotEmpty) {
     if (district.contains('港島') || district.contains('香港島') ||
+        district == '香港' ||
         district.contains('中西') || district.contains('灣仔') ||
         district.contains('東區') || district.contains('南區') ||
         district.contains('筲箕') || district.contains('柴灣') ||
