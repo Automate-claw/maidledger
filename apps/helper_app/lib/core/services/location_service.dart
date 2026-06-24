@@ -48,6 +48,7 @@ class LocationService {
       final resp = await req.close();
 
       if (resp.statusCode != 200) {
+        debugPrint('🔵 [reverseGeocode] non-200 status: ${resp.statusCode}, falling back to coordinates');
         // Nominatim failed (403/429/timeout/etc) → use coordinate-based fallback
         return _regionFallback(gps.latitude, gps.longitude);
       }
@@ -79,6 +80,7 @@ class LocationService {
         confidence: 0.9,
       );
     } catch (e) {
+      debugPrint('🔵 [reverseGeocode] error: $e, falling back to coordinates');
       return _regionFallback(gps.latitude, gps.longitude);
     }
   }
