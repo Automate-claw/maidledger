@@ -5,6 +5,7 @@ import 'package:connectivity_plus/connectivity_plus.dart';
 import 'package:uuid/uuid.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:geolocator/geolocator.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:exif/exif.dart';
 import 'package:maidledger_localization/maidledger_localization.dart';
@@ -78,9 +79,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
     final picker = ImagePicker();
     final image = await picker.pickImage(
       source: ImageSource.gallery,
-      maxWidth: 1920,
-      maxHeight: 1920,
-      imageQuality: 85,
+      requestFullMetadata: true,
     );
     if (image == null) return;
 
@@ -92,7 +91,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
       _attachedImageBase64 = base64;
       _isExtractingLocation = true;
     });
-    await _extractExifLocation(image);
+    await _extractExifLocationWithFallback(image);
     if (mounted) setState(() => _isExtractingLocation = false);
   }
 
@@ -100,12 +99,11 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
     final picker = ImagePicker();
     final image = await picker.pickImage(
       source: ImageSource.camera,
-      maxWidth: 1920,
-      maxHeight: 1920,
-      imageQuality: 85,
+      requestFullMetadata: true,
     );
     if (image == null) return;
 
+    // For camera, EXIF GPS should be present in the original
     final bytes = await image.readAsBytes();
     final base64 = base64Encode(bytes);
 
@@ -114,19 +112,51 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
       _attachedImageBase64 = base64;
       _isExtractingLocation = true;
     });
-    await _extractExifLocation(image);
+    await _extractExifLocationWithFallback(image);
     if (mounted) setState(() => _isExtractingLocation = false);
   }
 
-  Future<void> _extractExifLocation(XFile image) async {
+  Future<void> _extractExifLocationWithFallback(XFile image) async {
+    debugPrint('🔵 [_extractExifLocation] starting for image: ${image.path}');
     try {
-      final file = File(image.path);
-      final gps = await _scanner.extractGpsFromFile(file);
+      final bytes = await image.readAsBytes();
+      debugPrint('🔵 [_extractExifLocation] bytes length: ${bytes.length}');
+      final gps = await _scanner.extractGpsFromBytes(bytes);
+      debugPrint('🔵 [_extractExifLocation] gps result: $gps');
 
       if (gps != null) {
-        final locResult = _locationService.reverseGeocode(gps);
-        if (locResult != null && (locResult.confidence ?? 0) > 0.5) {
-          final confirmed = await _showLocationConfirmationDialog(context, locResult.displayText);
+        debugPrint('🔵 [_extractExifLocation] GPS found: lat=${gps.latitude}, lon=${gps.longitude}');
+        final locResult = await _locationService.reverseGeocode(gps);
+        debugPrint('🔵 [_extractExifLocation] reverseGeocode result: ${locResult?.displayText}, confidence=${locResult?.confidence}');
+        if (locResult != null) {
+          final displayText = (locResult.confidence ?? 0) > 0.5
+              ? (locResult.displayText ?? locResult.fallbackText)
+              : locResult.region ?? '未知地區';
+          debugPrint('🔵 [_extractExifLocation] showing dialog with: $displayText');
+          final confirmed = await _showLocationConfirmationDialog(context, displayText);
+          debugPrint('🔵 [_extractExifLocation] dialog result: $confirmed');
+          if (confirmed != null) {
+            setState(() => _extractedLocation = confirmed);
+            debugPrint('🔵 [_extractExifLocation] set to: $confirmed');
+            return;
+          }
+          debugPrint('🔵 [_extractExifLocation] user cancelled, loading default');
+          await _loadDefaultLocation();
+          return;
+        }
+      }
+
+      // EXIF GPS failed → try device current location as fallback
+      debugPrint('🔵 [_extractExifLocation] EXIF GPS failed, trying device GPS...');
+      final currentGps = await _getCurrentLocation();
+      if (currentGps != null) {
+        debugPrint('🔵 [_extractExifLocation] device GPS: lat=${currentGps.latitude}, lon=${currentGps.longitude}');
+        final locResult = await _locationService.reverseGeocode(currentGps);
+        if (locResult != null) {
+          final displayText = (locResult.confidence ?? 0) > 0.5
+              ? (locResult.displayText ?? locResult.fallbackText)
+              : locResult.region ?? '未知地區';
+          final confirmed = await _showLocationConfirmationDialog(context, displayText);
           if (confirmed != null) {
             setState(() => _extractedLocation = confirmed);
             return;
@@ -134,9 +164,35 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
         }
       }
 
+      debugPrint('🔵 [_extractExifLocation] no GPS or no result, loading default');
       await _loadDefaultLocation();
     } catch (e) {
+      debugPrint('🔵 [_extractExifLocation] error: $e');
       await _loadDefaultLocation();
+    }
+  }
+
+  Future<GpsResult?> _getCurrentLocation() async {
+    try {
+      final permission = await Geolocator.checkPermission();
+      if (permission == LocationPermission.denied) {
+        final result = await Geolocator.requestPermission();
+        if (result == LocationPermission.denied || result == LocationPermission.deniedForever) {
+          debugPrint('🔵 [_getCurrentLocation] permission denied');
+          return null;
+        }
+      }
+      if (permission == LocationPermission.deniedForever) {
+        debugPrint('🔵 [_getCurrentLocation] permission denied forever');
+        return null;
+      }
+      final position = await Geolocator.getCurrentPosition(
+        desiredAccuracy: LocationAccuracy.medium,
+      );
+      return GpsResult(latitude: position.latitude, longitude: position.longitude);
+    } catch (e) {
+      debugPrint('🔵 [_getCurrentLocation] error: $e');
+      return null;
     }
   }
 
@@ -200,7 +256,9 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
           .eq('id', userId)
           .maybeSingle();
 
-      if (profile != null && profile['default_location'] != null) {
+      // Only set default_location if no location has been extracted yet
+      // This prevents overwriting EXIF GPS location with the profile default
+      if (profile != null && profile['default_location'] != null && _extractedLocation == null) {
         setState(() => _extractedLocation = profile['default_location']);
       }
     } catch (e) {
@@ -231,30 +289,6 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
         ],
       ),
     );
-  }
-
-  Future<String?> _reverseGeocode(double lat, double lon) async {
-    try {
-      final uri = Uri.parse(
-        'https://nominatim.openstreetmap.org/reverse'
-        '?lat=$lat&lon=$lon&format=json&accept-language=zh-tw',
-      );
-      final httpClient = HttpClient();
-      final req = await httpClient.getUrl(uri);
-      final resp = await req.close();
-      final jsonStr = await resp
-          .transform(utf8.decoder)
-          .join();
-
-      final districtMatch = RegExp(r'"city"\s*:\s*"([^"]*)"').firstMatch(jsonStr);
-      final areaMatch = RegExp(r'"state"\s*:\s*"([^"]*)"').firstMatch(jsonStr);
-      final suburbMatch = RegExp(r'"suburb"\s*:\s*"([^"]*)"').firstMatch(jsonStr);
-
-      final location = districtMatch?.group(1) ?? areaMatch?.group(1) ?? suburbMatch?.group(1);
-      return location;
-    } catch (e) {
-      return null;
-    }
   }
 
   Future<bool> _checkConnectivity() async {
@@ -305,11 +339,12 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
     // Save to pending buffers so dialog can access after _sendMessage returns
     _pendingImage = _attachedImage;
     _pendingImageBase64 = _attachedImageBase64;
-    _pendingLocation = _extractedLocation;
     // Wait for location extraction to finish before sending
     while (_isExtractingLocation) {
       await Future.delayed(const Duration(milliseconds: 100));
     }
+    // Capture location AFTER GPS extraction completes
+    _pendingLocation = _extractedLocation;
     _scrollToBottom();
 
     try {
@@ -480,7 +515,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
       // - receipt-writer writeItemsFromChat
       // - product-manager upsert loop + price_history writes
       final aiAgent = AIBookingAgent();
-      final result = await aiAgent.saveExpense(intent.rawText, userId, location: location, imageBase64: imageBase64);
+      final result = await aiAgent.saveExpense(intent.rawText, userId, location: location, imageBase64: imageBase64, selectedWeights: selectedWeights);
 
       if (result['success'] != true) {
         final errors = (result['errors'] as List?)?.join('; ') ?? AppStrings.expenseSaveFailed(_locale);

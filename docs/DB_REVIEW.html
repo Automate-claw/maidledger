@@ -1,0 +1,454 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>MaidLedger DB Structure Review</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { background: #0f1117; font-family: 'Segoe UI', sans-serif; color: #e0e0e0; padding: 20px; font-size: 13px; }
+  h1 { color: #fff; margin-bottom: 6px; font-size: 16px; }
+  h2 { font-size: 12px; color: #888; margin: 4px 0; }
+  .subtitle { color: #666; font-size: 11px; margin-bottom: 20px; }
+  .grid { display: flex; flex-wrap: wrap; gap: 14px; align-items: flex-start; }
+  .table { background: #1a1d27; border-radius: 10px; padding: 12px; min-width: 180px; border: 1px solid #2a2d3a; }
+  .table-title { font-size: 12px; font-weight: 600; color: #7eb8ff; margin-bottom: 8px; border-bottom: 1px solid #2a2d3a; padding-bottom: 5px; }
+  .column { font-size: 11px; padding: 2px 0; display: flex; gap: 5px; align-items: center; }
+  .col-name { color: #e0e0e0; }
+  .col-type { color: #666; font-size: 10px; }
+  .col-key { font-size: 9px; padding: 1px 4px; border-radius: 3px; margin-left: auto; }
+  .pk { background: #4a3f6b; color: #c4a7ff; }
+  .fk { background: #2d4a3e; color: #7ec8a4; }
+  .nn { background: #4a2d2d; color: #ff9b9b; }
+  .badge { font-size: 9px; padding: 2px 5px; border-radius: 3px; margin-left: 3px; }
+  .badge-dupe { background: #ff6b6b30; color: #ff8080; }
+  .badge-orph { background: #ff990030; color: #ffcc80; }
+  .badge-miss { background: #ff6b6b40; color: #ff9999; }
+  .badge-obs { background: #2a2d3a; color: #888; }
+  .badge-ref { background: #2d3f5a; color: #80b4ff; }
+  .section { margin-bottom: 24px; }
+  .issue { background: #1a1d27; border-radius: 10px; padding: 14px; min-width: 260px; border: 1px solid #2a2d3a; }
+  .issue h3 { font-size: 12px; margin-bottom: 8px; }
+  .issue p { color: #888; font-size: 11px; line-height: 1.7; margin-bottom: 6px; }
+  .issue code { background: #111; padding: 2px 5px; border-radius: 3px; color: #ccc; font-size: 10px; }
+  .row-count { font-size: 10px; color: #666; margin-left: auto; }
+  .relation { font-size: 10px; color: #555; margin-top: 6px; padding-top: 4px; border-top: 1px solid #2a2d3a; }
+  .legend { display: flex; gap: 14px; margin-bottom: 20px; font-size: 11px; color: #888; }
+  .legend span { display: flex; align-items: center; gap: 5px; }
+  .legend .dot { width: 10px; height: 10px; border-radius: 50%; }
+</style>
+</head>
+<body>
+
+<h1>🗄️ MaidLedger DB Structure Review</h1>
+<p class="subtitle">Current state — 2026-05-30 | 23 tables | Optimized for atomicity & minimal duplication</p>
+
+<div class="legend">
+  <span><span class="dot" style="background:#ff8080"></span> ❌ Critical issue</span>
+  <span><span class="dot" style="background:#ffcc80"></span> ⚠️ Needs attention</span>
+  <span><span class="dot" style="background:#80b4ff"></span> 📖 Reference table</span>
+  <span><span class="dot" style="background:#888"></span> 🔴 Redundant/obsolete</span>
+</div>
+
+<div class="grid">
+
+<!-- USER / AUTH -->
+<div class="table">
+  <div class="table-title">user_profiles <span class="row-count">small</span></div>
+  <div class="column"><span class="col-name">id</span><span class="col-type">uuid PK</span><span class="col-key pk">PK</span></div>
+  <div class="column"><span class="col-name">role</span><span class="col-type">text NN</span><span class="col-key nn">NN</span></div>
+  <div class="column"><span class="col-name">name</span><span class="col-type">text</span></div>
+  <div class="column"><span class="col-name">phone</span><span class="col-type">text</span></div>
+  <div class="column"><span class="col-name">short_code</span><span class="col-type">char(6)</span></div>
+  <div class="column"><span class="col-name">household_size</span><span class="col-type">int</span></div>
+  <div class="column"><span class="col-name">default_location</span><span class="col-type">text</span><span class="badge badge-ref">NEW</span></div>
+  <div class="relation">→ receipts, employer_helper_relations</div>
+</div>
+
+<div class="table">
+  <div class="table-title">employer_helper_relations <span class="row-count">small</span></div>
+  <div class="column"><span class="col-name">id</span><span class="col-type">uuid PK</span><span class="col-key pk">PK</span></div>
+  <div class="column"><span class="col-name">employer_id</span><span class="col-type">uuid FK</span><span class="col-key fk">FK</span></div>
+  <div class="column"><span class="col-name">helper_id</span><span class="col-type">uuid FK</span><span class="col-key fk">FK</span></div>
+  <div class="column"><span class="col-name">status</span><span class="col-type">text</span></div>
+  <div class="column"><span class="col-name">employer_code</span><span class="col-type">char</span></div>
+  <div class="relation">→ user_profiles(x2), employer_payments</div>
+</div>
+
+<!-- RECEIPTS -->
+<div class="table">
+  <div class="table-title">receipts <span class="row-count">29 rows</span></div>
+  <div class="column"><span class="col-name">id</span><span class="col-type">uuid PK</span><span class="col-key pk">PK</span></div>
+  <div class="column"><span class="col-name">employer_id</span><span class="col-type">uuid FK</span><span class="col-key fk">FK</span></div>
+  <div class="column"><span class="col-name">helper_id</span><span class="col-type">uuid FK</span><span class="col-key fk">FK</span></div>
+  <div class="column"><span class="col-name">relation_id</span><span class="col-type">uuid FK</span><span class="col-key fk">FK</span></div>
+  <div class="column"><span class="col-name">raw_text</span><span class="col-type">text NN</span><span class="col-key nn">NN</span></div>
+  <div class="column"><span class="col-name">amount</span><span class="col-type">decimal</span></div>
+  <div class="column"><span class="col-name">store_name</span><span class="col-type">text</span></div>
+  <div class="column"><span class="col-name">store_cate</span><span class="col-type">text</span></div>
+  <div class="column"><span class="col-name">location</span><span class="col-type">text</span></div>
+  <div class="column"><span class="col-name">transaction_date</span><span class="col-type">date</span></div>
+  <div class="column"><span class="col-name">parse_status</span><span class="col-type">text</span></div>
+  <div class="column"><span class="col-name">shop_id</span><span class="col-type">uuid FK</span><span class="col-key fk">FK</span></div>
+  <div class="column"><span class="col-name">parsed_data</span><span class="col-type">jsonb</span><span class="badge badge-obs">🔴?</span></div>
+  <div class="column"><span class="col-name">items</span><span class="col-type">jsonb</span><span class="badge badge-obs">🔴?</span></div>
+  <div class="column"><span class="col-name">ocr_raw_text</span><span class="col-type">text</span></div>
+  <div class="column"><span class="col-name">image_local_path</span><span class="col-type">text</span></div>
+  <div class="column"><span class="col-name">local_timestamp</span><span class="col-type">bigint NN</span><span class="col-key nn">NN</span></div>
+  <div class="relation">→ receipt_items, price_history</div>
+</div>
+
+<!-- RECEIPT ITEMS -->
+<div class="table">
+  <div class="table-title">receipt_items <span class="row-count">55 rows</span></div>
+  <div class="column"><span class="col-name">id</span><span class="col-type">uuid PK</span><span class="col-key pk">PK</span></div>
+  <div class="column"><span class="col-name">receipt_id</span><span class="col-type">uuid FK</span><span class="col-key fk">FK</span></div>
+  <div class="column"><span class="col-name">master_product_id</span><span class="col-type">uuid FK</span><span class="col-key fk">FK</span></div>
+  <div class="column"><span class="col-name">item_name</span><span class="col-type">text NN</span><span class="col-key nn">NN</span></div>
+  <div class="column"><span class="col-name">unit_price</span><span class="col-type">decimal</span></div>
+  <div class="column"><span class="col-name">line_total</span><span class="col-type">decimal</span></div>
+  <div class="column"><span class="col-name">qty</span><span class="col-type">decimal</span></div>
+  <div class="column"><span class="col-name">prd_cate</span><span class="col-type">text</span></div>
+  <div class="column"><span class="col-name">subcategory_code</span><span class="col-type">text FK</span><span class="col-key fk">FK</span></div>
+  <div class="column"><span class="col-name">weight_grams</span><span class="col-type">numeric</span></div>
+  <div class="column"><span class="col-name">extracted_brand</span><span class="col-type">text</span></div>
+  <div class="column"><span class="col-name">extracted_name</span><span class="col-type">text</span></div>
+  <div class="column"><span class="col-name">extracted_spec</span><span class="col-type">text</span><span class="badge badge-orph">⚠️</span></div>
+  <div class="column"><span class="col-name">actual_price</span><span class="col-type">decimal</span></div>
+  <div class="column"><span class="col-name">price_per_gram</span><span class="col-type">numeric</span></div>
+  <div class="column"><span class="col-name">cc_code</span><span class="col-type">text</span></div>
+  <div class="column"><span class="col-name">cc_price_per_gram</span><span class="col-type">numeric</span></div>
+  <div class="column"><span class="col-name">is_discounted</span><span class="col-type">bool</span></div>
+  <div class="column"><span class="col-name">discount_note</span><span class="col-type">text</span></div>
+  <div class="column"><span class="col-name">item_raw_text</span><span class="col-type">text</span><span class="badge badge-orph">⚠️</span></div>
+  <div class="relation">→ receipts, master_products</div>
+</div>
+
+<!-- SHOPS -->
+<div class="table">
+  <div class="table-title">shops <span class="row-count">small</span></div>
+  <div class="column"><span class="col-name">id</span><span class="col-type">uuid PK</span><span class="col-key pk">PK</span></div>
+  <div class="column"><span class="col-name">canonical_name</span><span class="col-type">text NN</span><span class="col-key nn">NN</span></div>
+  <div class="column"><span class="col-name">shop_type</span><span class="col-type">text</span></div>
+  <div class="column"><span class="col-name">region</span><span class="col-type">text</span></div>
+  <div class="column"><span class="col-name">district</span><span class="col-type">text</span></div>
+  <div class="relation">→ shop_aliases, price_history</div>
+</div>
+
+<div class="table">
+  <div class="table-title">shop_aliases <span class="row-count">small</span></div>
+  <div class="column"><span class="col-name">id</span><span class="col-type">uuid PK</span><span class="col-key pk">PK</span></div>
+  <div class="column"><span class="col-name">raw_name</span><span class="col-type">text NN</span><span class="col-key nn">NN</span></div>
+  <div class="column"><span class="col-name">shop_id</span><span class="col-type">uuid FK</span><span class="col-key fk">FK</span></div>
+  <div class="column"><span class="col-name">source</span><span class="col-type">text</span></div>
+  <div class="relation">→ shops</div>
+</div>
+
+<!-- PRODUCTS -->
+<div class="table">
+  <div class="table-title">master_products <span class="row-count">42 rows</span></div>
+  <div class="column"><span class="col-name">id</span><span class="col-type">uuid PK</span><span class="col-key pk">PK</span></div>
+  <div class="column"><span class="col-name">canonical_name</span><span class="col-type">text NN</span><span class="col-key nn">NN</span></div>
+  <div class="column"><span class="col-name">brand</span><span class="col-type">text</span></div>
+  <div class="column"><span class="col-name">prd_cate</span><span class="col-type">text</span></div>
+  <div class="column"><span class="col-name">default_unit</span><span class="col-type">text</span><span class="badge badge-orph">⚠️</span></div>
+  <div class="column"><span class="col-name">search_keywords</span><span class="col-type">text[]</span></div>
+  <div class="relation">→ product_aliases, price_history, receipt_items</div>
+</div>
+
+<div class="table">
+  <div class="table-title">product_aliases <span class="row-count">small</span></div>
+  <div class="column"><span class="col-name">id</span><span class="col-type">uuid PK</span><span class="col-key pk">PK</span></div>
+  <div class="column"><span class="col-name">raw_name</span><span class="col-type">text UNIQUE NN</span><span class="col-key nn">NN</span></div>
+  <div class="column"><span class="col-name">master_product_id</span><span class="col-type">uuid FK</span><span class="col-key fk">FK</span></div>
+  <div class="column"><span class="col-name">source</span><span class="col-type">text</span></div>
+  <div class="relation">→ master_products</div>
+</div>
+
+<!-- PRICE HISTORY -->
+<div class="table">
+  <div class="table-title">price_history <span class="row-count">81 rows</span></div>
+  <div class="column"><span class="col-name">id</span><span class="col-type">uuid PK</span><span class="col-key pk">PK</span></div>
+  <div class="column"><span class="col-name">master_product_id</span><span class="col-type">uuid FK</span><span class="col-key fk">FK</span></div>
+  <div class="column"><span class="col-name">shop_id</span><span class="col-type">uuid FK</span><span class="col-key fk">FK</span></div>
+  <div class="column"><span class="col-name">location</span><span class="col-type">text</span></div>
+  <div class="column"><span class="col-name">region</span><span class="col-type">text</span></div>
+  <div class="column"><span class="col-name">price</span><span class="col-type">decimal NN</span><span class="col-key nn">NN</span></div>
+  <div class="column"><span class="col-name">unit</span><span class="col-type">text</span><span class="badge badge-dupe">❌</span></div>
+  <div class="column"><span class="col-name">original_price</span><span class="col-type">decimal</span></div>
+  <div class="column"><span class="col-name">total_paid</span><span class="col-type">decimal</span></div>
+  <div class="column"><span class="col-name">is_discount_bundle</span><span class="col-type">bool</span></div>
+  <div class="column"><span class="col-name">source_receipt_id</span><span class="col-type">uuid FK</span><span class="col-key fk">FK</span></div>
+  <div class="column"><span class="col-name">recorded_at</span><span class="col-type">date</span></div>
+  <div class="relation">→ master_products, shops, receipts</div>
+</div>
+
+<!-- PRICE DATA (obsolete?) -->
+<div class="table">
+  <div class="table-title" style="color:#666">price_data <span class="badge badge-obs">🔴 OBSOLETE?</span></div>
+  <div class="column"><span class="col-name">id</span><span class="col-type">int PK</span><span class="col-key pk">PK</span></div>
+  <div class="column"><span class="col-name">supermarket</span><span class="col-type">text</span></div>
+  <div class="column"><span class="col-name">category</span><span class="col-type">text</span></div>
+  <div class="column"><span class="col-name">product_name</span><span class="col-type">text</span></div>
+  <div class="column"><span class="col-name">price</span><span class="col-type">numeric</span></div>
+  <div class="column"><span class="col-name">unit</span><span class="col-type">text</span></div>
+  <div class="column"><span class="col-name">source_url</span><span class="col-type">text</span></div>
+  <div class="column"><span class="col-name">scraped_at</span><span class="col-type">timestamptz</span></div>
+</div>
+
+<!-- REFERENCE TABLES -->
+<div class="table">
+  <div class="table-title" style="color:#80b4ff">cc_prices 📖</div>
+  <div class="column"><span class="col-name">cc_code</span><span class="col-type">text PK</span><span class="col-key pk">PK</span></div>
+  <div class="column"><span class="col-name">name_zh</span><span class="col-type">text</span></div>
+  <div class="column"><span class="col-name">name_en</span><span class="col-type">text</span></div>
+  <div class="column"><span class="col-name">brand_zh</span><span class="col-type">text</span></div>
+  <div class="column"><span class="col-name">cat1_zh</span><span class="col-type">text</span></div>
+  <div class="column"><span class="col-name">standard_weight_g</span><span class="col-type">int</span></div>
+  <div class="column"><span class="col-name">price_per_100g</span><span class="col-type">numeric</span></div>
+  <div class="column"><span class="col-name">prices</span><span class="col-type">jsonb</span></div>
+  <div class="relation">→ receipt_items (via cc_code)</div>
+</div>
+
+<div class="table">
+  <div class="table-title" style="color:#80b4ff">prd_categories 📖</div>
+  <div class="column"><span class="col-name">id</span><span class="col-type">int PK</span><span class="col-key pk">PK</span></div>
+  <div class="column"><span class="col-name">code</span><span class="col-type">text UNIQUE NN</span><span class="col-key nn">NN</span></div>
+  <div class="column"><span class="col-name">name_tc</span><span class="col-type">text</span></div>
+  <div class="column"><span class="col-name">name_en</span><span class="col-type">text</span></div>
+  <div class="column"><span class="col-name">display_order</span><span class="col-type">int</span></div>
+</div>
+
+<div class="table">
+  <div class="table-title" style="color:#80b4ff">subcategories 📖</div>
+  <div class="column"><span class="col-name">id</span><span class="col-type">serial PK</span><span class="col-key pk">PK</span></div>
+  <div class="column"><span class="col-name">code</span><span class="col-type">text UNIQUE NN</span><span class="col-key nn">NN</span></div>
+  <div class="column"><span class="col-name">name_tc</span><span class="col-type">text NN</span><span class="col-key nn">NN</span></div>
+  <div class="column"><span class="col-name">parent_cate</span><span class="col-type">text FK</span><span class="col-key fk">FK</span></div>
+  <div class="relation">→ prd_categories, weight_options</div>
+</div>
+
+<div class="table">
+  <div class="table-title" style="color:#80b4ff">weight_options 📖</div>
+  <div class="column"><span class="col-name">id</span><span class="col-type">serial PK</span><span class="col-key pk">PK</span></div>
+  <div class="column"><span class="col-name">subcategory_code</span><span class="col-type">text FK</span><span class="col-key fk">FK</span></div>
+  <div class="column"><span class="col-name">weight_g</span><span class="col-type">int NN</span><span class="col-key nn">NN</span></div>
+  <div class="column"><span class="col-name">label</span><span class="col-type">text NN</span><span class="col-key nn">NN</span></div>
+  <div class="column"><span class="col-name">unit_type</span><span class="col-type">text</span></div>
+  <div class="relation">→ subcategories</div>
+</div>
+
+<!-- EMPLOYER PAYMENTS -->
+<div class="table">
+  <div class="table-title">employer_payments <span class="row-count">small</span></div>
+  <div class="column"><span class="col-name">id</span><span class="col-type">uuid PK</span><span class="col-key pk">PK</span></div>
+  <div class="column"><span class="col-name">employer_id</span><span class="col-type">uuid FK</span><span class="col-key fk">FK</span></div>
+  <div class="column"><span class="col-name">relation_id</span><span class="col-type">uuid FK</span><span class="col-key fk">FK</span></div>
+  <div class="column"><span class="col-name">helper_id</span><span class="col-type">uuid FK</span><span class="col-key fk">FK</span></div>
+  <div class="column"><span class="col-name">amount</span><span class="col-type">decimal NN</span><span class="col-key nn">NN</span></div>
+  <div class="column"><span class="col-name">payment_date</span><span class="col-type">date</span></div>
+  <div class="column"><span class="col-name">note</span><span class="col-type">text</span></div>
+  <div class="column"><span class="col-name">created_by</span><span class="col-type">uuid</span></div>
+  <div class="relation">→ employer_helper_relations</div>
+</div>
+
+<!-- EXPENSE SUMMARIES -->
+<div class="table">
+  <div class="table-title">expense_summaries <span class="row-count">small</span></div>
+  <div class="column"><span class="col-name">id</span><span class="col-type">uuid PK</span><span class="col-key pk">PK</span></div>
+  <div class="column"><span class="col-name">employer_id</span><span class="col-type">uuid FK</span><span class="col-key fk">FK</span></div>
+  <div class="column"><span class="col-name">relation_id</span><span class="col-type">uuid FK</span><span class="col-key fk">FK</span></div>
+  <div class="column"><span class="col-name">helper_id</span><span class="col-type">uuid FK</span><span class="col-key fk">FK</span></div>
+  <div class="column"><span class="col-name">month</span><span class="col-type">date NN</span><span class="col-key nn">NN</span></div>
+  <div class="column"><span class="col-name">category</span><span class="col-type">text</span></div>
+  <div class="column"><span class="col-name">total_amount</span><span class="col-type">decimal</span></div>
+  <div class="column"><span class="col-name">transaction_count</span><span class="col-type">int</span></div>
+  <div class="relation">→ user_profiles, employer_helper_relations</div>
+</div>
+
+<!-- OBSOLETE / UNUSED -->
+<div class="table" style="border-color:#333">
+  <div class="table-title" style="color:#666">price_alerts <span class="badge badge-obs">🔴?</span></div>
+  <div class="column"><span class="col-name">id</span><span class="col-type">uuid PK</span><span class="col-key pk">PK</span></div>
+  <div class="column"><span class="col-name">receipt_id</span><span class="col-type">uuid FK</span></div>
+  <div class="column"><span class="col-name">category</span><span class="col-type">text NN</span></div>
+  <div class="column"><span class="col-name">input_price</span><span class="col-type">numeric</span></div>
+  <div class="column"><span class="col-name">avg_price</span><span class="col-type">numeric</span></div>
+  <div class="column"><span class="col-name">alert_level</span><span class="col-type">text</span></div>
+  <div class="column"><span class="col-name">message</span><span class="col-type">text</span></div>
+</div>
+
+<div class="table" style="border-color:#333">
+  <div class="table-title" style="color:#666">price_alert_suppression <span class="badge badge-obs">🔴?</span></div>
+  <div class="column"><span class="col-name">id</span><span class="col-type">uuid PK</span><span class="col-key pk">PK</span></div>
+  <div class="column"><span class="col-name">start_time</span><span class="col-type">timestamptz NN</span></div>
+  <div class="column"><span class="col-name">end_time</span><span class="col-type">timestamptz</span></div>
+  <div class="column"><span class="col-name">reason</span><span class="col-type">text</span></div>
+</div>
+
+<div class="table" style="border-color:#333">
+  <div class="table-title" style="color:#666">weather_signals <span class="badge badge-obs">🔴?</span></div>
+  <div class="column"><span class="col-name">id</span><span class="col-type">uuid PK</span><span class="col-key pk">PK</span></div>
+  <div class="column"><span class="col-name">signal_type</span><span class="col-type">text</span></div>
+  <div class="column"><span class="col-name">issued_at</span><span class="col-type">timestamptz</span></div>
+</div>
+
+<div class="table" style="border-color:#333">
+  <div class="table-title" style="color:#666">chat_logs <span class="badge badge-obs">🔴?</span></div>
+  <div class="column"><span class="col-name">id</span><span class="col-type">uuid</span></div>
+  <div class="column"><span class="col-name">user_id</span><span class="col-type">text</span></div>
+  <div class="column"><span class="col-name">input_text</span><span class="col-type">text</span></div>
+  <div class="column"><span class="col-name">output_response</span><span class="col-type">jsonb</span></div>
+  <div class="column"><span class="col-name">llm_raw_response</span><span class="col-type">text</span></div>
+</div>
+
+<div class="table" style="border-color:#333">
+  <div class="table-title" style="color:#666">chat_rate_limits <span class="badge badge-obs">🔴?</span></div>
+  <div class="column"><span class="col-name">id</span><span class="col-type">uuid PK</span><span class="col-key pk">PK</span></div>
+  <div class="column"><span class="col-name">user_id</span><span class="col-type">text</span></div>
+  <div class="column"><span class="col-name">is_expense</span><span class="col-type">bool</span></div>
+</div>
+
+<div class="table" style="border-color:#333">
+  <div class="table-title" style="color:#666">app_errors <span class="badge badge-obs">🔴?</span></div>
+  <div class="column"><span class="col-name">id</span><span class="col-type">uuid PK</span><span class="col-key pk">PK</span></div>
+  <div class="column"><span class="col-name">error_type</span><span class="col-type">text</span></div>
+  <div class="column"><span class="col-name">source</span><span class="col-type">text</span></div>
+  <div class="column"><span class="col-name">message</span><span class="col-type">text</span></div>
+  <div class="column"><span class="col-name">extra_data</span><span class="col-type">jsonb</span></div>
+</div>
+
+</div>
+
+<!-- ISSUES -->
+<div class="section" style="margin-top:28px">
+<h1 style="color:#fff;font-size:14px;margin-bottom:14px">❌ Critical Issues</h1>
+<div class="grid">
+
+<div class="issue">
+  <h3 style="color:#ff8080">❌ price_history.unit = free-text "件"</h3>
+  <p>→ 同一 product 有 "件", "500g", "斤", "2件" → 無法 cross-record 比較</p>
+  <p>→ selectedWeights 傳遞鏈斷 → user 揀 500g 但寫入 "件"</p>
+  <p><strong>Fix:</strong> 加 weight_g, unit_display, price_per_kg, price_per_pcs</p>
+</div>
+
+<div class="issue">
+  <h3 style="color:#ff8080">❌ receipt_items 有大量 derived data 冗餘</h3>
+  <p>同時存在：<code>unit_price + line_total</code> 和 <code>actual_price + price_per_gram + cc_price_per_gram + weight_grams</code></p>
+  <p>→ price_history 又重新寫一次 (unit, original_price, total_paid)</p>
+  <p>→ 同一筆交易資料寫咗3個地方，沒有單一 source of truth</p>
+  <p><strong>Fix:</strong> 統一到 price_history，receipt_items 只做 raw storage</p>
+</div>
+
+<div class="issue">
+  <h3 style="color:#ff8080">❌ receipt_items.item_raw_text 幾乎全部 NULL</h3>
+  <p>55 rows，但呢個 column 從來冇被寫入 → 應該移除或確保有價值先留</p>
+</div>
+
+</div>
+</div>
+
+<div class="section">
+<h1 style="color:#fff;font-size:14px;margin-bottom:14px">⚠️ Structural Issues</h1>
+<div class="grid">
+
+<div class="issue">
+  <h3 style="color:#ffcc80">⚠️ receipts.parsed_data / items (jsonb) — 用途？</h3>
+  <p>兩個 jsonb column，但 receipt_items 已經係正規化 table</p>
+  <p>→ 呢啲 jsonb 係暂存？備份？從未清理？</p>
+</div>
+
+<div class="issue">
+  <h3 style="color:#ffcc80">⚠️ expense_summaries — 冗餘 aggregate</h3>
+  <p>month + category + total_amount + transaction_count</p>
+  <p>→ 可以由 receipts + receipt_items 即時查出，唔使預先 aggregate</p>
+  <p>→ 每次新 receipt 都要更新 summary，增加 write complexity</p>
+  <p>→ 但可能係出於效能考量（老闆要睇月結）</p>
+</div>
+
+<div class="issue">
+  <h3 style="color:#ffcc80">⚠️ price_data — 爬蟲舊表？</h3>
+  <p>超市爬蟲數據，但 cc_prices 已經有類似野</p>
+  <p>→ 兩張都係價格參考表，重疊</p>
+</div>
+
+<div class="issue">
+  <h3 style="color:#ffcc80">⚠️ master_products.default_unit — 從未使用？</h3>
+  <p>需要確認代碼有冇用到 default_unit</p>
+</div>
+
+</div>
+</div>
+
+<div class="section">
+<h1 style="color:#fff;font-size:14px;margin-bottom:14px">🔴 Possibly Obsolete Tables</h1>
+<div class="grid">
+
+<div class="issue">
+  <h3 style="color:#888">🔴 price_alerts, price_alert_suppression, weather_signals</h3>
+  <p>→ 可能係早期實驗性功能，已被 cc_prices + price_history 取代</p>
+  <p>→ 需要確認 alert engine 有冇用到</p>
+</div>
+
+<div class="issue">
+  <h3 style="color:#888">🔴 chat_logs, chat_rate_limits</h3>
+  <p>→ chat_logs 有 data 但似 audit log 而非 business logic</p>
+  <p>→ chat_rate_limits 係咪被 edge function 使用？</p>
+</div>
+
+<div class="issue">
+  <h3 style="color:#888">🔴 app_errors</h3>
+  <p>→ 可能係備用，實際應用係 cloudflare / supabase logs</p>
+</div>
+
+</div>
+</div>
+
+<div class="section">
+<h1 style="color:#fff;font-size:14px;margin-bottom:14px">✅ Data Duplication Map</h1>
+<div style="background:#1a1d27;border-radius:10px;padding:14px;font-size:11px;color:#888;line-height:2">
+<pre style="margin:0;font-family:monospace">同一筆消費的數據分佈：
+
+receipts:          amount, store_name, location, transaction_date
+    ↓
+receipt_items:     item_name, unit_price, line_total, weight_grams, extracted_spec, actual_price
+    ↓
+price_history:     price, unit, original_price, total_paid, source_receipt_id
+
+→ receipt_items.unit_price  = price_history.price (重複)
+→ receipt_items.line_total  = receipt.amount (部分重複)  
+→ receipt_items.weight_grams = price_history (未寫入，TODO)
+→ receipt_items.extracted_spec → price_history.unit (混乱)
+
+建議：
+  receipt_items 只保留：item_name, qty, unit_price (raw)
+  price_history 完整記錄每次交易的標準化價格記錄
+  expense_summaries 如果係效能需要可以保留，但月結可以即時算
+</pre>
+</div>
+</div>
+
+<div class="section">
+<h1 style="color:#fff;font-size:14px;margin-bottom:14px">📋 Recommended Actions</h1>
+<div style="background:#1a1d27;border-radius:10px;padding:16px;font-size:11px;color:#aaa;line-height:2">
+<pre style="margin:0">
+IMMEDIATE（今次修復）:
+  1. price_history: 加 weight_g, unit_display, price_per_kg, price_per_pcs
+  2. receipt_items: 加 weight_g (如果需要), 确保 unit_display 一致
+  3. 修復 selectedWeights 傳遞鏈
+  4. 移除 receipt_items.item_raw_text (全部 NULL)
+
+SHORT TERM（清理）:
+  5. 確認 receipts.parsed_data/items 用途，無用就清除
+  6. 確認 expense_summaries 是否必要（可否即時算？）
+  7. 確認 price_data vs cc_prices 是否重疊
+
+LONGER TERM（架構）:
+  8. 清理 obsolete tables (price_alerts, weather_signals, chat_logs 等)
+  9. 統一 price_history 為唯一 source of truth
+  10. 考慮 receipts 只係一個 transaction header，items + price_history 係 detail
+</pre>
+</div>
+</div>
+
+</body>
+</html>

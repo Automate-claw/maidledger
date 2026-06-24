@@ -256,6 +256,7 @@ async function processChatInput(
             parse_result: parseResult,
             receipt_id: receiptId,
             shop_id: shopId,
+            selected_weights: selectedWeights,
           });
           if (!phResult.ok || !phResult.data?.success) {
             allErrors.push(`receipt-writer (writePriceHistory) warning for "${matchName}": ${JSON.stringify(phResult.data)}`);
