@@ -74,31 +74,83 @@ void main() {
         service = LocationService();
       });
 
-      test('detects Hong Kong Island from region name', () {
-        // Using reflection to test private method would require mock or modification
-        // Instead we test the public behavior
-        final result = _inferRegionForTest('未知', {'region': '香港島'});
+      // District name inference (Priority 1)
+      test('detects 港島 from district 筲箕灣 (Shau Kei Wan)', () {
+        final result = _inferRegionForTest('筲箕灣', {});
         expect(result, equals('港島'));
       });
 
-      test('detects Kowloon from region name', () {
-        final result = _inferRegionForTest('未知', {'region': '九龍城'});
+      test('detects 港島 from district 柴灣', () {
+        final result = _inferRegionForTest('柴灣', {});
+        expect(result, equals('港島'));
+      });
+
+      test('detects 港島 from district 銅鑼灣', () {
+        final result = _inferRegionForTest('銅鑼灣', {});
+        expect(result, equals('港島'));
+      });
+
+      test('detects 港島 from district 北角', () {
+        final result = _inferRegionForTest('北角', {});
+        expect(result, equals('港島'));
+      });
+
+      test('detects 港島 from district 中西區', () {
+        final result = _inferRegionForTest('中西區', {});
+        expect(result, equals('港島'));
+      });
+
+      test('detects 九龍 from district 旺角', () {
+        final result = _inferRegionForTest('旺角', {});
+        expect(result, equals('九龍'));
+      });
+
+      test('detects 九龍 from district 油尖旺', () {
+        final result = _inferRegionForTest('油尖旺', {});
+        expect(result, equals('九龍'));
+      });
+
+      test('detects 新界 from district 荃灣', () {
+        final result = _inferRegionForTest('荃灣', {});
+        expect(result, equals('新界'));
+      });
+
+      test('detects 新界 from district 將軍澳', () {
+        final result = _inferRegionForTest('將軍澳', {});
+        expect(result, equals('新界'));
+      });
+
+      // Nominatim region field (Priority 2)
+      test('detects 港島 from region name', () {
+        final result = _inferRegionForTest('', {'region': '香港島'});
+        expect(result, equals('港島'));
+      });
+
+      test('detects 九龍 from region name', () {
+        final result = _inferRegionForTest('', {'region': '九龍城'});
         expect(result, equals('九龍'));
       });
 
       test('detects New Territories from region name', () {
-        final result = _inferRegionForTest('未知', {'region': '新界區'});
+        final result = _inferRegionForTest('', {'region': '新界區'});
         expect(result, equals('新界'));
       });
 
       test('returns unknown for unrecognized region', () {
-        final result = _inferRegionForTest('未知', {'region': '其他'});
+        final result = _inferRegionForTest('', {'region': '其他'});
         expect(result, equals('未知'));
       });
 
       test('handles null region', () {
-        final result = _inferRegionForTest('未知', {});
+        final result = _inferRegionForTest('', {});
         expect(result, equals('未知'));
+      });
+
+      // District name takes priority over region field
+      test('district name takes priority over Nominatim region field', () {
+        // Shau Kei Wan Nominatim sometimes returns region='九龍' due to admin boundaries
+        final result = _inferRegionForTest('筲箕灣', {'region': '九龍'});
+        expect(result, equals('港島'));
       });
     });
 
@@ -148,9 +200,47 @@ void main() {
 }
 
 /// Test helpers that mirror private implementation for unit testing
+/// MUST stay in sync with LocationService._inferRegion
 String _inferRegionForTest(String district, Map<String, dynamic> addr) {
-  final region = addr['region'] as String?;
+  // Priority 1: infer from district name (most reliable for HK)
+  if (district.isNotEmpty) {
+    if (district.contains('港島') || district.contains('香港島') ||
+        district.contains('中西') || district.contains('灣仔') ||
+        district.contains('東區') || district.contains('南區') ||
+        district.contains('筲箕') || district.contains('柴灣') ||
+        district.contains('西環') || district.contains('上環') ||
+        district.contains('下環') || district.contains('堅尼') ||
+        district.contains('銅鑼灣') || district.contains('北角') ||
+        district.contains('天后') || district.contains('炮台山')) {
+      return '港島';
+    }
+    if (district.contains('九龍') || district.contains('油尖') ||
+        district.contains('旺角') || district.contains('深水') ||
+        district.contains('九龍城') || district.contains('黃大仙') ||
+        district.contains('觀塘') || district.contains('鯉魚門') ||
+        district.contains('秀茂坪') || district.contains('牛頭角') ||
+        district.contains('佐敦') || district.contains('土瓜灣') ||
+        district.contains('何文田') || district.contains('紅磡') ||
+        district.contains('筆架山') || district.contains('九龍塘')) {
+      return '九龍';
+    }
+    if (district.contains('新界') || district.contains('荃灣') ||
+        district.contains('葵涌') || district.contains('荔景') ||
+        district.contains('青山') || district.contains('屯門') ||
+        district.contains('元朗') || district.contains('天水') ||
+        district.contains('粉嶺') || district.contains('上水') ||
+        district.contains('大埔') || district.contains('沙田') ||
+        district.contains('馬鞍山') || district.contains('將軍澳') ||
+        district.contains('西貢') || district.contains('清水') ||
+        district.contains('東涌') || district.contains('大嶼山') ||
+        district.contains('愉景') || district.contains('梅窩') ||
+        district.contains('長洲') || district.contains('南丫島')) {
+      return '新界';
+    }
+  }
 
+  // Priority 2: use addr['region'] from Nominatim (less reliable)
+  final region = addr['region'] as String?;
   if (region != null) {
     if (region.contains('港島') || region.contains('香港島')) return '港島';
     if (region.contains('九龍')) return '九龍';
