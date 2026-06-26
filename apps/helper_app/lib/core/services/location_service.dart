@@ -73,16 +73,20 @@ class LocationService {
         return _regionFallback(gps.latitude, gps.longitude);
       }
 
-      // Priority: city > town > village > suburb > county
-      final district = addr['city']
+      // District: suburb gives fine-grained names (筲箕灣, 灣仔).
+      // city_district is broader (香港島, 九龍城) and used as fallback.
+      // Priority: suburb > city_district > town > village > city > county
+      final district = addr['suburb']
+          ?? addr['city_district']
           ?? addr['town']
           ?? addr['village']
-          ?? addr['suburb']
+          ?? addr['city']
           ?? addr['county'];
 
       debugPrint('🔵 [reverseGeocode] district=$district addr=$addr');
 
-      final region = _inferRegion(district ?? '', addr);
+      // Region is derived from city_district directly — no hardcoded inference needed
+      final region = _cityDistrictToRegion(addr['city_district']);
 
       return LocationResult(
         region: region,
@@ -97,54 +101,11 @@ class LocationService {
     }
   }
 
-  String _inferRegion(String district, Map<String, dynamic> addr) {
-    // Priority 1: infer from district name (most reliable for HK)
-    if (district.isNotEmpty) {
-      if (district.contains('港島') || district.contains('香港島') ||
-          district == '香港' ||  // "香港" from Nominatim = 港島（未包含「港島」字）
-          district.contains('中西') || district.contains('灣仔') ||
-          district.contains('東區') || district.contains('南區') ||
-          district.contains('筲箕') || district.contains('柴灣') ||
-          district.contains('西環') || district.contains('上環') ||
-          district.contains('下環') || district.contains('堅尼') ||
-          district.contains('銅鑼灣') || district.contains('北角') ||
-          district.contains('天后') || district.contains('炮台山')) {
-        return '港島';
-      }
-      if (district.contains('九龍') || district.contains('油尖') ||
-          district.contains('旺角') || district.contains('深水') ||
-          district.contains('九龍城') || district.contains('黃大仙') ||
-          district.contains('觀塘') || district.contains('鯉魚門') ||
-          district.contains('秀茂坪') || district.contains('牛頭角') ||
-          district.contains('佐敦') || district.contains('土瓜灣') ||
-          district.contains('何文田') || district.contains('紅磡') ||
-          district.contains('筆架山') || district.contains('九龍塘')) {
-        return '九龍';
-      }
-      if (district.contains('新界') || district.contains('荃灣') ||
-          district.contains('葵涌') || district.contains('荔景') ||
-          district.contains('青山') || district.contains('屯門') ||
-          district.contains('元朗') || district.contains('天水') ||
-          district.contains('粉嶺') || district.contains('上水') ||
-          district.contains('大埔') || district.contains('沙田') ||
-          district.contains('馬鞍山') || district.contains('將軍澳') ||
-          district.contains('西貢') || district.contains('清水') ||
-          district.contains('東涌') || district.contains('大嶼山') ||
-          district.contains('愉景') || district.contains('梅窩') ||
-          district.contains('長洲') || district.contains('南丫島')) {
-        return '新界';
-      }
-    }
-
-    // Priority 2: use addr['region'] from Nominatim (less reliable)
-    final region = addr['region'] as String?;
-    if (region != null) {
-      if (region.contains('港島') || region.contains('香港島')) return '港島';
-      if (region.contains('九龍')) return '九龍';
-      if (region.contains('新界')) return '新界';
-    }
-
-    // Priority 3: unknown
+  String _cityDistrictToRegion(String? cityDistrict) {
+    if (cityDistrict == null) return '未知';
+    if (cityDistrict.contains('香港島') || cityDistrict == '香港') return '港島';
+    if (cityDistrict.contains('九龍')) return '九龍';
+    if (cityDistrict.contains('新界')) return '新界';
     return '未知';
   }
 
