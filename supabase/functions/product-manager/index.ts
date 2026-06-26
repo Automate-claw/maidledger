@@ -1,10 +1,10 @@
 // ══════════════════════════════════════════════════════════════════════════════
 // product-manager — master product matching, creation and alias management
 // Actions:
-//   match         : { action:"match", item_name, prd_cate? }
-//   create        : { action:"create", name, prd_cate? }
-//   upsert        : { action:"upsert", item_name, prd_cate? }  → returns master_product_id
-//   upsertAlias   : { action:"upsertAlias", master_product_id, raw_name }
+//   match         : { action:"match", item_name, brand?, prd_cate? }
+//   create        : { action:"create", name, brand?, prd_cate? }
+//   upsert        : { action:"upsert", item_name, brand?, prd_cate? }  → returns master_product_id
+//   upsertAlias   : { action:"upsertAlias", master_product_id, raw_name, brand? }
 //   get           : { action:"get", master_product_id }
 // ══════════════════════════════════════════════════════════════════════════════
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
@@ -18,7 +18,13 @@ function escapeIlike(str: string) {
   return str.replace(/[%_\\]/g, "\\$&");
 }
 
-async function upsertProductAlias(supabaseUrl: string, supabaseKey: string, rawName: string, masterProductId: string): Promise<boolean> {
+async function upsertProductAlias(
+  supabaseUrl: string,
+  supabaseKey: string,
+  rawName: string,
+  masterProductId: string,
+  brand?: string | null,
+): Promise<boolean> {
   try {
     const resp = await fetch(`${supabaseUrl}/rest/v1/product_aliases`, {
       method: "POST",
@@ -31,6 +37,7 @@ async function upsertProductAlias(supabaseUrl: string, supabaseKey: string, rawN
       body: JSON.stringify({
         raw_name: rawName.trim(),
         master_product_id: masterProductId,
+        brand: brand?.trim() || null,
         source: "ocr",
       }),
     });
@@ -47,33 +54,81 @@ async function upsertProductAlias(supabaseUrl: string, supabaseKey: string, rawN
   }
 }
 
-async function matchProduct(supabaseUrl: string, supabaseKey: string, itemName: string, prdCate?: string): Promise<string | null> {
-  // 1. Try exact alias match
+async function matchProduct(
+  supabaseUrl: string,
+  supabaseKey: string,
+  itemName: string,
+  brand: string | null | undefined,
+  prdCate?: string,
+): Promise<{ masterProductId: string | null; matchedVia: string }> {
+  // 1. Try exact alias match (prioritize brand-matched alias)
+  if (brand) {
+    // Search alias by (raw_name, brand) combo — exact match on brand+name
+    const brandAliasResp = await fetch(
+      `${supabaseUrl}/rest/v1/product_aliases?select=master_product_id&raw_name=eq.${encodeURIComponent(itemName)}&brand=eq.${encodeURIComponent(brand)}&limit=1`,
+      { headers: { apikey: supabaseKey, Authorization: `Bearer ${supabaseKey}` } }
+    );
+    const brandAliases = await brandAliasResp.json();
+    if (brandAliases?.length > 0) {
+      return { masterProductId: brandAliases[0].master_product_id, matchedVia: "alias_brand" };
+    }
+  }
+
+  // Fallback: exact alias match without brand
   const aliasResp = await fetch(
     `${supabaseUrl}/rest/v1/product_aliases?select=master_product_id&raw_name=eq.${encodeURIComponent(itemName)}&limit=1`,
     { headers: { apikey: supabaseKey, Authorization: `Bearer ${supabaseKey}` } }
   );
   const aliases = await aliasResp.json();
-  if (aliases?.length > 0) return aliases[0].master_product_id;
+  if (aliases?.length > 0) {
+    return { masterProductId: aliases[0].master_product_id, matchedVia: "alias_exact" };
+  }
 
-  // 2. Keyword search on canonical_name
+  // 2. Keyword search on canonical_name — prioritize brand match in master_products
   const keywords = itemName.trim().split(/[\s　]+/).filter((k) => k.length > 1).slice(0, 3);
-  if (keywords.length === 0) return null;
+  if (keywords.length === 0) {
+    return { masterProductId: null, matchedVia: "none" };
+  }
 
   const orParts = keywords.map((kw) => `canonical_name.ilike.%${escapeIlike(kw)}%`).join(",");
   const catFilter = prdCate && prdCate !== "other" ? `&prd_cate=eq.${prdCate}` : "";
 
+  // If brand is provided, also search master_products where brand matches first
+  if (brand) {
+    const brandMpResp = await fetch(
+      `${supabaseUrl}/rest/v1/master_products?select=id,canonical_name,brand&brand=ilike.*${escapeIlike(brand)}*${catFilter}&limit=3`,
+      { headers: { apikey: supabaseKey, Authorization: `Bearer ${supabaseKey}` } }
+    );
+    const brandProducts = await brandMpResp.json();
+    if (brandProducts?.length > 0) {
+      // Further filter by keyword match within brand-matched products
+      const kwLower = keywords.map((k) => k.toLowerCase());
+      const matched = brandProducts.find((p: any) => {
+        const cnLower = (p.canonical_name || "").toLowerCase();
+        return kwLower.some((kw) => cnLower.includes(kw));
+      });
+      if (matched) {
+        await upsertProductAlias(supabaseUrl, supabaseKey, itemName, matched.id, brand);
+        return { masterProductId: matched.id, matchedVia: "master_brand_kw" };
+      }
+      // Brand matched but name didn't keyword-match — still return if no better option
+      await upsertProductAlias(supabaseUrl, supabaseKey, itemName, brandProducts[0].id, brand);
+      return { masterProductId: brandProducts[0].id, matchedVia: "master_brand" };
+    }
+  }
+
+  // Standard keyword search
   const mpResp = await fetch(
     `${supabaseUrl}/rest/v1/master_products?select=id&or=(${orParts})${catFilter}&limit=5`,
     { headers: { apikey: supabaseKey, Authorization: `Bearer ${supabaseKey}` } }
   );
   const products = await mpResp.json();
   if (products?.length > 0) {
-    await upsertProductAlias(supabaseUrl, supabaseKey, itemName, products[0].id);
-    return products[0].id;
+    await upsertProductAlias(supabaseUrl, supabaseKey, itemName, products[0].id, brand ?? null);
+    return { masterProductId: products[0].id, matchedVia: "master_kw" };
   }
 
-  return null;
+  return { masterProductId: null, matchedVia: "none" };
 }
 
 async function createMasterProduct(supabaseUrl: string, supabaseKey: string, name: string, brand: string | null, prdCate: string): Promise<string> {
@@ -102,7 +157,13 @@ async function createMasterProduct(supabaseUrl: string, supabaseKey: string, nam
   const mpId = mp[0]?.id ?? mp?.id;
   if (!mpId) throw new Error("createMasterProduct: no id returned");
 
-  await upsertProductAlias(supabaseUrl, supabaseKey, name, mpId);
+  // Always create alias with plain name
+  await upsertProductAlias(supabaseUrl, supabaseKey, name, mpId, null);
+  // If brand is provided, also create brand-prefixed alias for future brand-aware matching
+  if (brand?.trim()) {
+    const brandName = `${brand.trim()} ${name.trim()}`;
+    await upsertProductAlias(supabaseUrl, supabaseKey, brandName, mpId, brand.trim());
+  }
   return mpId;
 }
 
@@ -146,7 +207,7 @@ serve(async (req) => {
         });
       }
       try {
-        await upsertProductAlias(supabaseUrl, supabaseKey, body.raw_name, body.master_product_id);
+        await upsertProductAlias(supabaseUrl, supabaseKey, body.raw_name, body.master_product_id, body.brand ?? null);
         return new Response(JSON.stringify({ success: true }), {
           headers: { ...corsHeaders, "Content-Type": "application/json" },
         });
@@ -167,7 +228,7 @@ serve(async (req) => {
         });
       }
       try {
-        const mpId = await createMasterProduct(supabaseUrl, supabaseKey, body.name, body.prd_cate || "other");
+        const mpId = await createMasterProduct(supabaseUrl, supabaseKey, body.name, body.brand ?? null, body.prd_cate || "other");
         return new Response(JSON.stringify({ success: true, master_product_id: mpId }), {
           headers: { ...corsHeaders, "Content-Type": "application/json" },
         });
@@ -188,8 +249,8 @@ serve(async (req) => {
         });
       }
       try {
-        const mpId = await matchProduct(supabaseUrl, supabaseKey, body.item_name, body.prd_cate);
-        return new Response(JSON.stringify({ success: true, master_product_id: mpId, matched: !!mpId }), {
+        const result = await matchProduct(supabaseUrl, supabaseKey, body.item_name, body.brand ?? null, body.prd_cate);
+        return new Response(JSON.stringify({ success: true, master_product_id: result.masterProductId, matched: !!result.masterProductId, matched_via: result.matchedVia }), {
           headers: { ...corsHeaders, "Content-Type": "application/json" },
         });
       } catch (e) {
@@ -212,8 +273,11 @@ serve(async (req) => {
       let masterProductId: string | null = null;
 
       // Try match first
+      let matchedVia = "none";
       try {
-        masterProductId = await matchProduct(supabaseUrl, supabaseKey, body.item_name, body.prd_cate);
+        const result = await matchProduct(supabaseUrl, supabaseKey, body.item_name, body.brand ?? null, body.prd_cate);
+        masterProductId = result.masterProductId;
+        matchedVia = result.matchedVia;
       } catch (e) {
         errors.push(`matchProduct error: ${e}`);
       }
@@ -230,6 +294,7 @@ serve(async (req) => {
       return new Response(JSON.stringify({
         success: !!masterProductId,
         master_product_id: masterProductId,
+        matched_via: matchedVia,
         errors: errors.length > 0 ? errors : undefined,
       }), {
         headers: { ...corsHeaders, "Content-Type": "application/json" },
